@@ -3,19 +3,21 @@ ENTRY(_start)
 SECTIONS {
     . = 0x7c00;
 
-    .boot : { *(.boot) }
-    .text : { *(.text) }
-    .rodata : { *(.rodata) }
-    .data :
-    {
-        *(.rodata)
-        *(.data)
+    .boot : {
+        *(.boot) 
+    }
+
+    .screen_minimal : {
+        *(.screen)
+    }
+
+    .disk_minimal : {
+        *(.disk_minimal)
     }
 
     . = 0x7c00 + 446;
 
     /* Save the place for the partition table (rust will have a _partition table var) */
-    _partition_table = .;
     .partition_table :
     {
         /* partition table entry 0 */
@@ -31,11 +33,25 @@ SECTIONS {
         QUAD(0)
         QUAD(0)
     }
+
     . = 0x7c00 + 510;
 
-    .magic_number :
-    {
+    .magic_number : {
         SHORT(0xaa55)       /* magic number for bootable disk */
+    }
+    
+    . = 0x7c00 + 512;
+
+    .second_stage : {
+        *(.second_stage) 
+    }
+
+    .screen : {
+        *(.screen)
+    }
+
+    .disk : {
+        *(.disk)
     }
 
 }
