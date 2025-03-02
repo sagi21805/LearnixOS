@@ -5,6 +5,7 @@ edition = "2021"
 
 [build]
 target = "i386-code16-boot-sector.json"
+
 # The panic = "abort" disables unwinding 
 # Stack unwinding means that when the program panics, all alive stack members are freed from memory
 [profile.dev]
@@ -12,8 +13,3 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
-opt-level = "s"
-lto = true
-codegen-units = 1
-debug = false
-overflow-checks = false
