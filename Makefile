@@ -2,7 +2,8 @@
 BOOT_BIN = boot.bin
 RUST_TARGET = target/x86_64-unknown-none/release/bootloader
 LINKER_SCRIPT = linker.ld
-OUTPUT = bootloader.elf
+OUTPUT = disk_image.img
+TARGET = target
 
 # Tools
 NASM = nasm
@@ -16,8 +17,7 @@ all: build-rust create_img
 # Step 1: Build Rust code
 build-rust:
 	@echo "Compiling Rust code..."
-	$(CARGO) build --release -Zbuild-std=core --target i386-code16-boot-sector.json -Zbuild-std-features=compiler-builtins-mem 
-
+	$(CARGO) build --release --target i386-code16-boot-sector.json -Zbuild-std=core
 # Step 3: Link everything
 create_img: build-rust build-asm
 	$(OBJCPY) -I elf32-i386 -O binary target/i386-code16-boot-sector/release/RustOS disk_image.img                    
@@ -31,6 +31,6 @@ run: all
 clean:
 	@echo "Cleaning build files..."
 	$(CARGO) clean
-	rm -f $(BOOT_BIN) $(OUTPUT)
+	rm -f $(BOOT_BIN) $(OUTPUT) $(TARGET)
 
 .PHONY: all build-rust build-asm link run clean
