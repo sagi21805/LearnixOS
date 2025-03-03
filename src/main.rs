@@ -1,24 +1,35 @@
-#![no_std]  // don't link the Rust standard library
+#![no_std] // don't link the Rust standard library
 #![no_main] // disable all Rust-level entry points
 #![allow(dead_code)]
 #![feature(optimize_attribute)]
 #![feature(ptr_as_ref_unchecked)]
 
 mod bios_enums;
-mod screen;
-mod disk;
 mod constants;
+mod disk;
+mod screen;
+mod protected_mode;
+// mod global_descritor_table;
 
-use bios_enums::PacketSize;
-use core::{arch::global_asm, panic::PanicInfo};
+use bios_enums::{Color, PacketSize};
+use constants::{
+    MASTER_BOOT_RECORD_OFFSET,
+    MESSAGE,
+    SECOND_STAGE_OFFSET,
+    BOOTABLE,
+    NOT_BOOTABLE,
+    KERNEL_START,
+};
+use core::{arch::{asm, global_asm}, panic::PanicInfo};
 use disk::{DiskAddressPacket, MasterBootRecord};
-use constants::{MESSAGE, SECOND_STAGE_OFFSET, MASTER_BOOT_RECORD_OFFSET, BOOTABLE, NOT_BOOTABLE};
-use screen::MinimalWriter;
+// use screen::{ColorCode, MinimalWriter, Writer};
+use screen::{ColorCode, MinimalWriter, Writer};
 
 global_asm!(include_str!("../asm/boot.s"));
 
 #[no_mangle] 
 #[link_section = ".boot"]
+#[cfg(feature = "stage-1-2")]
 pub extern "C" fn first_stage() -> ! {
     
     MinimalWriter::print(MESSAGE);
@@ -27,7 +38,7 @@ pub extern "C" fn first_stage() -> ! {
     };
     let packet = DiskAddressPacket::new(
         PacketSize::Default,
-        128, 
+        8, 
         SECOND_STAGE_OFFSET as u32, 
         1
     );
@@ -37,10 +48,9 @@ pub extern "C" fn first_stage() -> ! {
 
     loop {}
 }
-
 #[no_mangle]
-#[optimize(none)]
 #[link_section = ".second_stage"]
+#[cfg(feature = "stage-1-2")]
 pub extern "C" fn second_stage(mbr: &mut MasterBootRecord) {
     MinimalWriter::print("Entering Second Stage");
     for entry in mbr.entries.iter() {
@@ -51,6 +61,30 @@ pub extern "C" fn second_stage(mbr: &mut MasterBootRecord) {
             MinimalWriter::print(NOT_BOOTABLE);
         }
     }
+    let packet = DiskAddressPacket::new(
+        PacketSize::Default,
+        128, 
+        KERNEL_START as u32, 
+        9
+    );
+    packet.load();
+    // protected_mode::enter_unreal_mode();
+    protected_mode::enter_protected_mode(KERNEL_START);
+}
+
+#[no_mangle]
+#[link_section = ".start"]
+#[cfg(feature = "stage-3")]
+pub extern "C" fn start() {
+    MinimalWriter::print("Third stage");
+    let mut writer = Writer::new();
+    unsafe {
+        asm!("nop");
+    }
+    // writer.print(
+    //     "Hello World",
+    //     ColorCode::new(Color::Blue, Color::Black)
+    // );
 }
 
 
