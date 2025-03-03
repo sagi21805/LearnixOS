@@ -1,6 +1,7 @@
 ENTRY(_start)
 
 SECTIONS {
+
     . = 0x7c00;
 
     .boot : {
@@ -8,7 +9,7 @@ SECTIONS {
     }
 
     .screen_minimal : {
-        *(.screen)
+        *(.screen_minimal)
     }
 
     .disk_minimal : {
@@ -17,7 +18,6 @@ SECTIONS {
 
     . = 0x7c00 + 446;
 
-    /* Save the place for the partition table (rust will have a _partition table var) */
     .partition_table :
     {
         /* partition table entry 0 */
@@ -46,12 +46,20 @@ SECTIONS {
         *(.second_stage) 
     }
 
-    .screen : {
-        *(.screen)
-    }
-
     .disk : {
         *(.disk)
     }
 
+    .global_descriptor_table : {
+        *(.global_descriptor_table)
+    }
+
+    /* Pad the rest of the space with zeroes */
+    .zero_fill : {
+        FILL(0);  /* Fill remaining bytes with zero */
+    }
+
+    . = 0x7c00 + 4096;
+    
+  
 }
