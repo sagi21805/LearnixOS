@@ -22,13 +22,14 @@ _start:
 
 enable_a20:
     # enable A20-Line via IO-Port 92, might not work on all motherboards
-
+    cli
     in al, 0x92
     test al, 2
     jnz enable_a20_after
     or al, 2
     and al, 0xFE
     out 0x92, al
+    sti
 enable_a20_after:
 rust:
     call first_stage
