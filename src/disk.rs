@@ -1,4 +1,4 @@
-use crate::bios_enums::PacketSize;
+use crate::{bios_enums::PacketSize, first_stage};
 use core::arch::asm;
 
 #[repr(C, packed)]
@@ -54,46 +54,45 @@ pub struct MasterBootRecord {
 
 impl DiskAddressPacket {
     
-    #[link_section = ".disk_minimal"]
-    #[cfg(feature = "stage-1-2")]
-    pub fn new(
-        packet_size: PacketSize,
-        num_of_blocks: u16,
-        transfer_buffer: u32,
-        abs_block_num: u64,
-    ) -> Self {
-        Self {
-            packet_size: packet_size as u8,
-            zero: 0,
-            num_of_blocks,
-            transfer_buffer,
-            abs_block_num,
+    first_stage! {
+
+        pub fn new(
+            packet_size: PacketSize,
+            num_of_blocks: u16,
+            transfer_buffer: u32,
+            abs_block_num: u64,
+        ) -> Self {
+            Self {
+                packet_size: packet_size as u8,
+                zero: 0,
+                num_of_blocks,
+                transfer_buffer,
+                abs_block_num,
+            }
         }
+    
+        pub fn load(&self) {
+            let self_address = self as *const Self as u32;
+            unsafe {
+                asm!(
+                    "push si",     // si register is required for llvm it's content needs to be saved
+                    "mov si, {3:x}",
+                    "mov ah, {0}",
+                    "mov dl, {1}",
+                    "int {2}",
+                    "pop si",
+                    const 0x42u8,
+                    const 0x80u8,
+                    const 0x13u8,
+                    in(reg) self_address,
+                )
+            }
+        }
+    
     }
 
-    #[link_section = ".disk_minimal"]
-    #[cfg(feature = "stage-1-2")]
-    pub fn load(&self) {
-        let self_address = self as *const Self as u32;
-        unsafe {
-            asm!(
-                "push si",     // si register is required for llvm it's content needs to be saved
-                "mov si, {3:x}",
-                "mov ah, {0}",
-                "mov dl, {1}",
-                "int {2}",
-                "pop si",
-                const 0x42u8,
-                const 0x80u8,
-                const 0x13u8,
-                in(reg) self_address,
-            )
-        }
-    }
-
-    #[link_section = ".disk"]
-    #[cfg(feature = "stage-1-2")]
     pub fn chs_to_lba() {
         todo!()
     }
+
 }
