@@ -3,23 +3,15 @@ name = "RustOS"
 version = "0.1.0"
 edition = "2021"
 
-[build]
-target = "i386-code16-boot-sector.json"
 # The panic = "abort" disables unwinding 
 # Stack unwinding means that when the program panics, all alive stack members are freed from memory
-
 [features]
-default = ["stage-1-2", "stage-3"]
-stage-1-2 = []
-stage-3 = []
+default = ["16bit", "32bit"]
+16bit = []
+32bit = []
 
 [profile.dev]
 panic = "abort"
 
 [profile.release]
 panic = "abort"
-# lto = true
-# opt-level = "s"
-# codegen-units = 1
-# debug = false
-# overflow-checks = false
