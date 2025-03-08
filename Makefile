@@ -22,7 +22,7 @@ create_img: build-rust build-asm
 	$(OBJCPY) -I elf32-i386 -O binary target/$(16BIT)/release/RustOS 16bit.img                    
 	$(OBJCPY) -I elf32-i386 -O binary target/$(32BIT)/release/RustOS 32bit.img
 	cat 16bit.img 32bit.img > $(OUTPUT)
-	rm 16bit.img 32bit.img
+# rm 16bit.img 32bit.img
 # Step 4: Run in QEMU
 run: all
 	@echo "Running bootloader in QEMU..."

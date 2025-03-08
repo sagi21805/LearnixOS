@@ -1,10 +1,10 @@
-.section .boot, "awx"
-.global _start
+.section .first_stage_entry, "awx"
+.global .boot
 .code16
 
 # This stage initializes the stack, enables the A20 line
 
-_start:
+.boot:
     # zero segment registers
     xor ax, ax
     mov ds, ax
@@ -20,7 +20,7 @@ _start:
     # initialize stack
     mov sp, 0x7c00
 
-enable_a20:
+.enable_a20:
     # enable A20-Line via IO-Port 92, might not work on all motherboards
     cli
     in al, 0x92
@@ -30,6 +30,6 @@ enable_a20:
     and al, 0xFE
     out 0x92, al
     sti
-enable_a20_after:
-rust:
+.enable_a20_after:
+.rust:
     call first_stage

@@ -1,11 +1,9 @@
 use core::arch::asm;
 
+use crate::constants::SECOND_STAGE_OFFSET;
 use crate::first_stage;
-
-
-// use crate::global_descritor_table::GlobalDescriptorTable;
-
-static GDT: GdtProtectedMode = GdtProtectedMode::new();
+use crate::global_descritor_table::GlobalDescriptorTable;
+use crate::disk::MasterBootRecord;
 
 #[repr(C)]
 pub struct GdtProtectedMode {
@@ -92,38 +90,20 @@ first_stage! {
 
     
     
-    pub fn enter_protected_mode(entry_point: *const u8) {
-        unsafe { asm!("cli") };
-         let cr0 = get_cr0();
-         set_cr0(cr0 | 1); // toggle protected mode (GDT already loaded from unreal mode)
-        //  unsafe {
-        //     asm!(
-        //         // align the stack
-        //         "and esp, 0xffffff00",
-        //         // push arguments
-        //         "push {entry_point:e}",
-        //         entry_point = in(reg) entry_point as u32,
-        //     );
-        //     asm!("ljmp $0x8, $2f", "2:", options(att_syntax));
-        //     asm!(
-        //         ".code32",
-    
-        //         // reload segment registers
-        //         "mov {0}, 0x10",
-        //         "mov ds, {0}",
-        //         "mov es, {0}",
-        //         "mov ss, {0}",
-    
-        //         // jump to third stage
-        //         "pop {1}",
-        //         "call {1}",
-    
-        //         // enter endless loop in case third stage returns
-        //         "2:",
-        //         "jmp 2b",
-        //         out(reg) _,
-        //         out(reg) _,
-        //     );
-        // }
+    pub fn enter_protected_mode(
+        mbr: &MasterBootRecord,
+    ) {
+        
+        GlobalDescriptorTable::load();
+        let cr0 = get_cr0();
+        set_cr0(cr0 | 1); // toggle protected mode (GDT already loaded from unreal mode)
+        unsafe {
+            asm!(
+                "ljmp {seg}, {offset}",
+                seg = const 0x8,
+                offset = const SECOND_STAGE_OFFSET,
+            )
+        }
+
     }
 }

@@ -1,8 +1,7 @@
-ENTRY(_start)
+ENTRY(.first_stage_entry)
 
 SECTIONS {
 
-    .first_stage_entry : { *(.first_stage_entry) }
     .first_stage : { *(.first_stage) }
     
     . = 446;
@@ -16,5 +15,7 @@ SECTIONS {
     }
     /* Make sector bootable */
     .magic_number : { SHORT(0xaa55) }
+
+    . = 512;
   
 }
