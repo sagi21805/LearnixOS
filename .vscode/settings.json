@@ -1,5 +1,10 @@
 {
     "rust-analyzer.cargo.target": "x86_64-unknown-none",
     "rust-analyzer.check.allTargets": false,
+    "rust-analyzer.linkedProjects": [
+        "${workspaceFolder}/first_stage/Cargo.toml",
+        "${workspaceFolder}/second_stage/Cargo.toml"
+    ]
+    
 }
   
