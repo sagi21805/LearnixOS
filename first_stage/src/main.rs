@@ -4,31 +4,26 @@
 #![feature(optimize_attribute)]
 #![feature(ptr_as_ref_unchecked)]
 
-mod bios_enums;
 mod constants;
 mod disk;
-mod screen;
-mod protected_mode;
+mod enums;
 mod global_descritor_table;
-use bios_enums::PacketSize;
-use constants::{SECOND_STAGE_OFFSET};
+mod protected_mode;
+use constants::SECOND_STAGE_OFFSET;
 global_asm!(include_str!("../asm/boot.s"));
 
-use bios_enums::*;
-use core::{arch::{asm, global_asm}, panic::{self, PanicInfo}};
+use core::{
+    arch::{asm, global_asm},
+    panic::PanicInfo,
+};
 use disk::DiskAddressPacket;
-use screen::MinimalWriter;
+use enums::*;
 
-
-#[unsafe(no_mangle)] 
-#[unsafe(link_section = ".start")]
+#[unsafe(no_mangle)]
 pub extern "C" fn first_stage() -> ! {
-    
     let dap = DiskAddressPacket::new(
         128, // Max 128
-        0, 
-        0x7e0,
-        1
+        0, 0x7e0, 1,
     );
     dap.load();
     unsafe {
@@ -41,15 +36,20 @@ pub extern "C" fn first_stage() -> ! {
             const Interrupts::VIDEO as u8
         )
     }
-    protected_mode::enter_protected_mode_and_jump_to_stage_3(SECOND_STAGE_OFFSET);
-    
+    protected_mode::enter_protected_mode();
+    unsafe {
+        asm!(
+            "ljmp ${section}, ${next_stage}",
+            section = const Sections::KernelCode as u8,
+            next_stage = const SECOND_STAGE_OFFSET, // Change this to the correct address
+            options(att_syntax)
+        );
+    }
+
     loop {}
 }
 
 #[panic_handler]
 pub fn panic_handler(_info: &PanicInfo) -> ! {
-    loop {
-        
-    }
+    loop {}
 }
-
