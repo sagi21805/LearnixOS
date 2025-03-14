@@ -8,18 +8,16 @@ use core::arch::asm;
 pub struct ColorCode(u8);
 
 impl ColorCode {
-   
     pub const fn new(foreground: Color, background: Color) -> Self {
         Self((background as u8) << 4 | (foreground as u8))
     }
-   
+
     const fn default() -> Self {
         ColorCode((Color::Black as u8) << 4 | (Color::Yellow as u8))
     }
 }
 
 impl Clone for ColorCode {
-   
     fn clone(&self) -> ColorCode {
         ColorCode(self.0)
     }
@@ -34,7 +32,6 @@ pub struct ScreenChar {
 }
 
 impl ScreenChar {
-   
     const fn default() -> Self {
         Self {
             ascii_character: b'A',
@@ -42,7 +39,6 @@ impl ScreenChar {
         }
     }
 
-   
     pub const fn new(character: u8, color: ColorCode) -> Self {
         Self {
             ascii_character: character,
@@ -52,7 +48,6 @@ impl ScreenChar {
 }
 
 impl Clone for ScreenChar {
-   
     fn clone(&self) -> Self {
         Self {
             ascii_character: self.ascii_character,
@@ -70,7 +65,6 @@ pub struct Writer {
 }
 
 impl Writer {
-   
     pub fn new() -> Self {
         Self {
             screen: VGA_BUFFER_PTR, // Dangerous and requires careful handling (static mut ref)
@@ -86,7 +80,7 @@ impl Writer {
                 .write_volatile(char);
         }
     }
-   
+
     pub fn print(&mut self, message: &str, color: ColorCode) {
         for char in message.bytes() {
             self.write_char(ScreenChar::new(char, color));

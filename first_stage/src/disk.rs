@@ -1,4 +1,4 @@
-use crate::bios_enums::PacketSize;
+use crate::enums::{Disk, Interrupts, PacketSize};
 use core::arch::asm;
 
 #[repr(C, packed)]
@@ -23,7 +23,6 @@ pub struct DiskAddressPacket {
 }
 
 impl DiskAddressPacket {
-
     #[unsafe(link_section = ".first_stage")]
     pub const fn new(
         num_of_blocks: u16,
@@ -32,7 +31,7 @@ impl DiskAddressPacket {
         abs_block_num: u64,
     ) -> Self {
         Self {
-            packet_size: 0x10 as u8,
+            packet_size: PacketSize::Default as u8,
             zero: 0,
             num_of_blocks,
             memory_buffer,
@@ -51,9 +50,9 @@ impl DiskAddressPacket {
                 "mov dl, {1}",
                 "int {2}",
                 "pop si",
-                const 0x42u8,
+                const Disk::ExtendedRead as u8,
                 const 0x80u8,
-                const 0x13u8,
+                const Interrupts::DISK as u8,
                 in(reg) self as *const Self as u32,
             )
         }
