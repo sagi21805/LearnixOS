@@ -1,10 +1,16 @@
-ENTRY(.first_stage_entry)
+ENTRY(_start)
 
 SECTIONS {
 
-    .first_stage : { *(.first_stage) }
+    . = 0x7c00;
+
+    .boot : { *(.boot) }
+
+    .start : { *(.start) }
+
+    .first_stage : { *(.first_stage)}
     
-    . = 446;
+    . = 0x7c00 + 446;
 
     /* Make sure code doesn't override partition table */
     .partition_table : {
@@ -16,6 +22,6 @@ SECTIONS {
     /* Make sector bootable */
     .magic_number : { SHORT(0xaa55) }
 
-    . = 512;
+    . = 0x7c00 +512;
   
 }
