@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "first_stage",
+    "second_stage"
+]
+

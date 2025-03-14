@@ -1,8 +1,0 @@
-[target.'cfg(target_os = "linux")']
-rustflags = ["-C", "link-arg=-nostartfiles"]
-
-[target.'cfg(target_os = "windows")']
-rustflags = ["-C", "link-args=/ENTRY:_start /SUBSYSTEM:console"]
-
-[target.'cfg(target_os = "macos")']
-rustflags = ["-C", "link-args=-e __start -static -nostartfiles"]
