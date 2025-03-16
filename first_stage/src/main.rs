@@ -6,21 +6,22 @@
 
 mod constants;
 mod disk;
-mod enums;
 mod global_descritor_table;
 mod protected_mode;
 use constants::SECOND_STAGE_OFFSET;
-global_asm!(include_str!("../asm/boot.s"));
 
 use core::{
     arch::{asm, global_asm},
     panic::PanicInfo,
 };
 use disk::DiskAddressPacket;
-use enums::*;
+use enums::{Video, Interrupts, Sections, VideoModes};
+
+global_asm!(include_str!("../asm/boot.s"));
 
 #[unsafe(no_mangle)]
-pub extern "C" fn first_stage() -> ! {
+pub extern "C" fn first_stage(disk_number: u16) -> ! {
+    
     let dap = DiskAddressPacket::new(
         128, // Max 128
         0, 0x7e0, 1,

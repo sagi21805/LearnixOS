@@ -3,37 +3,41 @@
 #![allow(dead_code)]
 #![feature(optimize_attribute)]
 #![feature(ptr_as_ref_unchecked)]
+#![allow(static_mut_refs)]
 
 mod constants;
-mod enums;
 mod mbr;
 // mod screenEx;
 mod screen;
 
-use constants::VGA_BUFFER_PTR;
 use core::{arch::asm, panic::PanicInfo};
-use enums::Color::*;
-use screen::{ColorCode, ScreenChar, Writer};
+use enums::Color::{self, *};
+use mbr::MasterBootRecord;
+use screen::{ColorCode, WRITER, ColorAble};
+use core::fmt::Write;
+
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
-pub extern "C" fn _start() {
-
-    let mut w = Writer::new();
-    w.print(
-        "I can print what ever i wanttttt!!!",
-        ColorCode::new(Green, Black),
-    );
+#[allow(unsafe_op_in_unsafe_fn)]
+pub unsafe extern "C" fn _start() -> ! {
+        
+    let mbr: &MasterBootRecord = unsafe {
+        core::mem::transmute((0x7c00 + 446) as *const MasterBootRecord)
+    };
+    for entry in &mbr.entries {
+        println!("{}", entry.relative_sector);
+    }
     loop {}
 }
 
-// pub extern "sysv64" fn my_function(x: u64, y: u64) -> u64 {
-//     x + y
-// }
 
 /// This function is called on panic.
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    // print(_info.message().as_str().unwrap());
+unsafe fn panic(_info: &PanicInfo) -> ! {
+    print!("[");
+    print!("{}", "FAIL".color(ColorCode::new(Red, Black)));
+    print!("]: ");
+    print!("{}", _info);
     loop {}
 }
