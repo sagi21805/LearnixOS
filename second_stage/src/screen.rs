@@ -113,16 +113,12 @@ impl core::fmt::Write for Writer {
 }
 
 pub trait ColorAble {
-    fn color(&self, color: ColorCode) -> Self;
-}
-
-impl ColorAble for &str {
-    fn color(&self, color: ColorCode) -> Self {
+    fn color(self, color: ColorCode) -> Self where Self: Sized {
         unsafe { WRITER.color = color; }
         self
     }
-
 }
+impl ColorAble for &str {}
 
 #[macro_export]
 macro_rules! print {
