@@ -1,8 +1,7 @@
-use crate::{
-    constants::{SCREEN_HEIGHT, SCREEN_WIDTH, VGA_BUFFER_PTR},
-    enums::{Color, Interrupts, Video, VideoModes},
-};
-use core::arch::asm;
+#![allow(unsafe_op_in_unsafe_fn)]
+use crate::constants::{SCREEN_HEIGHT, SCREEN_WIDTH, VGA_BUFFER_PTR};
+use enums::Color::{*, self};
+pub static mut WRITER: Writer = Writer::new(ColorCode::default());
 
 #[repr(transparent)]
 pub struct ColorCode(u8);
@@ -12,8 +11,8 @@ impl ColorCode {
         Self((background as u8) << 4 | (foreground as u8))
     }
 
-    const fn default() -> Self {
-        ColorCode((Color::Black as u8) << 4 | (Color::Yellow as u8))
+    pub const fn default() -> Self {
+        ColorCode::new(White, Black)
     }
 }
 
@@ -27,21 +26,21 @@ impl Copy for ColorCode {}
 
 #[repr(C)]
 pub struct ScreenChar {
-    ascii_character: u8,
+    char: u8,
     color_code: ColorCode,
 }
 
 impl ScreenChar {
     const fn default() -> Self {
         Self {
-            ascii_character: b'A',
+            char: b'A',
             color_code: ColorCode::default(),
         }
     }
 
-    pub const fn new(character: u8, color: ColorCode) -> Self {
+    pub const fn new(char: u8, color: ColorCode) -> Self {
         Self {
-            ascii_character: character,
+            char,
             color_code: color,
         }
     }
@@ -50,7 +49,7 @@ impl ScreenChar {
 impl Clone for ScreenChar {
     fn clone(&self) -> Self {
         Self {
-            ascii_character: self.ascii_character,
+            char: self.char,
             color_code: self.color_code.clone(),
         }
     }
@@ -59,32 +58,46 @@ impl Clone for ScreenChar {
 impl Copy for ScreenChar {}
 
 pub struct Writer {
-    screen: *mut ScreenChar,
     col: usize,
     row: usize,
+    pub color: ColorCode,
 }
 
 impl Writer {
-    pub fn new() -> Self {
+    const fn new(color: ColorCode) -> Self {
         Self {
-            screen: VGA_BUFFER_PTR, // Dangerous and requires careful handling (static mut ref)
+            color,
             col: 0,
             row: 0,
         }
     }
 
-    pub fn write_char(&mut self, char: ScreenChar) {
+    fn write_char(&mut self, char: u8) {
         unsafe {
-            self.screen
+            VGA_BUFFER_PTR
                 .add(self.col + self.row * SCREEN_WIDTH)
-                .write_volatile(char);
+                .write_volatile(ScreenChar::new(char, self.color));
         }
     }
 
-    pub fn print(&mut self, message: &str, color: ColorCode) {
-        for char in message.bytes() {
-            self.write_char(ScreenChar::new(char, color));
-            self.col += 1;
+}
+
+impl core::fmt::Write for Writer {
+
+    /// Print the messege in the given color
+    /// IMPORTANT: THIS FUNCTION IS NOT THREAD SAFE!
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        for char in s.bytes() {
+            match char {
+                b'\n' => {
+                    self.row += 1;
+                    self.col = 0;
+                } 
+                _ => {
+                    self.write_char(char);
+                    self.col += 1;
+                }
+            }
             if self.col >= SCREEN_WIDTH {
                 self.col = 0;
                 self.row += 1;
@@ -93,7 +106,57 @@ impl Writer {
                 self.col = 0;
                 self.row = 0;
             }
-            // MinimalWriter::print("Entered Vga mode");
         }
+        Ok(())
     }
+
 }
+
+pub trait ColorAble {
+    fn color(&self, color: ColorCode) -> Self;
+}
+
+impl ColorAble for &str {
+    fn color(&self, color: ColorCode) -> Self {
+        unsafe { WRITER.color = color; }
+        self
+    }
+
+}
+
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => {
+        unsafe {
+            write!($crate::WRITER, $($arg)*).unwrap();
+            $crate::WRITER.color = ColorCode::default();
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! println {
+    () => ($crate::print!("\n"));
+    ($($arg:tt)*) => {
+        ($crate::print!("{}\n", format_args!($($arg)*)));
+    };
+}
+
+// #[macro_export]
+// macro_rules! print_colored {
+//     ($($arg:tt)+, $color:expr) => {
+//         unsafe {
+//             $crate::WRITER.color = $color;
+//             write!($crate::WRITER, $($arg)*).unwrap() 
+//         }
+//     };
+// }
+
+
+// #[macro_export]
+// macro_rules! println_colored {
+//     () => ($crate::print!("\n"));
+//     ($color:expr, $($arg:tt)*) => {
+//         ($crate::print_colored!($color, "{}\n", format_args!($($arg)*)));
+//     };
+// }
