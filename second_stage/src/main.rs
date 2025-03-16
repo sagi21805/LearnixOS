@@ -28,6 +28,7 @@ pub unsafe extern "C" fn _start() -> ! {
     for entry in &mbr.entries {
         println!("{}", entry.relative_sector);
     }
+    panic!();
     loop {}
 }
 
