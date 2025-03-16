@@ -1,4 +1,4 @@
-use crate::enums::{Disk, Interrupts, PacketSize};
+use enums::{Disk, Interrupts, PacketSize};
 use core::arch::asm;
 
 #[repr(C, packed)]
@@ -23,7 +23,7 @@ pub struct DiskAddressPacket {
 }
 
 impl DiskAddressPacket {
-    #[unsafe(link_section = ".first_stage")]
+
     pub const fn new(
         num_of_blocks: u16,
         memory_buffer: u16,
@@ -40,7 +40,6 @@ impl DiskAddressPacket {
         }
     }
 
-    #[unsafe(link_section = ".first_stage")]
     pub fn load(&self) {
         unsafe {
             asm!(
