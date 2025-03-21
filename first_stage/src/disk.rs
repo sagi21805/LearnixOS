@@ -1,4 +1,4 @@
-use enums::{Disk, Interrupts, PacketSize};
+use constants::enums::{Disk, Interrupts, PacketSize};
 use core::arch::asm;
 
 #[repr(C, packed)]
@@ -13,7 +13,7 @@ pub struct DiskAddressPacket {
     num_of_blocks: u16,
 
     /// Which address in memory to save the data
-    memory_buffer: u16,
+    memory_address: u16,
 
     /// Memory segment for the address
     segment: u16,
@@ -23,10 +23,9 @@ pub struct DiskAddressPacket {
 }
 
 impl DiskAddressPacket {
-
     pub const fn new(
         num_of_blocks: u16,
-        memory_buffer: u16,
+        memory_address: u16,
         segment: u16,
         abs_block_num: u64,
     ) -> Self {
@@ -34,13 +33,13 @@ impl DiskAddressPacket {
             packet_size: PacketSize::Default as u8,
             zero: 0,
             num_of_blocks,
-            memory_buffer,
+            memory_address,
             segment,
             abs_block_num,
         }
     }
 
-    pub fn load(&self) {
+    pub fn load(&self, disk_number: u8) {
         unsafe {
             asm!(
                 "push si",     // si register is required for llvm it's content needs to be saved
@@ -50,7 +49,7 @@ impl DiskAddressPacket {
                 "int {2}",
                 "pop si",
                 const Disk::ExtendedRead as u8,
-                const 0x80u8,
+                in(reg_byte) disk_number,
                 const Interrupts::DISK as u8,
                 in(reg) self as *const Self as u32,
             )
