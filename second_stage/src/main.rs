@@ -5,40 +5,32 @@
 #![feature(ptr_as_ref_unchecked)]
 #![allow(static_mut_refs)]
 
-mod constants;
 mod mbr;
 // mod screenEx;
 mod screen;
 
-use core::{arch::asm, panic::PanicInfo};
-use enums::Color::{self, *};
-use mbr::MasterBootRecord;
-use screen::{ColorCode, WRITER, ColorAble};
-use core::fmt::Write;
-
+use constants::enums::Color;
+use core::panic::PanicInfo;
+use screen::{color_code::ColorCode, WRITER};
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 #[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe extern "C" fn _start() -> ! {
-        
-    let mbr: &MasterBootRecord = unsafe {
-        core::mem::transmute((0x7c00 + 446) as *const MasterBootRecord)
-    };
-    for entry in &mbr.entries {
-        println!("{}", entry.relative_sector);
-    }
-    panic!();
+    let dn = core::ptr::read((0x7c00 + 0x1b8) as *const u16);
+    println!("Display Something, {:x}", dn ; color = ColorCode::new(Color::Green, Color::Black));
+
+    // WRITER.clear();
+    // print!("Hello World");
     loop {}
 }
-
 
 /// This function is called on panic.
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {
     print!("[");
-    print!("{}", "FAIL".color(ColorCode::new(Red, Black)));
+    print!("FAIL" ; color = ColorCode::default());
     print!("]: ");
-    print!("{}", _info);
+    println!("{}", _info);
     loop {}
 }
