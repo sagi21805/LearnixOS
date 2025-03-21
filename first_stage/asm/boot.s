@@ -18,7 +18,7 @@ _start:
     cld
 
     # initialize stack
-    mov sp, 0x7c00
+    mov sp, 0x7c00+442
 
 enable_a20:
     # enable A20-Line via IO-Port 92, might not work on all motherboards
@@ -41,7 +41,8 @@ check_int13h_extensions:
 
 rust:
     # push arguments
-    push dx     # disk number
+    push dx    # disk number
+    push sp
     call first_stage
     # Fail code if first stage returns
 spin:
