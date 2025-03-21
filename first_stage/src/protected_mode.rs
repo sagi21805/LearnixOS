@@ -1,4 +1,4 @@
-use crate::constants::*;
+use crate::global_descritor_table::GDTR;
 use core::arch::asm;
 
 pub fn enter_protected_mode() {
