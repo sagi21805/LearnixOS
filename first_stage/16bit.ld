@@ -13,6 +13,10 @@ SECTIONS {
     .eh_frame : { *(.eh_frame .eh_frame.*) }
     .eh_frame_hdr : { *(.eh_frame_hdr .eh_frame_hdr.*) }
     
+    . = 0x7c00 + 442;
+    .stack_pointer : { WORD(0) }
+    .boot_driver : { WORD(0) }
+
     . = 0x7c00 + 446;
     /* Make sure code doesn't override partition table */
     .partition_table : {
