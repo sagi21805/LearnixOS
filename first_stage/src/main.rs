@@ -4,29 +4,28 @@
 #![feature(optimize_attribute)]
 #![feature(ptr_as_ref_unchecked)]
 
-mod constants;
 mod disk;
 mod global_descritor_table;
 mod protected_mode;
-use constants::SECOND_STAGE_OFFSET;
 
+use constants::addresses::{DISK_NUMBER_OFFSET, SECOND_STAGE_OFFSET};
+use constants::enums::{Interrupts, Sections, Video, VideoModes};
 use core::{
     arch::{asm, global_asm},
     panic::PanicInfo,
 };
 use disk::DiskAddressPacket;
-use enums::{Video, Interrupts, Sections, VideoModes};
 
 global_asm!(include_str!("../asm/boot.s"));
 
 #[unsafe(no_mangle)]
-pub extern "C" fn first_stage(disk_number: u16) -> ! {
-    
+pub extern "C" fn first_stage() -> ! {
+    let disk_number = unsafe { core::ptr::read(DISK_NUMBER_OFFSET as *const u8) };
     let dap = DiskAddressPacket::new(
         128, // Max 128
         0, 0x7e0, 1,
     );
-    dap.load();
+    dap.load(disk_number);
     unsafe {
         asm!(
             "mov ah, {0}",
