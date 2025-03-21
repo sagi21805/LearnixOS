@@ -1,5 +1,3 @@
-#![no_std]
-
 pub enum Interrupts {
     VIDEO = 0x10,
     DISK = 0x13,
