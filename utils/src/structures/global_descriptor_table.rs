@@ -1,10 +1,3 @@
-pub static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTable = GlobalDescriptorTable::default();
-
-pub static GDTR: GlobalDescriptorTableRegister32 = GlobalDescriptorTableRegister32 {
-    limit: 24 - 1,
-    base: &GLOBAL_DESCRIPTOR_TABLE as *const GlobalDescriptorTable,
-};
-
 #[repr(C, packed(2))]
 pub struct GlobalDescriptorTableRegister32 {
     pub limit: u16,
