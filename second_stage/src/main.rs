@@ -5,21 +5,22 @@
 #![feature(ptr_as_ref_unchecked)]
 #![allow(static_mut_refs)]
 
-mod mbr;
-// mod screenEx;
-mod screen;
-
 use constants::enums::Color;
 use core::panic::PanicInfo;
-use screen::{color_code::ColorCode, WRITER};
+use utils::{
+    print, println,
+    screen::color_code::ColorCode
+};
+
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 #[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe extern "C" fn _start() -> ! {
-    let dn = core::ptr::read((0x7c00 + 0x1b8) as *const u16);
-    println!("Display Something, {:x}", dn ; color = ColorCode::new(Color::Green, Color::Black));
-
+    let dn = core::ptr::read((0x7c00 - 2) as *const u16);
+    println!("Display Something");
+    println!("Stack Pointer: 0x{:x}", dn ; color = ColorCode::new(Color::Yellow, Color::Black));
+    println!("size: {}", (size_of::<usize>()));
     // WRITER.clear();
     // print!("Hello World");
     loop {}

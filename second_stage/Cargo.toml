@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 constants = { path = "../constants" }
+utils = { path = "../utils" }

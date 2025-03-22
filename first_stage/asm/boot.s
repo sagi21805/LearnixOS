@@ -1,10 +1,10 @@
 .section .boot, "awx"
-.global _start
+.global start
 .code16
 
 # This stage initializes the stack, enables the A20 line
 
-_start:
+start:
     # zero segment registers
     xor ax, ax
     mov ds, ax
@@ -18,7 +18,7 @@ _start:
     cld
 
     # initialize stack
-    mov sp, 0x7c00+442
+    mov sp, 0x7c00
 
 enable_a20:
     # enable A20-Line via IO-Port 92, might not work on all motherboards
@@ -42,8 +42,7 @@ check_int13h_extensions:
 rust:
     # push arguments
     push dx    # disk number
-    push sp
-    call first_stage
+    call _start
     # Fail code if first stage returns
 spin:
     hlt
