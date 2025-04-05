@@ -4,8 +4,10 @@ members = [
     "first_stage",
     "second_stage", 
     "utils",
-]
+    "testing"
+    ]
 resolver = "2"
 
 [profile.release]
 opt-level = 's'
+overflow-checks = false
