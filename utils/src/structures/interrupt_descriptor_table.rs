@@ -1,4 +1,1 @@
-
-pub struct InterruptDescriptorTable {
-    
-}
+pub struct InterruptDescriptorTable {}
