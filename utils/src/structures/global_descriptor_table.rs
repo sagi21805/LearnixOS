@@ -1,3 +1,5 @@
+use crate::flag;
+
 #[repr(C, packed(2))]
 pub struct GlobalDescriptorTableRegister32 {
     pub limit: u16,
@@ -29,67 +31,37 @@ impl AccessByte {
     pub const fn new() -> Self {
         Self(0)
     }
-    /// Is this a viable segment?.
-    pub const fn present(mut self) -> Self {
-        self.0 |= 0x80;
-        self
-    }
+    // Is this a viable segment?
+    flag!(present, 7);
     /// What is the privilege level (DPL).
     pub const fn dpl(mut self, level: u8) -> Self {
         self.0 |= (level & 0x3) << 5;
         self
     }
-    /// Is this a code or data segment (defaults to system segment).
-    pub const fn code_or_data(mut self) -> Self {
-        self.0 |= 0x10;
-        self
-    }
-    /// Will this segment contain executable code?.
-    pub const fn executable(mut self) -> Self {
-        self.0 |= 0x08;
-        self
-    }
-    /// Will the segment grow downwards?
-    pub const fn direction(mut self) -> Self {
-        self.0 |= 0x04;
-        self
-    }
-    /// Can this code be executed from lower privilege segments.
-    pub const fn conforming(mut self) -> Self {
-        self.0 |= 0x04;
-        self
-    }
-    /// Can this segment be read or it is only executable?.
-    pub const fn readable(mut self) -> Self {
-        self.0 |= 0x02;
-        self
-    }
-    /// Is this segment NOT read only?.
-    pub const fn writable(mut self) -> Self {
-        self.0 |= 0x02;
-        self
-    }
+    // Is this a code or data segment (defaults to system segment).
+    flag!(code_or_data, 4);
+    // Will this segment constain executable code?.
+    flag!(executable, 3);
+    // Will the segment grow downwards?
+    flag!(direction, 2);
+    // Can this code be executed from lower privilege segments.
+    flag!(conforming, 2);
+    // Can this segment be read or it is only executable?.
+    flag!(readable, 1);
+    // Is this segment NOT read only?.
+    flag!(writable, 1);
 }
 
 impl LimitFlags {
     pub const fn new() -> Self {
         Self(0)
     }
-    /// Toggle on paging for this segment (limit *= 0x1000)
-    pub const fn paging(mut self) -> Self {
-        self.0 |= 0x80;
-        self
-    }
-    /// Is this segment going to use 32bit memory?
-    pub const fn protected(mut self) -> Self {
-        self.0 |= 0x40;
-        self
-    }
-    /// Set long mode flag, this will also clear protected mode
-    pub const fn long(mut self) -> Self {
-        self.0 &= 0xA0;
-        self
-    }
+    // Toggle on paging for this segment (limit *= 0x1000)
+    flag!(paging, 7);
+    // Is this segment going to use 32bit memory?
+    flag!(protected, 6);
+    // Set long mode flag, this will also clear protected mode
+    flag!(long, 5);
 }
 
 impl GlobalDescriptorTableEntry32 {
@@ -119,18 +91,22 @@ impl GlobalDescriptorTable {
                 0,
                 0xfffff,
                 AccessByte::new()
-                    .present()
+                    .set_chain_present()
                     .dpl(0)
-                    .code_or_data()
-                    .executable()
-                    .readable(),
-                LimitFlags::new().paging().protected(),
+                    .set_chain_code_or_data()
+                    .set_chain_executable()
+                    .set_chain_readable(),
+                LimitFlags::new().set_chain_paging().set_chain_protected(),
             ),
             kernel_data: GlobalDescriptorTableEntry32::new(
                 0,
                 0xfffff,
-                AccessByte::new().present().dpl(0).code_or_data().writable(),
-                LimitFlags::new().paging().protected(),
+                AccessByte::new()
+                    .set_chain_present()
+                    .dpl(0)
+                    .set_chain_code_or_data()
+                    .set_chain_writable(),
+                LimitFlags::new().set_chain_paging().set_chain_protected(),
             ),
         }
     }
