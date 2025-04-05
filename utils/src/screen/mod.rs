@@ -17,16 +17,20 @@ macro_rules! print {
     ($fmt:expr $(, $arg:tt)*) => {{
         use core::fmt::Write;
         use $crate::screen::WRITER;
+        use $crate::screen::color_code::ColorCode;
+        
         unsafe {
-            write!(WRITER, $fmt, $($arg)*).unwrap();
+            #[allow(static_mut_refs)]
+            write!(WRITER, $fmt $(,$arg)*).unwrap();
             WRITER.color = ColorCode::default();
         }
     }};
 
     // Case 2: Format + args* + color
-    ($fmt:expr $(, $arg:tt)* ; color = $color:expr) => {{
+    ($fmt:expr $(,$arg:tt)* ; color = $color:expr) => {{
         use core::fmt::Write;
         use $crate::screen::WRITER;
+        use $crate::screen::color_code::ColorCode;
         unsafe {
             WRITER.color = $color;
             write!(WRITER, $fmt, $($arg)*).unwrap();
@@ -37,13 +41,23 @@ macro_rules! print {
 
 #[macro_export]
 macro_rules! println {
-    // Case 1: Format + args* + color
-    ($fmt:expr $(, $arg:tt)* ; color = $color:expr) => {
-        $crate::print!(concat!($fmt, "\n") $(, $arg)* ; color = $color)
-    };
-
+    
     // Case 2: Format + args*
     ($fmt:expr $(, $arg:tt)*) => {
         $crate::print!(concat!($fmt, "\n") $(, $arg)*)
     };
+    // Case 1: Format + args* + color
+    ($fmt:expr $(, $arg:tt)* ; color = $color:expr) => {
+        $crate::print!(concat!($fmt, "\n") $(, $arg)* ; color = $color)
+    };
+}
+
+#[macro_export]
+macro_rules! clear {
+    () => {{
+        use core::fmt::Write;
+        use $crate::screen::WRITER;
+        use $crate::screen::color_code::ColorCode;
+        WRITER.clear()
+    }};
 }
