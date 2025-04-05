@@ -5,3 +5,24 @@ edition = "2024"
 
 [dependencies]
 constants = { path = "../constants" }
+
+[features]
+# Define the features here
+screen = []
+global_descriptor_table = []
+interrupt_descriptor_table = []
+master_boot_record = []
+paging = []
+linked_list = []
+allocator = ["linked_list", "paging"]
+
+# Optionally, you can define a default set of features
+all = [
+    "screen",
+    "global_descriptor_table", 
+    "interrupt_descriptor_table", 
+    "master_boot_record", 
+    "paging",
+    "linked_list",
+    "allocator"
+]
