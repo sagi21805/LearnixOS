@@ -1,6 +1,6 @@
-use constants::enums::PageSize;
 use super::get_current_page_table;
 use crate::impl_math_ops;
+use constants::enums::PageSize;
 
 #[derive(Clone)]
 pub struct PhysicalAddress(usize);
@@ -22,14 +22,13 @@ impl PhysicalAddress {
     }
 
     #[inline]
-    pub const fn address(&self) -> usize {
+    pub const fn as_usize(&self) -> usize {
         self.0
     }
 
     pub fn map(&self, address: VirtualAddress, page_size: PageSize) {
         address.map(self.clone(), page_size)
     }
-
 }
 
 impl VirtualAddress {
@@ -46,7 +45,6 @@ impl VirtualAddress {
         let mut table = unsafe { get_current_page_table() };
 
         for table_number in ((page_size.clone() as usize + 1)..=4).rev() {
-            
             if table.entries[self.nth_pt_index(table_number)].present() {
                 table = table.entries[self.nth_pt_index(table_number)].get_next_table_mut()
             } else {
@@ -54,12 +52,11 @@ impl VirtualAddress {
             }
         }
         table.entries[self.nth_pt_index(page_size as usize)].set_frame_address(address);
-
     }
 
     pub fn translate(&self) -> PhysicalAddress {
         todo!()
-    } 
+    }
 
     // Bits 48-39
     #[allow(arithmetic_overflow)]
@@ -85,6 +82,4 @@ impl VirtualAddress {
         }
         (self.0 >> (39 - 9 * (4 - n))) & 0o777
     }
-
-
 }
