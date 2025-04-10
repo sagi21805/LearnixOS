@@ -4,8 +4,8 @@ members = [
     "first_stage",
     "second_stage", 
     "utils",
-    "testing"
-    ]
+    "kernel"
+]
 resolver = "2"
 
 [profile.release]
