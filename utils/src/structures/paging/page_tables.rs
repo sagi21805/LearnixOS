@@ -1,18 +1,21 @@
+use super::{
+    address_types::{PhysicalAddress, VirtualAddress},
+    get_current_page_table,
+};
 use crate::flag;
 use constants::{enums::PageSize, values::PAGE_DIRECTORY_ENTRIES};
-use super::{address_types::{PhysicalAddress, VirtualAddress}, get_current_page_table};
+#[derive(Debug)]
 pub struct PageTableEntry(u64);
 
-static mut NEXT_AVILABLE_ADDRESS: usize = 0;
-
 #[repr(align(4096))]
+#[repr(C)]
 pub struct PageTable {
     pub(crate) entries: [PageTableEntry; PAGE_DIRECTORY_ENTRIES],
 }
 
 impl PageTableEntry {
-    flag!(writable, 1);
     flag!(present, 0);
+    flag!(writable, 1);
     flag!(usr_access, 2);
     flag!(write_through_cache, 3);
     flag!(disable_cache, 4);
@@ -26,20 +29,19 @@ impl PageTableEntry {
     // Writable by default
     pub(crate) const fn set_frame_address(&mut self, frame_base: PhysicalAddress) {
         if !self.present() {
-            self.0 |= (frame_base.address() as u64 & 0xfffffffff) << 12;
+            self.0 |= frame_base.as_usize() as u64 & 0xfffffffff_000;
             self.set_present();
             self.set_writable();
         } else {
-            panic!("Page is not mapped");
+            panic!("Page is already mapped");
         }
     }
 
     #[inline]
     pub(crate) const fn get_address(&self) -> PhysicalAddress {
         if self.present() {
-            PhysicalAddress::new(((self.0 & 0xfffffffff_000) << 12 ) as usize)
-        }
-        else {
+            PhysicalAddress::new((self.0 & 0x0000_fffffffff_000) as usize)
+        } else {
             panic!("Page does not mapped to any addrees");
         }
     }
@@ -58,9 +60,9 @@ impl PageTableEntry {
     #[inline]
     pub(crate) const fn set_next_table(&mut self, page_table: &'static PageTable) {
         unsafe {
-            self.set_frame_address(
-                core::mem::transmute::<&'static PageTable, PhysicalAddress>(page_table)
-            );
+            self.set_frame_address(core::mem::transmute::<&'static PageTable, PhysicalAddress>(
+                page_table,
+            ));
         }
     }
 
@@ -71,7 +73,13 @@ impl PageTableEntry {
         let (p, v) = global_table.find_avilable_page(PageSize::Regular);
         todo!()
     }
+
+    #[inline]
+    pub fn as_u64(&self) -> u64 {
+        self.0
+    }
 }
+
 
 impl PageTable {
     #[inline]
@@ -82,13 +90,13 @@ impl PageTable {
     }
 
     #[inline]
-    pub fn as_address(&self) -> PhysicalAddress {
-        self.entries[0].get_address()
+    pub fn address(&self) -> PhysicalAddress {
+        PhysicalAddress::new(self as *const Self as usize)
     }
 
     #[inline]
     pub fn find_avilable_page(&self, page_size: PageSize) -> (PhysicalAddress, VirtualAddress) {
         todo!()
-    }   
+    }
 }
 
