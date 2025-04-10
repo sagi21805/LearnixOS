@@ -18,6 +18,6 @@ SECTIONS {
     
     .fill : {
         FILL(0)
-        . = 0xf000;
+        . = 0xc000;
     }
 }
