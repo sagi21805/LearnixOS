@@ -80,7 +80,6 @@ impl PageTableEntry {
     }
 }
 
-
 impl PageTable {
     #[inline]
     pub const fn empty() -> Self {
@@ -99,4 +98,3 @@ impl PageTable {
         todo!()
     }
 }
-

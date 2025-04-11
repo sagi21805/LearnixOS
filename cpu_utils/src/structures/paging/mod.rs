@@ -24,7 +24,7 @@ pub fn enable() {
             // load the address of the 4th page table to cr3 so the cpu can access it
             "mov eax, {0}",
             "mov cr3, eax",
-            in(reg) &PAGE_TABLE_L4 as *const PageTable 
+            in(reg) &PAGE_TABLE_L4 as *const PageTable
         );
 
         asm!(
@@ -42,13 +42,8 @@ pub fn enable() {
             "or eax, 1 << 8",
             "wrmsr", // write what's in eax to the MSR specified in ecx
         );
-        
-        asm!(
-            "mov eax, cr0",
-            "or eax, 1 << 31", 
-            "mov cr0, eax",
-        );
 
+        asm!("mov eax, cr0", "or eax, 1 << 31", "mov cr0, eax",);
     }
 }
 

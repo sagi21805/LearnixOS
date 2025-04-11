@@ -12,8 +12,10 @@ use core::{
     arch::{asm, global_asm},
     panic::PanicInfo,
 };
+use cpu_utils::structures::global_descriptor_table::{
+    GlobalDescriptorTable, GlobalDescriptorTableRegister32,
+};
 use disk::DiskAddressPacket;
-use cpu_utils::structures::global_descriptor_table::{GlobalDescriptorTable, GlobalDescriptorTableRegister32};
 
 pub static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTable = GlobalDescriptorTable::default();
 
@@ -33,7 +35,6 @@ pub extern "C" fn _start() -> ! {
     );
     dap.load(disk_number);
     unsafe {
-
         // Enable VGA text mode
         asm!(
             "mov ah, {0}",
