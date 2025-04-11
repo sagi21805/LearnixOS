@@ -13,7 +13,7 @@ use core::{
     panic::PanicInfo,
 };
 use disk::DiskAddressPacket;
-use utils::structures::global_descriptor_table::{GlobalDescriptorTable, GlobalDescriptorTableRegister32};
+use cpu_utils::structures::global_descriptor_table::{GlobalDescriptorTable, GlobalDescriptorTableRegister32};
 
 pub static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTable = GlobalDescriptorTable::default();
 
