@@ -14,7 +14,7 @@ use core::{
     panic::PanicInfo,
     arch::asm,
 };
-use utils::structures::{global_descriptor_table::{GlobalDescriptorTable, GlobalDescriptorTableRegister32}, paging};
+use cpu_utils::structures::{global_descriptor_table::{GlobalDescriptorTable, GlobalDescriptorTableRegister32}, paging};
 
 static GLOBAL_DESCRIPTOR_TABLE_LONG_MODE: GlobalDescriptorTable = GlobalDescriptorTable::long_mode(); 
 static GLOBAL_DESCRIPTOR_TABLE_REGISTER_LONG: GlobalDescriptorTableRegister32 = GlobalDescriptorTableRegister32 {

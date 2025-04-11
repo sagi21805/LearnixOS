@@ -1,8 +1,0 @@
-[package]
-name = "first_stage"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-constants = { path = "../constants" }
-utils = { path = "../utils", features = ["global_descriptor_table", "master_boot_record"]} 
