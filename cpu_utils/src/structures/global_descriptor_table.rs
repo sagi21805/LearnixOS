@@ -112,28 +112,27 @@ impl GlobalDescriptorTable {
     }
 
     pub const fn long_mode() -> Self {
-        GlobalDescriptorTable { 
-            null: GlobalDescriptorTableEntry32::new(0, 0, AccessByte::new(), LimitFlags::new()), 
+        GlobalDescriptorTable {
+            null: GlobalDescriptorTableEntry32::new(0, 0, AccessByte::new(), LimitFlags::new()),
             kernel_code: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
                 AccessByte::new()
-                .set_chain_code_or_data()
-                .set_chain_present()
-                .set_chain_writable()
-                .set_chain_executable(),
-                LimitFlags::new()
-                .set_chain_long()
+                    .set_chain_code_or_data()
+                    .set_chain_present()
+                    .set_chain_writable()
+                    .set_chain_executable(),
+                LimitFlags::new().set_chain_long(),
             ),
             kernel_data: GlobalDescriptorTableEntry32::new(
-                0, 
-                0, 
+                0,
+                0,
                 AccessByte::new()
-                .set_chain_code_or_data()
-                .set_chain_present()
-                .set_chain_writable(),
-                LimitFlags::new()
-                )
+                    .set_chain_code_or_data()
+                    .set_chain_present()
+                    .set_chain_writable(),
+                LimitFlags::new(),
+            ),
         }
     }
 }

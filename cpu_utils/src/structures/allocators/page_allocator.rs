@@ -15,7 +15,7 @@ use constants::{
     },
 };
 
-use crate::{structures::paging::address_types};
+use crate::structures::paging::address_types;
 pub const TOTAL_MEMORY: usize = 0xffffffff;
 
 #[derive(Debug)]

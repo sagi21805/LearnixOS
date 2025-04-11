@@ -7,16 +7,17 @@
 #![feature(unsafe_cell_access)]
 #![feature(ptr_alignment_type)]
 
+mod screen;
+
 use constants::enums::Color;
-use utils::{println, print};
-use core::panic::PanicInfo;
 use core::arch::asm;
+use core::panic::PanicInfo;
+// use print, println};
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 #[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe extern "C" fn _start() -> ! {
-   
     asm!(
         "mov {0}, 0x10",
         "mov ds, {0}",
@@ -25,7 +26,7 @@ pub unsafe extern "C" fn _start() -> ! {
         out(reg) _
     );
     println!("This is a call from x64");
-    
+
     loop {}
 }
 

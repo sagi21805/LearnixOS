@@ -54,11 +54,10 @@ pub enum Color {
 
 #[derive(Clone)]
 pub enum PageSize {
-
     /// 4Kib pages
     Regular = 1,
     /// 2Mib pages
     Big = 2,
     /// 1Gib pages
-    Huge = 3
+    Huge = 3,
 }
