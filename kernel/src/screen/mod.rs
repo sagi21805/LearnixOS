@@ -53,6 +53,40 @@ macro_rules! println {
 }
 
 #[macro_export]
+macro_rules! println_fail {
+    ($fmt:expr $(, $arg:tt)*) => {{
+        $crate::print!("[");
+        $crate::print!(" FAIL " ; color = ColorCode::new(Color::Red, Color::Black));
+        $crate::print!("]: ");
+        $crate::println!($fmt $(, $arg)*);
+    }};
+
+    ($fmt:expr $(,$arg:tt)* ; color = $color:expr) => {
+        $crate::print!("[");
+        $crate::print!(" FAIL " ; color = ColorCode::new(Color::Red, Color::Black));
+        $crate::print!("]: ");
+        $crate::println!($fmt $(, $arg)* ; color = $color);
+    }
+}
+
+#[macro_export]
+macro_rules! println_ok {
+    ($fmt:expr $(, $arg:tt)*) => {{
+        $crate::print!("[");
+        $crate::print!(" OK " ; color = ColorCode::new(Color::Green, Color::Black));
+        $crate::print!("]: ");
+        $crate::println!($fmt $(, $arg)*);
+    }};
+
+    ($fmt:expr $(,$arg:tt)* ; color = $color:expr) => {
+        $crate::print!("[");
+        $crate::print!(" OK " ; color = ColorCode::new(Color::Green, Color::Black));
+        $crate::print!("]: ");
+        $crate::println!($fmt $(, $arg)* ; color = $color);
+    }
+}
+
+#[macro_export]
 macro_rules! clear {
     () => {{
         use core::fmt::Write;
