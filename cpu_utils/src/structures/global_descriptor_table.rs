@@ -1,46 +1,24 @@
 use crate::flag;
-
-#[repr(C, packed(2))]
-pub struct GlobalDescriptorTableRegister32 {
-    pub limit: u16,
-    pub base: *const GlobalDescriptorTable,
-}
-
+use core::arch::asm;
 struct AccessByte(u8);
-struct LimitFlags(u8);
-
-#[repr(C)]
-struct GlobalDescriptorTableEntry32 {
-    limit_low: u16,
-    base_low: u16,
-    base_mid: u8,
-    access_byte: AccessByte,
-    /// Low 4 bits limit high 4 bits flags
-    limit_flags: LimitFlags,
-    base_high: u8,
-}
-
-pub struct GlobalDescriptorTable {
-    null: GlobalDescriptorTableEntry32,
-    kernel_code: GlobalDescriptorTableEntry32,
-    kernel_data: GlobalDescriptorTableEntry32,
-}
 
 impl AccessByte {
-    /// Start with a zeroed byte.
+    /// Creates an access byte with all flags turned off.
     pub const fn new() -> Self {
         Self(0)
     }
+
     // Is this a viable segment?
     flag!(present, 7);
-    /// What is the privilege level (DPL).
+
+    /// Sets the privilage level while returning self.
     pub const fn dpl(mut self, level: u8) -> Self {
         self.0 |= (level & 0x3) << 5;
         self
     }
     // Is this a code or data segment (defaults to system segment).
     flag!(code_or_data, 4);
-    // Will this segment constain executable code?.
+    // Will this segment contains executable code?.
     flag!(executable, 3);
     // Will the segment grow downwards?
     flag!(direction, 2);
@@ -52,6 +30,8 @@ impl AccessByte {
     flag!(writable, 1);
 }
 
+struct LimitFlags(u8);
+
 impl LimitFlags {
     pub const fn new() -> Self {
         Self(0)
@@ -62,6 +42,17 @@ impl LimitFlags {
     flag!(protected, 6);
     // Set long mode flag, this will also clear protected mode
     flag!(long, 5);
+}
+
+#[repr(C)]
+struct GlobalDescriptorTableEntry32 {
+    limit_low: u16,
+    base_low: u16,
+    base_mid: u8,
+    access_byte: AccessByte,
+    /// Low 4 bits limit high 4 bits flags
+    limit_flags: LimitFlags,
+    base_high: u8,
 }
 
 impl GlobalDescriptorTableEntry32 {
@@ -83,8 +74,22 @@ impl GlobalDescriptorTableEntry32 {
     }
 }
 
+#[repr(C, packed(2))]
+pub struct GlobalDescriptorTableRegister32 {
+    pub limit: u16,
+    pub base: *const GlobalDescriptorTable,
+}
+
+#[allow(dead_code)]
+pub struct GlobalDescriptorTable {
+    null: GlobalDescriptorTableEntry32,
+    kernel_code: GlobalDescriptorTableEntry32,
+    kernel_data: GlobalDescriptorTableEntry32,
+}
+
 impl GlobalDescriptorTable {
-    pub const fn default() -> Self {
+    /// Creates default global descriptor table for protected mode
+    pub const fn protected_mode() -> Self {
         GlobalDescriptorTable {
             null: GlobalDescriptorTableEntry32::new(0, 0, AccessByte::new(), LimitFlags::new()),
             kernel_code: GlobalDescriptorTableEntry32::new(
@@ -111,6 +116,7 @@ impl GlobalDescriptorTable {
         }
     }
 
+    /// Creates default global descriptor table for long mode
     pub const fn long_mode() -> Self {
         GlobalDescriptorTable {
             null: GlobalDescriptorTableEntry32::new(0, 0, AccessByte::new(), LimitFlags::new()),
@@ -134,6 +140,24 @@ impl GlobalDescriptorTable {
                 LimitFlags::new(),
             ),
         }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn load(&'static self) {
+
+        let global_descriptor_table_register: GlobalDescriptorTableRegister32 = {
+            GlobalDescriptorTableRegister32 {
+                limit: (size_of::<GlobalDescriptorTable>() - 1) as u16,
+                base: self as *const GlobalDescriptorTable,
+            }
+        };
+    
+        asm!(
+            "cli",
+            "lgdt [{}]",
+            in(reg) &global_descriptor_table_register,
+            options(readonly, nostack, preserves_flags)
+        );
     }
 }
 
