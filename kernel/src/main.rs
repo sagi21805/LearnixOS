@@ -7,10 +7,10 @@
 #![feature(unsafe_cell_access)]
 #![feature(ptr_alignment_type)]
 
-mod screen;
 mod allocators;
+mod drivers;
 
-use constants::enums::Color;
+use drivers::vga_display::color_code::Color;
 use core::arch::asm;
 use core::panic::PanicInfo;
 
