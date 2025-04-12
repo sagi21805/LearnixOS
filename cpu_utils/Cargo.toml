@@ -13,7 +13,6 @@ interrupt_descriptor_table = []
 master_boot_record = []
 paging = []
 linked_list = []
-allocator = ["linked_list", "paging"]
 
 # Optionally, you can define a default set of features
 all = [
@@ -22,5 +21,4 @@ all = [
     "master_boot_record", 
     "paging",
     "linked_list",
-    "allocator"
 ]
