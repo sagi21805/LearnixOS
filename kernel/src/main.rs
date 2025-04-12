@@ -8,11 +8,11 @@
 #![feature(ptr_alignment_type)]
 
 mod screen;
+mod allocators;
 
 use constants::enums::Color;
 use core::arch::asm;
 use core::panic::PanicInfo;
-// use print, println};
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -25,17 +25,15 @@ pub unsafe extern "C" fn _start() -> ! {
         "mov ss, {0}",
         out(reg) _
     );
-    println!("This is a call from x64");
-
+    ok_msg!("Entered Protected Mode");
+    ok_msg!("Enabled Pageing");
+    ok_msg!("Entered Long Mode");
     loop {}
 }
 
 /// This function is called on panic.
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {
-    print!("[");
-    print!("FAIL" ; color = ColorCode::new(Color::Red, Color::Black));
-    print!("]: ");
-    println!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
+    fail_msg!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
     loop {}
 }
