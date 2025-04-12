@@ -6,36 +6,35 @@
 
 mod disk;
 
-use constants::addresses::{DISK_NUMBER_OFFSET, SECOND_STAGE_OFFSET};
-use constants::enums::{Interrupts, Sections, Video, VideoModes};
+use constants::{
+    addresses::{DISK_NUMBER_OFFSET, SECOND_STAGE_OFFSET},
+    enums::{Interrupts, Sections, Video, VideoModes},
+};
 use core::{
     arch::{asm, global_asm},
     panic::PanicInfo,
 };
-use cpu_utils::structures::global_descriptor_table::{
-    GlobalDescriptorTable, GlobalDescriptorTableRegister32,
-};
+use cpu_utils::structures::global_descriptor_table::GlobalDescriptorTable;
 use disk::DiskAddressPacket;
 
-pub static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTable = GlobalDescriptorTable::default();
-
-pub static GDTR: GlobalDescriptorTableRegister32 = GlobalDescriptorTableRegister32 {
-    limit: 24 - 1,
-    base: &GLOBAL_DESCRIPTOR_TABLE as *const GlobalDescriptorTable,
-};
+static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTable = GlobalDescriptorTable::protected_mode();
 
 global_asm!(include_str!("../asm/boot.s"));
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
+    // Read the disk number the sofware was booted from
     let disk_number = unsafe { core::ptr::read(DISK_NUMBER_OFFSET as *const u8) };
+
+    // Create a disk packet which will load 128 sectors (512 bytes each) from the disk to memory address 0x7e00
     let dap = DiskAddressPacket::new(
         128, // Max 128
         0, 0x7e0, 1,
     );
     dap.load(disk_number);
+
     unsafe {
-        // Enable VGA text mode
+        // Enter VGA text mode
         asm!(
             "mov ah, {0}",
             "mov al, {1}",
@@ -46,17 +45,17 @@ pub extern "C" fn _start() -> ! {
         );
 
         // Load Global Descriptor Table
+        GLOBAL_DESCRIPTOR_TABLE.load();
+
+        // Set the Protected Mode bit and enter Protected Mode
         asm!(
-            "cli",
-            "lgdt [{}]",
             "mov eax, cr0",
             "or eax, 1",
             "mov cr0, eax",
-            in(reg) &GDTR,
             options(readonly, nostack, preserves_flags)
         );
 
-        // Jump to code segment
+        // Jump to the next stage
         asm!(
             "ljmp ${section}, ${next_stage}",
             section = const Sections::KernelCode as u8,
