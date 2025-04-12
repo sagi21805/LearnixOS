@@ -15,7 +15,7 @@ use constants::{
     },
 };
 
-use crate::structures::paging::address_types;
+use cpu_utils::structures::paging::address_types;
 pub const TOTAL_MEMORY: usize = 0xffffffff;
 
 #[derive(Debug)]
@@ -44,6 +44,12 @@ impl BitMap {
         }
     }
 
+    /// Fast division and modulo for a known size
+    /// 
+    /// @Params
+    /// 
+    /// `index`: is the wanted bit index (This means a u64 has 64 indexes)
+    /// 
     fn div_mod(index: usize) -> (usize, u64) {
         // 3 = number of bit in (8 (because of u8) - 1) which is 0b111
         let map_index = index >> 3;
@@ -51,12 +57,14 @@ impl BitMap {
         (map_index, bit_index)
     }
 
-    /// The index represents the bit index in the whole array
+    /// Sets the index bit to 1, without checking if the index is valid
+    /// @param 
     pub unsafe fn set_unchecked(&mut self, index: usize) {
         let (map_index, bit_index) = BitMap::div_mod(index);
         self.set_index_bit_unchecked(map_index, bit_index);
     }
 
+    /// Reads the value of the index bit, without checking if it is valid
     pub unsafe fn get_unchecked(&self, index: usize) -> bool {
         let (division, bit) = BitMap::div_mod(index);
         (*self.map.add(division) & (1 << bit)) != 0

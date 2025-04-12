@@ -11,6 +11,3 @@ pub mod mbr;
 
 #[cfg(feature = "paging")]
 pub mod paging;
-
-#[cfg(all(feature = "allocator"))]
-pub mod allocators;
