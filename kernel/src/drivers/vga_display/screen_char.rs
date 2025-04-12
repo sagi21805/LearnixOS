@@ -1,4 +1,4 @@
-use crate::screen::color_code::ColorCode;
+use super::ColorCode;
 
 #[repr(C)]
 pub struct ScreenChar {

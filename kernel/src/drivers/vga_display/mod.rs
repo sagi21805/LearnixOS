@@ -7,17 +7,17 @@ mod writer;
 use color_code::ColorCode;
 use writer::Writer;
 
-pub static mut WRITER: Writer = Writer::new(ColorCode::default());
-static SCREEN_WIDTH: usize = 80;
-static SCREEN_HEIGHT: usize = 25;
+pub static mut WRITER: Writer = Writer::new();
+static SCREEN_WIDTH: u8 = 80;
+static SCREEN_HEIGHT: u8 = 25;
 
 #[macro_export]
 macro_rules! print {
     // Case 1: Format + args*
     ($fmt:expr $(, $arg:tt)*) => {{
         use core::fmt::Write;
-        use $crate::screen::WRITER;
-        use $crate::screen::color_code::ColorCode;
+        use $crate::drivers::vga_display::WRITER;
+        use $crate::drivers::vga_display::color_code::ColorCode;
 
         unsafe {
             #[allow(static_mut_refs)]
@@ -29,8 +29,8 @@ macro_rules! print {
     // Case 2: Format + args* + color
     ($fmt:expr $(,$arg:tt)* ; color = $color:expr) => {{
         use core::fmt::Write;
-        use $crate::screen::WRITER;
-        use $crate::screen::color_code::ColorCode;
+        use $crate::drivers::vga_display::WRITER;
+        use $crate::drivers::vga_display::color_code::ColorCode;
         unsafe {
             WRITER.color = $color;
             write!(WRITER, $fmt, $($arg)*).unwrap();
