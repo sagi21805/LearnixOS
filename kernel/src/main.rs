@@ -10,9 +10,9 @@
 mod allocators;
 mod drivers;
 
-use drivers::vga_display::color_code::Color;
 use core::arch::asm;
 use core::panic::PanicInfo;
+use drivers::vga_display::color_code::Color;
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -26,7 +26,7 @@ pub unsafe extern "C" fn _start() -> ! {
         out(reg) _
     );
     ok_msg!("Entered Protected Mode");
-    ok_msg!("Enabled Pageing");
+    ok_msg!("Enabled Paging");
     ok_msg!("Entered Long Mode");
     loop {}
 }

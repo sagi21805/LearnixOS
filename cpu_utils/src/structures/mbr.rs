@@ -8,7 +8,7 @@ pub struct PartitionTableEntry {
 
     /// Bits 0-5 are the starting sector.   
     /// Bits 6-16 are the starting cylinder.
-    pub sector_cylider_start: u16,
+    pub sector_cylinder_start: u16,
 
     /// SystemID.  
     pub system_id: u8,
