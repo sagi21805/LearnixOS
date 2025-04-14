@@ -144,14 +144,13 @@ impl GlobalDescriptorTable {
 
     #[allow(unsafe_op_in_unsafe_fn)]
     pub unsafe fn load(&'static self) {
-
         let global_descriptor_table_register: GlobalDescriptorTableRegister32 = {
             GlobalDescriptorTableRegister32 {
                 limit: (size_of::<GlobalDescriptorTable>() - 1) as u16,
                 base: self as *const GlobalDescriptorTable,
             }
         };
-    
+
         asm!(
             "cli",
             "lgdt [{}]",

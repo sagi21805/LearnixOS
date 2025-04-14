@@ -6,6 +6,17 @@
         "${workspaceFolder}/stages/second_stage/Cargo.toml",
         "${workspaceFolder}/kernel/Cargo.toml",
         "${workspaceFolder}/cpu_utils/Cargo.toml",
+    ],
+    "cSpell.words": [
+        "bootable",
+        "EFER",
+        "lgdt",
+        "ljmp",
+        "rdmsr",
+        "repr",
+        "rustc",
+        "sofware",
+        "wrmsr"
     ]
     
 }

@@ -8,12 +8,10 @@
 #![feature(ptr_alignment_type)]
 use constants::{addresses::KERNEL_OFFSET, enums::Sections};
 use core::{arch::asm, panic::PanicInfo};
-use cpu_utils::structures::{
-    global_descriptor_table::GlobalDescriptorTable,
-    paging,
-};
+use cpu_utils::structures::{global_descriptor_table::GlobalDescriptorTable, paging};
 
-static GLOBAL_DESCRIPTOR_TABLE_LONG_MODE: GlobalDescriptorTable = GlobalDescriptorTable::long_mode();
+static GLOBAL_DESCRIPTOR_TABLE_LONG_MODE: GlobalDescriptorTable =
+    GlobalDescriptorTable::long_mode();
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
