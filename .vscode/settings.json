@@ -2,8 +2,21 @@
     "rust-analyzer.cargo.target": "x86_64-unknown-none",
     "rust-analyzer.check.allTargets": false,
     "rust-analyzer.linkedProjects": [
-        "${workspaceFolder}/first_stage/Cargo.toml",
-        "${workspaceFolder}/second_stage/Cargo.toml"
+        "${workspaceFolder}/stages/first_stage/Cargo.toml",
+        "${workspaceFolder}/stages/second_stage/Cargo.toml",
+        "${workspaceFolder}/kernel/Cargo.toml",
+        "${workspaceFolder}/cpu_utils/Cargo.toml",
+    ],
+    "cSpell.words": [
+        "bootable",
+        "EFER",
+        "lgdt",
+        "ljmp",
+        "rdmsr",
+        "repr",
+        "rustc",
+        "sofware",
+        "wrmsr"
     ]
     
 }
