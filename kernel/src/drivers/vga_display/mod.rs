@@ -9,8 +9,8 @@ use writer::Writer;
 
 #[allow(private_interfaces)]
 pub static mut WRITER: Writer = Writer::new();
-static SCREEN_WIDTH: u8 = 80;
-static SCREEN_HEIGHT: u8 = 25;
+static SCREEN_WIDTH: usize = 80;
+static SCREEN_HEIGHT: usize = 25;
 
 /// Prints formatted text to the VGA display without a newline.
 ///
