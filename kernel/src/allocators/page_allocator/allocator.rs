@@ -1,51 +1,18 @@
-use super::super::bitmap::BitMap;
-use constants::values::{
-    BIG_PAGE_ALIGNMENT, BIG_PAGE_SIZE, HUGE_PAGE_ALIGNMENT, HUGE_PAGE_SIZE, REGULAR_PAGE_ALIGNMENT,
-    REGULAR_PAGE_SIZE,
+use super::address_type_extension::VirtualAddressExtension;
+use super::{super::bitmap::BitMap, bitmap_extension::BitMapExtension};
+use constants::{
+    enums::PageSize,
+    values::REGULAR_PAGE_SIZE,
 };
 use core::{
     alloc::{GlobalAlloc, Layout},
     cell::UnsafeCell,
     ptr::null,
 };
-use cpu_utils::structures::paging::{address_types::{PhysicalAddress, VirtualAddress}, page_tables::PageTableEntry};
-use super::paging_extension::PagingAllocatorExtension;
-
-/// Sizes in the bitmap corresponding to how many bits are needed per page size
-#[repr(u64)]
-enum PageSizeAlignment {
-    /// 4Kib Page
-    Regular = 0,
-
-    /// 2Mib Page
-    Big = 8,
-
-    /// 1Gib Page
-    Huge = 8 * 512,
-}
-
-impl PageSizeAlignment {
-    /// Determines the appropriate `PageSizeAlignment` for a given memory layout.
-    ///
-    /// # Parameters
-    ///
-    /// - `layout`: A [`Layout`] struct containing the memory size and alignment.
-    pub const fn from_layout(layout: Layout) -> Option<PageSizeAlignment> {
-        match (layout.size(), layout.align()) {
-            (REGULAR_PAGE_SIZE, val) if val == REGULAR_PAGE_ALIGNMENT.as_usize() => {
-                Some(PageSizeAlignment::Regular)
-            }
-            (BIG_PAGE_SIZE, val) if val == BIG_PAGE_ALIGNMENT.as_usize() => {
-                Some(PageSizeAlignment::Big)
-            }
-            (HUGE_PAGE_SIZE, val) if val == HUGE_PAGE_ALIGNMENT.as_usize() => {
-                Some(PageSizeAlignment::Huge)
-            }
-
-            _ => None,
-        }
-    }
-}
+use cpu_utils::registers::get_current_page_table;
+use cpu_utils::structures::paging::{
+    address_types::{PhysicalAddress, VirtualAddress},
+};
 
 #[derive(Debug)]
 // TODO: This is not thread safe, probably should use Mutex in the future
@@ -86,58 +53,68 @@ impl PageAllocator {
     }
 
     #[allow(unsafe_op_in_unsafe_fn)]
-    unsafe fn find_free_region(&self, alignment: PageSizeAlignment) -> Option<(usize, u32)> {
+    unsafe fn find_free_region(&self, size: PageSize) -> Option<(usize, u32)> {
         let bitmap = self.inner.as_ref_unchecked();
 
-        match alignment {
-            PageSizeAlignment::Regular => {
-                for index in 0..bitmap.size {
-                    let available_bit = bitmap.get_index_unchecked(index).trailing_ones();
-                    if available_bit < 64 {
-                        return Some((index, available_bit));
+        match size {
+            PageSize::Regular => {
+                for index in bitmap.map.iter() {
+                    let available_bit = index.trailing_ones();
+                    if available_bit < u64::BITS {
+                        return Some((index.clone() as usize, available_bit));
                     }
                 }
                 None
             }
 
-            PageSizeAlignment::Big => {
-                todo!()
-            }
-
-            PageSizeAlignment::Huge => {
-                todo!()
+            PageSize::Big | PageSize::Huge => {
+                let index_alignment: usize = size.size_in_pages() / u64::BITS as usize;
+                let map = &*(&*self.inner.as_ref_unchecked()).map;
+                for (index, window) in map
+                    .windows(index_alignment)
+                    .step_by(index_alignment)
+                    .enumerate()
+                {
+                    let sum: u64 = window.iter().sum();
+                    if sum == 0 {
+                        return Some((index, 0));
+                    }
+                }
+                None
             }
         }
     }
 
     pub fn available_memory(&self) -> u64 {
-        let mut available_pages: u64 = 0;
-        unsafe {
-            let bitmap = self.inner.as_mut_unchecked();
-            for i in 0..bitmap.size {
-                available_pages += bitmap.get_index_unchecked(i).count_zeros() as u64;
-            }
-        }
-        return available_pages * REGULAR_PAGE_SIZE as u64;
+        let bitmap = unsafe { self.inner.as_mut_unchecked() };
+        return bitmap
+            .map
+            .iter()
+            .map(|x| x.count_zeros() as u64)
+            .sum::<u64>()
+            * REGULAR_PAGE_SIZE as u64;
     }
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe impl GlobalAlloc for PageAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        match PageSizeAlignment::from_layout(layout) {
-            Some(alignment) => {
-                match self.find_free_region(alignment) {
-                    Some((map_index, bit_index)) => {
-                        let bitmap = self.inner.as_mut_unchecked();
-                        bitmap.set_bit_unchecked(map_index, bit_index);
-                        unsafe {
-                            return self.resolve_address(map_index, bit_index as usize).as_ptr_mut()
-                        }
+        match PageSize::from_layout(layout) {
+            Some(size) => match (
+                self.find_free_region(size.clone()),
+                get_current_page_table().find_available_page(size.clone()),
+            ) {
+                (Some((map_index, bit_index)), Some(virt)) => {
+                    let bitmap = self.inner.as_mut_unchecked();
+                    let phys = self.resolve_address(map_index, bit_index as usize);
+                    bitmap.set_page_unchecked(map_index, bit_index, size.clone());
+                    virt.map(phys.clone(), size);
+                    unsafe {
+                        return phys.as_ptr_mut();
                     }
-
-                    None => null::<u8>() as *mut u8,
                 }
+
+                (_, _) => null::<u8>() as *mut u8,
             },
 
             None => null::<u8>() as *mut u8,
@@ -145,7 +122,6 @@ unsafe impl GlobalAlloc for PageAllocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {}
-
 }
 
 unsafe impl Sync for PageAllocator {}

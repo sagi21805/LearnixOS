@@ -1,6 +1,9 @@
-use core::ptr::Alignment;
+use core::{alloc::Layout, ptr::Alignment};
 
-use crate::values::{BIG_PAGE_ALIGNMENT, HUGE_PAGE_ALIGNMENT, REGULAR_PAGE_ALIGNMENT};
+use crate::values::{
+    BIG_PAGE_ALIGNMENT, BIG_PAGE_SIZE, HUGE_PAGE_ALIGNMENT, HUGE_PAGE_SIZE, REGULAR_PAGE_ALIGNMENT,
+    REGULAR_PAGE_SIZE,
+};
 
 pub enum Interrupts {
     VIDEO = 0x10,
@@ -47,13 +50,40 @@ pub enum PageSize {
 }
 
 impl PageSize {
-    pub fn alignment(self) -> Alignment {
+    pub fn alignment(&self) -> Alignment {
         match self {
             PageSize::Regular => REGULAR_PAGE_ALIGNMENT,
 
             PageSize::Big => BIG_PAGE_ALIGNMENT,
 
             PageSize::Huge => HUGE_PAGE_ALIGNMENT,
+        }
+    }
+
+    /// Determines the appropriate `PageSizeAlignment` for a given memory layout.
+    ///
+    /// # Parameters
+    ///
+    /// - `layout`: A [`Layout`] struct containing the memory size and alignment.
+    pub const fn from_layout(layout: Layout) -> Option<PageSize> {
+        match (layout.size(), layout.align()) {
+            (REGULAR_PAGE_SIZE, val) if val == REGULAR_PAGE_ALIGNMENT.as_usize() => {
+                Some(PageSize::Regular)
+            }
+            (BIG_PAGE_SIZE, val) if val == BIG_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Big),
+            (HUGE_PAGE_SIZE, val) if val == HUGE_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Huge),
+
+            _ => None,
+        }
+    }
+
+    pub const fn size_in_pages(&self) -> usize {
+        match self {
+            PageSize::Regular => 1,
+
+            PageSize::Big => 512,
+
+            PageSize::Huge => 512 * 512,
         }
     }
 }
