@@ -1,9 +1,9 @@
 [workspace]
 members = [ 
     "constants",
-    "first_stage",
-    "second_stage", 
-    "utils",
+    "stages/first_stage",
+    "stages/second_stage", 
+    "cpu_utils",
     "kernel"
 ]
 resolver = "2"

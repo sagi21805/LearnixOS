@@ -1,0 +1,24 @@
+[package]
+name = "cpu_utils"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+constants = { path = "../constants" }
+
+[features]
+# Define the features here
+global_descriptor_table = []
+interrupt_descriptor_table = []
+master_boot_record = []
+paging = []
+linked_list = []
+
+# Optionally, you can define a default set of features
+all = [
+    "global_descriptor_table", 
+    "interrupt_descriptor_table", 
+    "master_boot_record", 
+    "paging",
+    "linked_list",
+]

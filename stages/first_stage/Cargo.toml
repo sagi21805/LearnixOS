@@ -1,0 +1,8 @@
+[package]
+name = "first_stage"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+constants = { path = "../../constants" }
+cpu_utils = { path = "../../cpu_utils", features = ["global_descriptor_table", "master_boot_record"]} 

@@ -2,17 +2,23 @@
 OBJCPY = objcopy
 CARGO = cargo +nightly
 QEMU = qemu-system-x86_64
-OUTPUT = bootloader.img
+OUTPUT = kernel.img
 
 # Stages
-FIRST = first_stage
-SECOND = second_stage
+FIRST = stages/first_stage
+SECOND = stages/second_stage
 KERNEL = kernel
 
+# Artifact Path
+16BIT_ARTIFACT = target/16bit_target/release/first_stage
+32BIT_ARTIFACT = target/32bit_target/release/second_stage
+64BIT_ARTIFACT = target/64bit_target/release/kernel
+
 # Targets
-16BIT = 16bit_target
-32BIT = 32bit_target
-64BIT = 64bit_target
+TARGET_DIR = build/targets
+16BIT_TARGET = $(TARGET_DIR)/16bit_target
+32BIT_TARGET = $(TARGET_DIR)/32bit_target
+64BIT_TARGET = $(TARGET_DIR)/64bit_target
 
 # Manifests
 TOML = Cargo.toml
@@ -23,15 +29,15 @@ all: build-rust create_img
 # Step 1: Build Rust code
 build-rust:
 	@echo "Compiling Rust code..."
-	$(CARGO) build --release --manifest-path ./$(FIRST)/$(TOML) --target ./$(FIRST)/$(16BIT).json 
-	$(CARGO) build --release --manifest-path ./$(SECOND)/$(TOML) --target ./$(SECOND)/$(32BIT).json 
-	$(CARGO) build --release --manifest-path ./$(KERNEL)/$(TOML) --target ./$(KERNEL)/$(64BIT).json
+	$(CARGO) build --release --manifest-path $(FIRST)/$(TOML)  --target $(16BIT_TARGET).json 
+	$(CARGO) build --release --manifest-path $(SECOND)/$(TOML) --target $(32BIT_TARGET).json 
+	$(CARGO) build --release --manifest-path $(KERNEL)/$(TOML) --target $(64BIT_TARGET).json
 # Step 3: Link everything
 create_img: build-rust build-asm
-	$(OBJCPY) -I elf32-i386 -O binary target/$(16BIT)/release/$(FIRST) 16bit.img                    
-	$(OBJCPY) -I elf32-i386 -O binary target/$(32BIT)/release/$(SECOND) 32bit.img
-	$(OBJCPY) -I elf64-x86-64 -O binary target/$(64BIT)/release/$(KERNEL) kernel.img
-	cat 16bit.img 32bit.img kernel.img> $(OUTPUT)
+	$(OBJCPY) -I elf32-i386 -O binary $(16BIT_ARTIFACT) 16bit.img                    
+	$(OBJCPY) -I elf32-i386 -O binary $(32BIT_ARTIFACT) 32bit.img
+	$(OBJCPY) -I elf64-x86-64 -O binary $(64BIT_ARTIFACT) 64bit.img
+	cat 16bit.img 32bit.img 64bit.img > $(OUTPUT)
 
 # Step 4: Run in QEMU
 run: all

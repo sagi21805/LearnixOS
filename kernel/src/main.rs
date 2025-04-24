@@ -7,16 +7,17 @@
 #![feature(unsafe_cell_access)]
 #![feature(ptr_alignment_type)]
 
-use constants::enums::Color;
-use utils::{println, print};
-use core::panic::PanicInfo;
+mod allocators;
+mod drivers;
+
 use core::arch::asm;
+use core::panic::PanicInfo;
+use drivers::vga_display::color_code::Color;
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 #[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe extern "C" fn _start() -> ! {
-   
     asm!(
         "mov {0}, 0x10",
         "mov ds, {0}",
@@ -24,17 +25,15 @@ pub unsafe extern "C" fn _start() -> ! {
         "mov ss, {0}",
         out(reg) _
     );
-    println!("This is a call from x64");
-    
+    ok_msg!("Entered Protected Mode");
+    ok_msg!("Enabled Paging");
+    ok_msg!("Entered Long Mode");
     loop {}
 }
 
 /// This function is called on panic.
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {
-    print!("[");
-    print!("FAIL" ; color = ColorCode::new(Color::Red, Color::Black));
-    print!("]: ");
-    println!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
+    fail_msg!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
     loop {}
 }
