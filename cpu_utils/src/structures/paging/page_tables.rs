@@ -1,18 +1,18 @@
 /// This module contains very basic code that helps to interface and create initial page table
-/// 
+///
 /// The more advanced code that will be used in the future to allocate table will be in the kernel
-/// 
+///
 /// --------------------------------------------------------------------------------------------------
-
+use super::super::super::registers::get_current_page_table;
 use super::address_types::{PhysicalAddress, VirtualAddress};
-use constants::values::{PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT};
 use crate::flag;
+use constants::enums::PageSize;
+use constants::values::{PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT};
 
 #[derive(Debug)]
 pub struct PageTableEntry(u64);
 
 impl PageTableEntry {
-    
     #[inline]
     pub(crate) const fn empty() -> Self {
         Self(0)
@@ -40,22 +40,24 @@ impl PageTableEntry {
     // Page isn’t flushed from caches on address space switch (PGE bit of CR4 register must be set)
     flag!(global, 8);
 
+    flag!(full, 9);
+
     // This page is holding data and is not executable
     flag!(not_executable, 63);
 
     #[inline]
     /// Map a frame to the page table entry while checking flags and frame alignment but **not** the ownership of the frame address
-    /// 
+    ///
     /// # Parameters
-    /// 
+    ///
     /// - `frame`: The physical address of the mapped frame
-    /// 
+    ///
     /// # Interrupts
     /// This function will raise a PAGE_FAULT if the entry is already mapped
-    /// 
+    ///
     /// # Safety
     /// The `frame` address should not be used by anyone except the corresponding virtual address,
-    /// and should be marked owned by it in a memory allocator 
+    /// and should be marked owned by it in a memory allocator
     pub const unsafe fn map_unchecked(&mut self, frame: PhysicalAddress) {
         if !self.present() && frame.is_aligned(REGULAR_PAGE_ALIGNMENT) {
             self.0 |= frame.as_usize() as u64 & 0xfffffffff_000;
@@ -70,15 +72,51 @@ impl PageTableEntry {
 
     #[inline]
     /// Return the physical address that is mapped by this entry
-    /// 
+    ///
     /// # Interrupts
     /// This function will raise a PAGE_FAULT if it doesn't map any entry
-    pub(crate) const fn mapped_address(&self) -> PhysicalAddress {
+    pub const fn mapped_address(&self) -> Option<PhysicalAddress> {
         if self.present() {
-            PhysicalAddress::new((self.0 & 0x0000_fffffffff_000) as usize)
+            unsafe { Some(self.mapped_address_unchecked()) }
         } else {
-            panic!("Page does not mapped to any address");
+            None
         }
+    }
+
+    #[inline]
+    pub const unsafe fn mapped_address_unchecked(&self) -> PhysicalAddress {
+        PhysicalAddress::new((self.0 & 0x0000_fffffffff_000) as usize)
+    }
+
+    #[inline]
+    /// Return the physical address mapped by this table as a reference into a page table.
+    ///
+    /// This method assumes all page tables are identity mapped.
+    pub unsafe fn as_table_mut(&self) -> &mut PageTable {
+        if !self.huge_page() {
+            match self.mapped_address() {
+                Some(mapped_address) => unsafe {
+                    core::mem::transmute::<PhysicalAddress, &mut PageTable>(mapped_address)
+                },
+                None => {
+                    panic!("Page table is not mapped, page fault");
+                }
+            }
+        } else {
+            panic!("The page is authoritative so there is no next table");
+        }
+    }
+
+    #[inline]
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn as_table_mut_unchecked(&self) -> &mut PageTable {
+        core::mem::transmute::<PhysicalAddress, &mut PageTable>(self.mapped_address_unchecked())
+    }
+
+    #[inline]
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn as_table_unchecked(&self) -> &PageTable {
+        core::mem::transmute::<PhysicalAddress, &PageTable>(self.mapped_address_unchecked())
     }
 
     #[inline]
@@ -106,18 +144,47 @@ impl PageTable {
         VirtualAddress::new(self as *const Self as usize)
     }
 
-    // #[inline]
-    // pub fn find_available_page(&self, page_size: PageSize) -> (PhysicalAddress, VirtualAddress) {
-    //     // todo!();
-    //     let mut table = unsafe { get_current_page_table() };
+    #[inline]
+    pub fn find_available_page(&self, page_size: PageSize) -> Option<VirtualAddress> {
+        for (i4, forth_entry) in self.entries.iter().enumerate() {
+            if !forth_entry.present() {
+                continue;
+            }
 
-    //     for table_number in ((page_size.clone() as usize + 1)..=4).rev() {
-    //         if table.entries[self.nth_pt_index(table_number)].present() {
-    //             table = table.entries[self.nth_pt_index(table_number)].get_next_table_mut()
-    //         } else {
-    //             table.entries[self.nth_pt_index(table_number)].create_new_table();
-    //         }
-    //     }
-    //     table.entries[self.nth_pt_index(page_size as usize)].map(address);
-    // }
+            let third_table = unsafe { forth_entry.as_table_unchecked() };
+
+            for (i3, third_entry) in third_table.entries.iter().enumerate() {
+                if !third_entry.present() {
+                    return Some(VirtualAddress::from_indexes(i4, i3, 0, 0));
+                }
+
+                if third_entry.huge_page()
+                    || !matches!(page_size, PageSize::Big | PageSize::Regular)
+                {
+                    continue;
+                }
+
+                let second_table = unsafe { third_entry.as_table_unchecked() };
+
+                for (i2, second_entry) in second_table.entries.iter().enumerate() {
+                    if !second_entry.present() {
+                        return Some(VirtualAddress::from_indexes(i4, i3, i2, 0));
+                    }
+
+                    if second_entry.huge_page() || !matches!(page_size, PageSize::Regular) {
+                        continue;
+                    }
+
+                    let first_table = unsafe { second_entry.as_table_unchecked() };
+
+                    for (i1, first_entry) in first_table.entries.iter().enumerate() {
+                        if !first_entry.present() {
+                            return Some(VirtualAddress::from_indexes(i4, i3, i2, i1));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
 }
