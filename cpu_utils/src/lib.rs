@@ -4,4 +4,5 @@
 #![feature(ptr_alignment_type)]
 #![feature(unsafe_cell_access)]
 
+pub mod registers;
 pub mod structures;
