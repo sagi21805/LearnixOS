@@ -39,7 +39,7 @@ pub enum PacketSize {
     Default = 0x10,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum PageSize {
     /// 4Kib pages
     Regular = 1,
@@ -66,12 +66,10 @@ impl PageSize {
     ///
     /// - `layout`: A [`Layout`] struct containing the memory size and alignment.
     pub const fn from_layout(layout: Layout) -> Option<PageSize> {
-        match (layout.size(), layout.align()) {
-            (REGULAR_PAGE_SIZE, val) if val == REGULAR_PAGE_ALIGNMENT.as_usize() => {
-                Some(PageSize::Regular)
-            }
-            (BIG_PAGE_SIZE, val) if val == BIG_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Big),
-            (HUGE_PAGE_SIZE, val) if val == HUGE_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Huge),
+        match layout.align() {
+            val if val == REGULAR_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Regular),
+            val if val == BIG_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Big),
+            val if val == HUGE_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Huge),
 
             _ => None,
         }
@@ -84,6 +82,26 @@ impl PageSize {
             PageSize::Big => 512,
 
             PageSize::Huge => 512 * 512,
+        }
+    }
+}
+
+impl Into<Layout> for PageSize {
+    fn into(self) -> Layout {
+        unsafe {
+            match self {
+                Self::Regular => Layout::from_size_align_unchecked(
+                    REGULAR_PAGE_SIZE,
+                    REGULAR_PAGE_ALIGNMENT.as_usize(),
+                ),
+                Self::Big => {
+                    Layout::from_size_align_unchecked(BIG_PAGE_SIZE, BIG_PAGE_ALIGNMENT.as_usize())
+                }
+                Self::Huge => Layout::from_size_align_unchecked(
+                    HUGE_PAGE_SIZE,
+                    HUGE_PAGE_ALIGNMENT.as_usize(),
+                ),
+            }
         }
     }
 }
