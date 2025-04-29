@@ -1,5 +1,6 @@
-use cpu_utils::structures::paging::address_types::VirtualAddress;
+use core::{ops::Index, slice};
 
+use cpu_utils::structures::paging::address_types::VirtualAddress;
 /// A low-level bitmap structure
 ///
 /// # Safety
@@ -12,8 +13,7 @@ use cpu_utils::structures::paging::address_types::VirtualAddress;
 /// and this is the creator responsibility to make sure that this address is really unused
 #[derive(Debug)]
 pub struct BitMap {
-    map: *mut u64,
-    pub size: usize,
+    pub map: &'static mut [u64],
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
@@ -32,13 +32,13 @@ impl BitMap {
     ///
     /// The virtual address that is given to this structure is assumed to be owned by this structure.
     pub const unsafe fn new(map_address: VirtualAddress, map_size: usize) -> BitMap {
-        let map_ptr = map_address.as_usize() as *mut u64;
-
-        unsafe { core::ptr::write_bytes(map_ptr, 0, map_size) };
         BitMap {
-            map: map_ptr,
-            size: map_size,
+            map: slice::from_raw_parts_mut(map_address.as_mut_ptr::<u64>(), map_size),
         }
+    }
+
+    pub fn init(&mut self) {
+        self.map.fill(0);
     }
 
     /// Set all of bit of the u64 into 1
@@ -50,7 +50,7 @@ impl BitMap {
     ///
     /// Make sure the that map_index < self.size
     pub unsafe fn set_index_unchecked(&mut self, map_index: usize) {
-        self.map.add(map_index).write_volatile(u64::MAX)
+        *self.map.get_unchecked_mut(map_index) = u64::MAX;
     }
 
     /// Return the number written in the map_index
@@ -63,7 +63,7 @@ impl BitMap {
     ///
     /// Make sure the that map_index < self.size
     pub unsafe fn get_index_unchecked(&self, map_index: usize) -> u64 {
-        self.map.add(map_index).read_volatile()
+        *self.map.get_unchecked(map_index)
     }
 
     /// Sets the bit corresponding to the `map_index` and the `bit_index`
@@ -76,7 +76,7 @@ impl BitMap {
     ///
     /// Make sure the that map_index < self.size and bit index < 64
     pub unsafe fn set_bit_unchecked(&mut self, map_index: usize, bit_index: u32) {
-        *self.map.add(map_index) ^= 1 << bit_index;
+        *self.map.get_unchecked_mut(map_index) |= 1 << bit_index;
     }
 
     /// Returns the bit corresponding to the `map_index` and the `bit_index`
@@ -90,6 +90,10 @@ impl BitMap {
     ///
     /// Make sure the that map_index < self.size and bit index < 64
     pub unsafe fn get_bit_unchecked(&self, map_index: usize, bit_index: u64) -> bool {
-        self.map.add(map_index).read_volatile() & (1 << bit_index) != 0
+        self.get_index_unchecked(map_index) & (1 << bit_index) != 0
+    }
+
+    pub fn as_slice(&self) -> &[u64] {
+        self.map
     }
 }
