@@ -16,8 +16,11 @@
         "repr",
         "rustc",
         "sofware",
+        "Uninit",
+        "virt",
         "wrmsr"
-    ]
+    ],
+    "rust-analyzer.inlayHints.chainingHints.enable": false
     
 }
   
