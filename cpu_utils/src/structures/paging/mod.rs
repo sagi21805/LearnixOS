@@ -3,7 +3,7 @@ pub mod page_tables;
 
 use constants::values::BIG_PAGE_SIZE;
 use core::arch::asm;
-use page_tables::PageTable;
+use page_tables::{PageTable, PageTableEntry};
 #[cfg(target_arch = "x86")]
 pub static mut IDENTITY_PAGE_TABLE_L4: PageTable = PageTable::empty();
 #[cfg(target_arch = "x86")]
@@ -15,7 +15,7 @@ pub static mut IDENTITY_PAGE_TABLE_L2: PageTable = PageTable::empty();
 #[cfg(target_arch = "x86")]
 pub fn enable() {
     use address_types::PhysicalAddress;
-
+    use page_tables::PageEntryFlags;
     unsafe {
         // Setup identity paging
         // Mapping address virtual addresses 0x0000000000000000-0x00000000001fffff to the same physical addresses
@@ -23,15 +23,17 @@ pub fn enable() {
         // At this point in the code, the variable address is it's physical address because paging is not turned on yet.
         IDENTITY_PAGE_TABLE_L4.entries[0].map_unchecked(
             PhysicalAddress::new(&IDENTITY_PAGE_TABLE_L3 as *const _ as usize),
-            true,
+            PageEntryFlags::table_flags(),
         );
         IDENTITY_PAGE_TABLE_L3.entries[0].map_unchecked(
             PhysicalAddress::new(&IDENTITY_PAGE_TABLE_L2 as *const _ as usize),
-            true,
+            PageEntryFlags::table_flags(),
         );
         for (i, entry) in IDENTITY_PAGE_TABLE_L2.entries.iter_mut().enumerate() {
-            entry.map_unchecked(PhysicalAddress::new(i * BIG_PAGE_SIZE), false);
-            entry.set_huge_page();
+            entry.map_unchecked(
+                PhysicalAddress::new(i * BIG_PAGE_SIZE),
+                PageEntryFlags::huge_page_flags(),
+            );
         }
 
         // Set the page table at cr3 register
