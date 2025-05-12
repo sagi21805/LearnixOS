@@ -42,11 +42,11 @@ pub enum PacketSize {
 #[derive(Clone, Debug)]
 pub enum PageSize {
     /// 4Kib pages
-    Regular = 1,
+    Regular = 0,
     /// 2Mib pages
-    Big = 2,
+    Big = 1,
     /// 1Gib pages
-    Huge = 3,
+    Huge = 2,
 }
 
 impl PageSize {

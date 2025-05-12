@@ -1,11 +1,15 @@
 pub mod address_types;
 pub mod page_tables;
 
+use constants::values::BIG_PAGE_SIZE;
 use core::arch::asm;
 use page_tables::PageTable;
-pub static mut PAGE_TABLE_L4: PageTable = PageTable::empty();
-pub static mut PAGE_TABLE_L3: PageTable = PageTable::empty();
-pub static mut PAGE_TABLE_L2: PageTable = PageTable::empty();
+#[cfg(target_arch = "x86")]
+pub static mut IDENTITY_PAGE_TABLE_L4: PageTable = PageTable::empty();
+#[cfg(target_arch = "x86")]
+pub static mut IDENTITY_PAGE_TABLE_L3: PageTable = PageTable::empty();
+#[cfg(target_arch = "x86")]
+pub static mut IDENTITY_PAGE_TABLE_L2: PageTable = PageTable::empty();
 
 #[allow(static_mut_refs)]
 #[cfg(target_arch = "x86")]
@@ -17,18 +21,25 @@ pub fn enable() {
         // Mapping address virtual addresses 0x0000000000000000-0x00000000001fffff to the same physical addresses
         // These entries can't be mapped with the map_table function because only after them the Page Table is considered valid
         // At this point in the code, the variable address is it's physical address because paging is not turned on yet.
-        PAGE_TABLE_L4.entries[0]
-            .map_unchecked(PhysicalAddress::new(&PAGE_TABLE_L3 as *const _ as usize));
-        PAGE_TABLE_L3.entries[0]
-            .map_unchecked(PhysicalAddress::new(&PAGE_TABLE_L2 as *const _ as usize));
-        PAGE_TABLE_L2.entries[0].map_unchecked(PhysicalAddress::new(0)); // Start at address 0 
-        PAGE_TABLE_L2.entries[0].set_huge_page();
+        IDENTITY_PAGE_TABLE_L4.entries[0].map_unchecked(
+            PhysicalAddress::new(&IDENTITY_PAGE_TABLE_L3 as *const _ as usize),
+            true,
+        );
+        IDENTITY_PAGE_TABLE_L3.entries[0].map_unchecked(
+            PhysicalAddress::new(&IDENTITY_PAGE_TABLE_L2 as *const _ as usize),
+            true,
+        );
+        for (i, entry) in IDENTITY_PAGE_TABLE_L2.entries.iter_mut().enumerate() {
+            entry.map_unchecked(PhysicalAddress::new(i * BIG_PAGE_SIZE), false);
+            entry.set_huge_page();
+        }
+
         // Set the page table at cr3 register
         asm!(
             // load the address of the 4th page table to cr3 so the cpu can access it
             "mov eax, {0}",
             "mov cr3, eax",
-            in(reg) &PAGE_TABLE_L4 as *const PageTable
+            in(reg) &IDENTITY_PAGE_TABLE_L4 as *const PageTable
         );
 
         asm!(

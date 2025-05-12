@@ -1,6 +1,6 @@
 use core::{ops::Index, slice};
 
-use cpu_utils::structures::paging::address_types::VirtualAddress;
+use cpu_utils::structures::paging::address_types::{PhysicalAddress, VirtualAddress};
 /// A low-level bitmap structure
 ///
 /// # Safety
@@ -31,7 +31,7 @@ impl BitMap {
     /// # Safety
     ///
     /// The virtual address that is given to this structure is assumed to be owned by this structure.
-    pub const unsafe fn new(map_address: VirtualAddress, map_size: usize) -> BitMap {
+    pub const unsafe fn new(map_address: PhysicalAddress, map_size: usize) -> BitMap {
         BitMap {
             map: slice::from_raw_parts_mut(map_address.as_mut_ptr::<u64>(), map_size),
         }

@@ -1,9 +1,14 @@
-pub mod allocator;
-pub (in self) mod paging_extension;
-pub (in self) mod address_type_extension;
+mod allocator;
+mod extension_traits;
 
 use allocator::PageAllocator;
+use core::mem::MaybeUninit;
+use cpu_utils::structures::paging::address_types::PhysicalAddress;
+const PAGE_ALLOCATOR_OFFSET: usize = 0x10000;
 
-const PAGE_ALLOCATOR_OFFSET: usize = 0x0;
-
-pub static mut PAGE_ALLOCATOR: *mut PageAllocator = PAGE_ALLOCATOR_OFFSET as *mut PageAllocator;
+pub static mut ALLOCATOR: MaybeUninit<PageAllocator> = unsafe {
+    MaybeUninit::new(PageAllocator::new(
+        PhysicalAddress(PAGE_ALLOCATOR_OFFSET),
+        0xffffffff,
+    ))
+};
