@@ -1,8 +1,16 @@
+#[cfg(target_arch = "x86_64")]
+use constants::addresses::PHYSICAL_MEMORY_OFFSET;
+use constants::enums::PageSize;
+
+use crate::registers::{cr3_read, get_current_page_table};
+
+use super::page_tables::{PageTable, PageTableEntry};
+
 /// This is a simple implementation of a physical and virtual addresses.
-/// 
+///
 /// This interface is mainly used to provide explicit meaning for when a physical address is needed and when a virtual one
-/// 
-/// This module implements some very basic commands for the addresses and more rich and useful interface will be added in the kernel 
+///
+/// This module implements some very basic commands for the addresses and more rich and useful interface will be added in the kernel
 /// -------------------------------------------------------------------------------------------------------------
 
 /// This macro will generate simple mathematical operations for wrapping structs
@@ -121,65 +129,98 @@ macro_rules! impl_common_address_functions {
             ///
             /// # Safety
             /// This method returns a mutable pointer without checking if this address is used or not
-            pub const unsafe fn as_ptr_mut(&self) -> *mut u8 {
-                self.0 as *mut u8
+            pub const unsafe fn as_mut_ptr<T>(&self) -> *mut T {
+                self.0 as *mut T
             }
 
             #[inline]
             /// Return the underlying number as immutable pointer to data
-            pub const fn as_ptr(&self) -> *const u8 {
-                self.0 as *const u8
+            pub const fn as_ptr<T>(&self) -> *const T {
+                self.0 as *const T
             }
         }
     };
 }
 
-trait Address { }
-
 #[derive(Clone, Debug)]
-pub struct PhysicalAddress(usize);
+pub struct PhysicalAddress(pub usize);
 
 impl_math_ops!(PhysicalAddress, usize);
 
 impl_common_address_functions!(PhysicalAddress);
 
 #[derive(Clone, Debug)]
-pub struct VirtualAddress(usize);
+pub struct VirtualAddress(pub usize);
 
 impl_math_ops!(VirtualAddress, usize);
 
 impl_common_address_functions!(VirtualAddress);
 
+pub struct PageTableWalk {
+    pub entries: [Option<&'static mut PageTableEntry>; 4],
+}
 
 impl VirtualAddress {
-
-
-    pub fn translate(&self) -> PhysicalAddress {
-        todo!()
-    }
-
-    // Bits 48-39
     #[allow(arithmetic_overflow)]
-    pub const fn pt4_index(&self) -> usize {
-        (self.0 >> 39) & 0o777
+    pub const fn from_indexes(i4: usize, i3: usize, i2: usize, i1: usize) -> Self {
+        Self((i4 << 39) | (i3 << 30) | (i2 << 21) | (i1 << 12) | 0)
     }
-    // Bit 39-30
-    pub const fn pt3_index(&self) -> usize {
-        (self.0 >> 30) & 0o777
-    }
-    // Bits 30-21
-    pub const fn pt2_index(&self) -> usize {
-        (self.0 >> 21) & 0o777
-    }
-    // Bits 21-12
-    pub const fn pt1_index(&self) -> usize {
-        (self.0 >> 12) & 0o777
-    }
-    // index of the n_th page table
-    pub const fn nth_pt_index(&self, n: usize) -> usize {
-        if n > 4 || n < 1 {
-            panic!("There are only 4 page tables, you tried to index table out of range");
-        }
+    /// indexing for the n_th page table
+    ///
+    /// 4 -> index of 4th table
+    ///
+    /// 3 -> index of 3rd table
+    ///
+    /// 2 -> index of 2nd table
+    ///
+    /// 1 -> index of 1st table
+    pub const unsafe fn nth_pt_index_unchecked(&self, n: usize) -> usize {
         (self.0 >> (39 - 9 * (4 - n))) & 0o777
+    }
+
+    /// Reverse indexing for the address:
+    ///
+    /// 0 -> index of 4th table
+    ///
+    /// 1 -> index of 3rd table
+    ///
+    /// 2 -> index of 2nd table
+    ///
+    /// 3 -> index of 1st table
+    #[allow(arithmetic_overflow)]
+    pub const fn rev_nth_index_unchecked(&self, n: usize) -> usize {
+        (self.0 >> (39 - (9 * n))) & 0o777
+    }
+
+    /// Get the relevant entries for a certain address
+    #[allow(unsafe_op_in_unsafe_fn)]
+    #[cfg(target_arch = "x86_64")]
+    pub fn walk(&self) -> PageTableWalk {
+        let mut entries: [Option<&'static mut PageTableEntry>; 4] = [const { None }; 4];
+        let mut table: &'static mut PageTable =
+            unsafe { core::mem::transmute(cr3_read() + PHYSICAL_MEMORY_OFFSET) };
+        for i in 0..entries.len() {
+            let table_index = self.rev_nth_index_unchecked(i);
+            let entry_ptr = &mut table.entries[table_index] as *mut PageTableEntry;
+            unsafe {
+                if (*entry_ptr).present() {
+                    entries[i] = Some(&mut *entry_ptr);
+                    if !(*entry_ptr).huge_page() {
+                        table = (*entry_ptr).as_table_mut_unchecked();
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        PageTableWalk { entries }
+    }
+}
+
+impl PhysicalAddress {
+    #[inline]
+    #[cfg(target_arch = "x86_64")]
+    pub fn translate(&self) -> VirtualAddress {
+        VirtualAddress(self.0 + PHYSICAL_MEMORY_OFFSET)
     }
 }

@@ -1,98 +1,143 @@
-use super::address_type_extension::VirtualAddressExtension;
-use super::{super::bitmap::BitMap, bitmap_extension::BitMapExtension};
-use constants::{
-    enums::PageSize,
-    values::REGULAR_PAGE_SIZE,
-};
+use crate::allocators::bitmap;
+use crate::println;
+
+use super::extension_traits::{BitMapExtension, PhysicalAddressExtension, VirtualAddressExtension};
+use crate::allocators::bitmap::BitMap;
+use constants::{addresses::PHYSICAL_MEMORY_OFFSET, enums::PageSize, values::REGULAR_PAGE_SIZE};
+use core::ptr::{self, null};
 use core::{
     alloc::{GlobalAlloc, Layout},
     cell::UnsafeCell,
-    ptr::null,
 };
-use cpu_utils::registers::get_current_page_table;
-use cpu_utils::structures::paging::{
-    address_types::{PhysicalAddress, VirtualAddress},
+use cpu_utils::{
+    registers::cr3_write,
+    structures::paging::address_types::{PhysicalAddress, VirtualAddress},
+};
+use cpu_utils::{
+    registers::get_current_page_table,
+    structures::paging::page_tables::{PageTable, PageTableEntry},
 };
 
 #[derive(Debug)]
 // TODO: This is not thread safe, probably should use Mutex in the future
 /// Page allocator implemented with a bitmap, every bit corresponds to a physical page
-/// This memory allocator assumes at least 256Kib of memory
-pub struct PageAllocator {
-    base_address: PhysicalAddress,
-    inner: UnsafeCell<BitMap>,
-}
+pub struct PageAllocator(UnsafeCell<BitMap>);
 
 impl PageAllocator {
     /// Creates a new allocator from the `bitmap_address` and the `memory_size`.
     ///
     /// # Parameters
     ///
-    /// - `bitmap_address`: Virtual address that the bitmap will use to store the map
-    /// - `base_memory_address`: The starting physical address of the contiguous memory block this allocator will manage
-    /// - `memory_size`: The size of the memory block <u>in bytes</u>
-    pub fn from_address_size(
-        bitmap_address: VirtualAddress,
-        base_memory_address: PhysicalAddress,
-        memory_size: usize,
-    ) -> PageAllocator {
+    /// - `bitmap_address`: Virtual address that is identity mapped and will use to store the map
+    /// - `memory_size`: Memory size in <u>bytes</u>
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub const unsafe fn new(bitmap_address: PhysicalAddress, memory_size: usize) -> PageAllocator {
+        let size_in_pages = memory_size / (REGULAR_PAGE_SIZE * u64::BITS as usize);
+        PageAllocator(UnsafeCell::new(BitMap::new(bitmap_address, size_in_pages)))
+        // let allocator = unsafe { PageAllocator(
+        // ) };
+
+        // allocator
+    }
+
+    pub fn init(&mut self) {
         unsafe {
-            let map_size = memory_size / (REGULAR_PAGE_SIZE * u64::BITS as usize);
-            let bitmap = BitMap::new(bitmap_address, map_size);
-            PageAllocator {
-                base_address: base_memory_address,
-                inner: UnsafeCell::new(bitmap),
-            }
-        }
+            self.0.as_mut_unchecked().init();
+        };
     }
 
     /// Resolves `map_index` and `bit_index` into actual physical address
     pub fn resolve_address(&self, map_index: usize, bit_index: usize) -> PhysicalAddress {
-        return self.base_address.clone()
-            + ((map_index * (u64::BITS as usize)) + bit_index) * REGULAR_PAGE_SIZE;
+        return PhysicalAddress::new(
+            ((map_index * (u64::BITS as usize)) + bit_index) * REGULAR_PAGE_SIZE,
+        );
+    }
+
+    fn find_free_big_or_huge_contiguous_region(
+        &self,
+        size: PageSize,
+        n: usize,
+    ) -> Option<(usize, u32)> {
+        let bitmap = unsafe { self.0.as_ref_unchecked() };
+        let index_alignment: usize = (size.size_in_pages() / u64::BITS as usize) * n.max(1);
+
+        for (index, window) in bitmap
+            .as_slice()
+            .windows(index_alignment)
+            .enumerate()
+            .step_by(index_alignment)
+        {
+            let sum: u64 = window.iter().sum();
+            if sum == 0 {
+                return Some((index, 0));
+            }
+        }
+        None
+    }
+
+    pub(self) fn find_free_contiguous_region(
+        &self,
+        size: PageSize,
+        n: usize,
+    ) -> Option<(usize, u32)> {
+        let bitmap = unsafe { self.0.as_ref_unchecked() };
+        match size {
+            PageSize::Regular => {
+                let mask = (1 << n) - 1;
+                for (index, val) in bitmap.as_slice().iter().enumerate() {
+                    for contiguous_bit in 0..=(u64::BITS - n as u32) {
+                        if (val >> contiguous_bit) & mask == 0 {
+                            return Some((index, contiguous_bit));
+                        }
+                    }
+                }
+                None
+            }
+            PageSize::Big | PageSize::Huge => self.find_free_big_or_huge_contiguous_region(size, n),
+        }
     }
 
     #[allow(unsafe_op_in_unsafe_fn)]
-    unsafe fn find_free_region(&self, size: PageSize) -> Option<(usize, u32)> {
-        let bitmap = self.inner.as_ref_unchecked();
-
+    pub(self) fn find_free_region(&self, size: PageSize) -> Option<(usize, u32)> {
+        let bitmap = unsafe { self.0.as_ref_unchecked() };
         match size {
             PageSize::Regular => {
-                for index in bitmap.map.iter() {
-                    let available_bit = index.trailing_ones();
+                for (index, val) in bitmap.as_slice().iter().enumerate() {
+                    let available_bit = val.trailing_ones();
                     if available_bit < u64::BITS {
-                        return Some((index.clone() as usize, available_bit));
+                        return Some((index, available_bit));
                     }
                 }
                 None
             }
-
-            PageSize::Big | PageSize::Huge => {
-                let index_alignment: usize = size.size_in_pages() / u64::BITS as usize;
-                let map = &*(&*self.inner.as_ref_unchecked()).map;
-                for (index, window) in map
-                    .windows(index_alignment)
-                    .step_by(index_alignment)
-                    .enumerate()
-                {
-                    let sum: u64 = window.iter().sum();
-                    if sum == 0 {
-                        return Some((index, 0));
-                    }
-                }
-                None
-            }
+            PageSize::Big | PageSize::Huge => self.find_free_big_or_huge_contiguous_region(size, 1),
         }
     }
 
     pub fn available_memory(&self) -> u64 {
-        let bitmap = unsafe { self.inner.as_mut_unchecked() };
-        return bitmap
-            .map
-            .iter()
-            .map(|x| x.count_zeros() as u64)
-            .sum::<u64>()
+        let bitmap = unsafe { self.0.as_mut_unchecked().as_slice() };
+        return bitmap.iter().map(|x| x.count_zeros() as u64).sum::<u64>()
             * REGULAR_PAGE_SIZE as u64;
+    }
+
+    /// Return the physical address of this table
+    pub(super) fn alloc_table(&self) -> &'static mut PageTable {
+        let table_address = self.find_free_region(PageSize::Regular);
+
+        match table_address {
+            Some((map_index, bit_index)) => unsafe {
+                let physical_address = self.resolve_address(map_index, bit_index as usize);
+
+                ptr::write(
+                    physical_address.translate().as_mut_ptr::<PageTable>(),
+                    PageTable::empty(),
+                );
+
+                return &mut *physical_address.as_mut_ptr::<PageTable>();
+            },
+
+            None => panic!("No physical memory is available"),
+        }
     }
 }
 
@@ -100,22 +145,22 @@ impl PageAllocator {
 unsafe impl GlobalAlloc for PageAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         match PageSize::from_layout(layout) {
-            Some(size) => match (
-                self.find_free_region(size.clone()),
-                get_current_page_table().find_available_page(size.clone()),
-            ) {
-                (Some((map_index, bit_index)), Some(virt)) => {
-                    let bitmap = self.inner.as_mut_unchecked();
-                    let phys = self.resolve_address(map_index, bit_index as usize);
-                    bitmap.set_page_unchecked(map_index, bit_index, size.clone());
-                    virt.map(phys.clone(), size);
-                    unsafe {
-                        return phys.as_ptr_mut();
+            Some(size) => {
+                let virt_region = get_current_page_table().find_available_page(size.clone());
+                let phys_region = self.find_free_region(size.clone());
+                match (phys_region, virt_region) {
+                    (Some((map_index, bit_index)), Some(virt)) => {
+                        let bitmap = self.0.as_mut_unchecked();
+                        let phys = self.resolve_address(map_index, bit_index as usize);
+                        bitmap.set_page_unchecked(map_index, bit_index, size.clone());
+                        virt.map(phys, size.clone());
+                        unsafe {
+                            return virt.as_mut_ptr(); // SHOULD BE VIRT
+                        }
                     }
+                    (_, _) => null::<u8>() as *mut u8,
                 }
-
-                (_, _) => null::<u8>() as *mut u8,
-            },
+            }
 
             None => null::<u8>() as *mut u8,
         }
