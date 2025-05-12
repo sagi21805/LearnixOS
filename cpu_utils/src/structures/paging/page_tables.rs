@@ -12,6 +12,44 @@ use constants::values::{
     BIG_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
 };
 
+// Just a wrapper for the flags for easier use
+#[repr(transparent)]
+#[derive(Debug, Clone)]
+pub struct PageEntryFlags(u64);
+
+impl PageEntryFlags {
+    #[inline]
+    pub const fn new() -> Self {
+        Self(0)
+    }
+    pub const fn table_flags() -> Self {
+        PageEntryFlags::new()
+            .set_chain_present()
+            .set_chain_writable()
+            .set_chain_is_table()
+    }
+    pub const fn huge_page_flags() -> Self {
+        PageEntryFlags::new()
+            .set_chain_present()
+            .set_chain_writable()
+            .set_chain_is_table()
+    }
+    flag!(present, 0);
+    flag!(writable, 1);
+    flag!(usr_access, 2);
+    flag!(write_through_cache, 3);
+    flag!(disable_cache, 4);
+    flag!(huge_page, 7);
+    flag!(global, 8);
+    flag!(full, 9);
+    flag!(is_table, 10);
+    flag!(not_executable, 63);
+    pub const fn as_u64(&self) -> u64 {
+        self.0
+    }
+}
+
+#[repr(transparent)]
 #[derive(Debug)]
 pub struct PageTableEntry(u64);
 
@@ -43,6 +81,7 @@ impl PageTableEntry {
     // Page isn’t flushed from caches on address space switch (PGE bit of CR4 register must be set)
     flag!(global, 8);
 
+    // mark a table as full
     flag!(full, 9);
 
     // This entry points to a table
@@ -51,8 +90,14 @@ impl PageTableEntry {
     // This page is holding data and is not executable
     flag!(not_executable, 63);
 
+    pub const fn set_flags(&mut self, flags: PageEntryFlags) {
+        self.0 &= 0x0000_fffffffff_000; // zero out all previous flags.
+        self.0 |= flags.as_u64(); // set new flags;
+    }
+
     #[inline]
     /// Map a frame to the page table entry while checking flags and frame alignment but **not** the ownership of the frame address
+    /// This function **will** set the entry as present even if it was not specified in the flags.
     ///
     /// # Parameters
     ///
@@ -64,14 +109,11 @@ impl PageTableEntry {
     /// # Safety
     /// The `frame` address should not be used by anyone except the corresponding virtual address,
     /// and should be marked owned by it in a memory allocator
-    pub const unsafe fn map_unchecked(&mut self, frame: PhysicalAddress, table: bool) {
+    pub const unsafe fn map_unchecked(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
         if !self.present() && frame.is_aligned(REGULAR_PAGE_ALIGNMENT) {
-            self.0 |= frame.as_usize() as u64 & 0xfffffffff_000;
+            self.0 |= frame.as_usize() as u64 & 0x0000_fffffffff_000;
             self.set_present();
-            self.set_writable();
-            if table {
-                self.set_is_table();
-            }
+            self.set_flags(flags);
         } else {
             todo!(
                 "Page is already mapped, raise a page fault when interrupt descriptor table is initialized"

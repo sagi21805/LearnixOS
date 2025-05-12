@@ -6,18 +6,18 @@ use cpu_utils::registers::get_current_page_table;
 use cpu_utils::structures::paging::address_types::{
     PageTableWalk, PhysicalAddress, VirtualAddress,
 };
-use cpu_utils::structures::paging::page_tables::PageTable;
+use cpu_utils::structures::paging::page_tables::{PageEntryFlags, PageTable};
 
 /// This macro will return a valid table from an entry.
 /// If this entry has a mapped table, it will return it
 /// else, it would allocate a new table, an map it to the entry.
 ///
 macro_rules! resolve_table {
-    ($entry:expr) => {
+    ($entry:expr, $flags:expr) => {
         match $entry.as_table_mut() {
             None => {
                 let table = ALLOCATOR.assume_init_ref().alloc_table();
-                $entry.map_unchecked(PhysicalAddress(table as *const _ as usize), true);
+                $entry.map_unchecked(PhysicalAddress(table as *const _ as usize), $flags);
                 table
             }
             Some(table) => table,
@@ -116,19 +116,19 @@ impl PageTableExtension for PageTable {
             for forth_entry in &mut self.entries[(PAGE_DIRECTORY_ENTRIES / 2)
                 ..(forth_level_entries_count + (PAGE_DIRECTORY_ENTRIES / 2))]
             {
-                let third_table = resolve_table!(forth_entry);
+                let third_table = resolve_table!(forth_entry, PageEntryFlags::table_flags());
 
                 for third_entry in &mut third_table.entries
                     [0..third_level_entries_count.min(PAGE_DIRECTORY_ENTRIES)]
                 {
-                    let second_table = resolve_table!(third_entry);
+                    let second_table = resolve_table!(third_entry, PageEntryFlags::table_flags());
 
                     third_level_entries_count -= 1;
                     for second_entry in &mut second_table.entries
                         [0..second_level_entries_count.min(PAGE_DIRECTORY_ENTRIES)]
                     {
-                        second_entry.map_unchecked(next_mapped.clone(), false);
-                        second_entry.set_huge_page();
+                        second_entry
+                            .map_unchecked(next_mapped.clone(), PageEntryFlags::huge_page_flags());
                         next_mapped += BIG_PAGE_SIZE;
                         second_level_entries_count -= 1;
                     }
