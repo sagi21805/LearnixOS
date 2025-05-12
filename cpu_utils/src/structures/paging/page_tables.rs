@@ -32,7 +32,7 @@ impl PageEntryFlags {
         PageEntryFlags::new()
             .set_chain_present()
             .set_chain_writable()
-            .set_chain_is_table()
+            .set_chain_huge_page()
     }
     flag!(present, 0);
     flag!(writable, 1);
