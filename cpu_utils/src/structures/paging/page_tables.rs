@@ -34,6 +34,11 @@ impl PageEntryFlags {
             .set_chain_writable()
             .set_chain_huge_page()
     }
+    pub const fn regular_page_flags() -> Self {
+        PageEntryFlags::new()
+            .set_chain_present()
+            .set_chain_writable()
+    }
     flag!(present, 0);
     flag!(writable, 1);
     flag!(usr_access, 2);
