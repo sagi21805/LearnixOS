@@ -1,3 +1,5 @@
+use core::ptr::Alignment;
+
 #[cfg(target_arch = "x86_64")]
 use constants::addresses::PHYSICAL_MEMORY_OFFSET;
 use constants::enums::PageSize;
@@ -137,6 +139,12 @@ macro_rules! impl_common_address_functions {
             /// Return the underlying number as immutable pointer to data
             pub const fn as_ptr<T>(&self) -> *const T {
                 self.0 as *const T
+            }
+
+            #[inline]
+            /// Get the alignment of an address
+            pub const fn alignment(&self) -> Alignment {
+                unsafe { Alignment::new_unchecked(1 << self.0.trailing_zeros()) }
             }
         }
     };
