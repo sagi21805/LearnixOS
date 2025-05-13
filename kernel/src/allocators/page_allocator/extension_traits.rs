@@ -49,7 +49,7 @@ impl BitMapExtension for BitMap {
 }
 
 pub(in super::super) trait VirtualAddressExtension {
-    fn map(&self, address: PhysicalAddress, size: PageSize);
+    fn map(&self, address: PhysicalAddress, flags: PageEntryFlags);
 }
 
 pub(in super::super) trait PhysicalAddressExtension {
@@ -70,23 +70,25 @@ impl VirtualAddressExtension for VirtualAddress {
     ///
     /// - `address`: The physical address to map this to, this address is needed
     /// - `page_size`: The size of the page from the [`PageSize`] enum
-    fn map(&self, address: PhysicalAddress, page_size: PageSize) {
-        // if address.is_aligned(page_size.clone().alignment()) {
-        //     let mut table = get_current_page_table();
+    fn map(&self, address: PhysicalAddress, flags: PageEntryFlags) {
+        todo!("Create a function that will infer page size from the alignment of the address");
 
-        //     for table_number in (page_size.clone() as usize)..4 {
-        //         // let current_entry = &mut table.entries[self.rev_nth_index_unchecked(table_number)];
-        //         let index = self.rev_nth_index_unchecked(table_number);
-        //         let new_table = unsafe { resolve_table!(&mut table.entries[index]) };
-        //         // table = unsafe { resolve_table!({ &mut table.entries[index] }) };
-        //     }
-        //     unsafe {
-        //         table.entries[self.nth_pt_index_unchecked(page_size as usize)]
-        //             .map_unchecked(address, true);
-        //     }
-        // } else {
-        //     panic!("address alignment doesn't match page type alignment, todo! raise a page fault")
-        // }
+        if address.is_aligned(page_size.clone().alignment()) {
+            let mut table = get_current_page_table();
+
+            for table_number in 0..(3 - page_size.clone() as usize) {
+                let index = self.rev_nth_index_unchecked(table_number);
+                table = unsafe {
+                    resolve_table!(&mut table.entries[index], PageEntryFlags::table_flags())
+                };
+            }
+            unsafe {
+                table.entries[self.nth_pt_index_unchecked(3 - page_size as usize)]
+                    .map_unchecked(address, flags);
+            }
+        } else {
+            panic!("address alignment doesn't match page type alignment, todo! raise a page fault")
+        }
     }
 }
 
@@ -136,4 +138,18 @@ impl PageTableExtension for PageTable {
             }
         }
     }
+}
+
+pub(in super::super) trait PageSizeEnumExtension {
+    const fn default_flags(&self) -> PageEntryFlags;
+}
+
+impl PageSizeEnumExtension for PageSize {
+    const fn default_flags(&self) -> PageEntryFlags {
+        match self {
+            PageSize::Regular => PageEntryFlags::regular_page_flags(),
+            PageSize::Big | PageSize::Huge => PageEntryFlags::huge_page_flags(),
+        }
+    }
+    //     resolve_table!(&mut table.entries[index], PageEntryFlags::table_flags())
 }
