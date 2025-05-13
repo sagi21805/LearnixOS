@@ -1,7 +1,9 @@
 use crate::allocators::bitmap;
 use crate::println;
 
-use super::extension_traits::{BitMapExtension, PhysicalAddressExtension, VirtualAddressExtension};
+use super::extension_traits::{
+    BitMapExtension, PageSizeEnumExtension, PhysicalAddressExtension, VirtualAddressExtension,
+};
 use crate::allocators::bitmap::BitMap;
 use constants::{addresses::PHYSICAL_MEMORY_OFFSET, enums::PageSize, values::REGULAR_PAGE_SIZE};
 use core::ptr::{self, null};
@@ -9,6 +11,7 @@ use core::{
     alloc::{GlobalAlloc, Layout},
     cell::UnsafeCell,
 };
+use cpu_utils::structures::paging::page_tables::PageEntryFlags;
 use cpu_utils::{
     registers::cr3_write,
     structures::paging::address_types::{PhysicalAddress, VirtualAddress},
@@ -153,7 +156,9 @@ unsafe impl GlobalAlloc for PageAllocator {
                         let bitmap = self.0.as_mut_unchecked();
                         let phys = self.resolve_address(map_index, bit_index as usize);
                         bitmap.set_page_unchecked(map_index, bit_index, size.clone());
-                        virt.map(phys, size.clone());
+                        if virt.alignment() == phys.alignment() {
+                            virt.map(phys, size.default_flags());
+                        }
                         unsafe {
                             return virt.as_mut_ptr(); // SHOULD BE VIRT
                         }
