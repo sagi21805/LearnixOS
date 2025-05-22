@@ -13,11 +13,11 @@ use core::{
 };
 use cpu_utils::structures::paging::page_tables::PageEntryFlags;
 use cpu_utils::{
-    registers::cr3_write,
+    registers::cr3::cr3_write,
     structures::paging::address_types::{PhysicalAddress, VirtualAddress},
 };
 use cpu_utils::{
-    registers::get_current_page_table,
+    registers::cr3::get_current_page_table,
     structures::paging::page_tables::{PageTable, PageTableEntry},
 };
 
@@ -46,6 +46,7 @@ impl PageAllocator {
     pub fn init(&mut self) {
         unsafe {
             self.0.as_mut_unchecked().init();
+            self.0.as_mut_unchecked().set_bit_unchecked(0, 0); // set the first bit so zero is not counted;
         };
     }
 
@@ -156,9 +157,7 @@ unsafe impl GlobalAlloc for PageAllocator {
                         let bitmap = self.0.as_mut_unchecked();
                         let phys = self.resolve_address(map_index, bit_index as usize);
                         bitmap.set_page_unchecked(map_index, bit_index, size.clone());
-                        if virt.alignment() == phys.alignment() {
-                            virt.map(phys, size.default_flags());
-                        }
+                        virt.map(phys, size.default_flags(), size);
                         unsafe {
                             return virt.as_mut_ptr(); // SHOULD BE VIRT
                         }
