@@ -1,14 +1,17 @@
-use constants::addresses::IDENTITY_PAGE_TABLE_OFFSET;
-
-#[cfg(feature = "paging")]
-use super::structures::paging::page_tables::PageTable;
+use super::super::structures::paging::page_tables::PageTable;
 use core::arch::asm;
 
-#[cfg(feature = "paging")]
 /// Read cr3 register to obtain the current page table and return a reference to it.
-#[allow(unsafe_op_in_unsafe_fn)]
+// #[allow(unsafe_op_in_unsafe_fn)]
+// #[cfg(target_arch = "x86_64")]
+// pub fn get_current_page_table() -> &'static mut PageTable {
+//     use constants::addresses::PHYSICAL_MEMORY_OFFSET;
+//     unsafe { &mut *((cr3_read() + PHYSICAL_MEMORY_OFFSET) as *mut PageTable) }
+// }
+
+// #[cfg(target_arch = "x86")]
 pub fn get_current_page_table() -> &'static mut PageTable {
-    unsafe { core::mem::transmute::<usize, &'static mut PageTable>(cr3_read()) }
+    unsafe { &mut *((cr3_read()) as *mut PageTable) }
 }
 
 /// Load the identity page table and return the previously loaded cr3 register

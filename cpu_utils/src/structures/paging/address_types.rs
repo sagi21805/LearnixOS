@@ -1,10 +1,9 @@
 use core::ptr::Alignment;
 
+use crate::registers::cr3::{cr3_read, get_current_page_table};
 #[cfg(target_arch = "x86_64")]
 use constants::addresses::PHYSICAL_MEMORY_OFFSET;
 use constants::enums::PageSize;
-
-use crate::registers::{cr3_read, get_current_page_table};
 
 use super::page_tables::{PageTable, PageTableEntry};
 
@@ -166,6 +165,7 @@ impl_common_address_functions!(VirtualAddress);
 
 pub struct PageTableWalk {
     pub entries: [Option<&'static mut PageTableEntry>; 4],
+    pub final_entry_index: usize,
 }
 
 impl VirtualAddress {
@@ -200,13 +200,13 @@ impl VirtualAddress {
         (self.0 >> (39 - (9 * n))) & 0o777
     }
 
-    /// Get the relevant entries for a certain address
+    /// Get the relevant entries for a certain address, if they are not present a None type would replace them
     #[allow(unsafe_op_in_unsafe_fn)]
     #[cfg(target_arch = "x86_64")]
     pub fn walk(&self) -> PageTableWalk {
         let mut entries: [Option<&'static mut PageTableEntry>; 4] = [const { None }; 4];
-        let mut table: &'static mut PageTable =
-            unsafe { core::mem::transmute(cr3_read() + PHYSICAL_MEMORY_OFFSET) };
+        let mut final_entry_index = 0;
+        let mut table: &'static mut PageTable = get_current_page_table();
         for i in 0..entries.len() {
             let table_index = self.rev_nth_index_unchecked(i);
             let entry_ptr = &mut table.entries[table_index] as *mut PageTableEntry;
@@ -216,12 +216,19 @@ impl VirtualAddress {
                     if !(*entry_ptr).huge_page() {
                         table = (*entry_ptr).as_table_mut_unchecked();
                     } else {
+                        final_entry_index = i;
                         break;
                     }
+                } else {
+                    final_entry_index = i;
+                    break;
                 }
             }
         }
-        PageTableWalk { entries }
+        PageTableWalk {
+            entries,
+            final_entry_index,
+        }
     }
 }
 

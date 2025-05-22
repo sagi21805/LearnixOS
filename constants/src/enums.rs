@@ -65,12 +65,21 @@ impl PageSize {
     /// # Parameters
     ///
     /// - `layout`: A [`Layout`] struct containing the memory size and alignment.
-    pub const fn from_layout(layout: Layout) -> Option<PageSize> {
+    pub const fn from_layout(layout: Layout) -> Option<Self> {
         match layout.align() {
             val if val == REGULAR_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Regular),
             val if val == BIG_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Big),
             val if val == HUGE_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Huge),
 
+            _ => None,
+        }
+    }
+
+    pub const fn from_alignment(alignment: Alignment) -> Option<Self> {
+        match alignment {
+            REGULAR_PAGE_ALIGNMENT => Some(Self::Regular),
+            BIG_PAGE_ALIGNMENT => Some(Self::Big),
+            HUGE_PAGE_ALIGNMENT => Some(Self::Huge),
             _ => None,
         }
     }
