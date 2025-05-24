@@ -2,7 +2,8 @@ use crate::allocators::bitmap;
 use crate::println;
 
 use super::extension_traits::{
-    BitMapExtension, PageSizeEnumExtension, PhysicalAddressExtension, VirtualAddressExtension,
+    BitMapExtension, PageSizeEnumExtension, PageTableExtension, PhysicalAddressExtension,
+    VirtualAddressExtension,
 };
 use crate::allocators::bitmap::BitMap;
 use constants::{addresses::PHYSICAL_MEMORY_OFFSET, enums::PageSize, values::REGULAR_PAGE_SIZE};
@@ -37,9 +38,6 @@ impl PageAllocator {
     pub const unsafe fn new(bitmap_address: PhysicalAddress, memory_size: usize) -> PageAllocator {
         let size_in_pages = memory_size / (REGULAR_PAGE_SIZE * u64::BITS as usize);
         PageAllocator(UnsafeCell::new(BitMap::new(bitmap_address, size_in_pages)))
-        // let allocator = unsafe { PageAllocator(
-        // ) };
-
         // allocator
     }
 
@@ -47,6 +45,10 @@ impl PageAllocator {
         unsafe {
             self.0.as_mut_unchecked().init();
             self.0.as_mut_unchecked().set_bit_unchecked(0, 0); // set the first bit so zero is not counted;
+            // Alloc reserved addresses TODO
+            get_current_page_table().map_physical_memory(
+                self.0.as_ref_unchecked().as_slice().len() * u64::BITS as usize * REGULAR_PAGE_SIZE,
+            );
         };
     }
 
@@ -135,6 +137,12 @@ impl PageAllocator {
                 ptr::write(
                     physical_address.translate().as_mut_ptr::<PageTable>(),
                     PageTable::empty(),
+                );
+
+                self.0.as_mut_unchecked().set_page_unchecked(
+                    map_index,
+                    bit_index,
+                    PageSize::Regular,
                 );
 
                 return &mut *physical_address.as_mut_ptr::<PageTable>();

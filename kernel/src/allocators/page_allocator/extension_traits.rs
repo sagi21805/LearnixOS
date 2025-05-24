@@ -19,6 +19,8 @@ macro_rules! resolve_table {
         match $entry.as_table_mut() {
             None => {
                 let resolved_table = ALLOCATOR.assume_init_ref().alloc_table();
+                let a = resolved_table.address().as_usize();
+                println!("Allocating Table at: {:x?}", a);
                 $entry.map_unchecked(PhysicalAddress(resolved_table.address().as_usize()), $flags);
                 resolved_table
             }
@@ -113,11 +115,11 @@ impl VirtualAddressExtension for VirtualAddress {
                 for table_number in 0..(3 - page_size.clone() as usize) {
                     let index = self.rev_nth_index_unchecked(table_number);
                     let entry = &mut (*table).entries[index];
-                    // let resolved_table = resolve_table!(entry, PageEntryFlags::table_flags());
-                    // table = resolved_table as *mut PageTable;
+                    let resolved_table = resolve_table!(entry, PageEntryFlags::table_flags());
+                    table = resolved_table as *mut PageTable;
                 }
-                // (*table).entries[self.nth_pt_index_unchecked(3 - page_size as usize)]
-                //     .map_unchecked(address, flags);
+                (*table).entries[self.nth_pt_index_unchecked(3 - page_size as usize)]
+                    .map_unchecked(address, flags);
             }
         } else {
             panic!("address alignment doesn't match page type alignment, todo! raise a page fault")
@@ -141,11 +143,14 @@ impl PageTableExtension for PageTable {
         let mut second_level_entries_count = (mem_size_bytes / BIG_PAGE_SIZE).max(1);
         let mut third_level_entries_count =
             ((second_level_entries_count + PAGE_DIRECTORY_ENTRIES - 1) / PAGE_DIRECTORY_ENTRIES)
-                .min(1);
+                .max(1);
         let forth_level_entries_count =
             (((third_level_entries_count + PAGE_DIRECTORY_ENTRIES - 1) / PAGE_DIRECTORY_ENTRIES)
                 .max(1))
             .min(256);
+        println!("Second: {}", second_level_entries_count);
+        println!("Third: {}", third_level_entries_count);
+        println!("Forth: {}", forth_level_entries_count);
         let mut next_mapped = PhysicalAddress(0);
         unsafe {
             for forth_entry in &mut self.entries[(PAGE_DIRECTORY_ENTRIES / 2)
@@ -162,8 +167,12 @@ impl PageTableExtension for PageTable {
                     for second_entry in &mut second_table.entries
                         [0..second_level_entries_count.min(PAGE_DIRECTORY_ENTRIES)]
                     {
-                        second_entry
-                            .map_unchecked(next_mapped.clone(), PageEntryFlags::huge_page_flags());
+                        if !second_entry.present() {
+                            second_entry.map_unchecked(
+                                next_mapped.clone(),
+                                PageEntryFlags::huge_page_flags(),
+                            );
+                        }
                         next_mapped += BIG_PAGE_SIZE;
                         second_level_entries_count -= 1;
                     }

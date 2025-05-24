@@ -34,7 +34,8 @@ pub unsafe extern "C" fn _start() -> ! {
     ok_msg!("Entered Protected Mode");
     ok_msg!("Enabled Paging");
     ok_msg!("Entered Long Mode");
-    println!("Testing");
+    let _ = ALLOCATOR.assume_init_mut().init();
+    ok_msg!("Allocator Initialized");
     // let a = unsafe {
     //     get_current_page_table().entries[0]
     //         .as_table_mut_unchecked()
@@ -48,9 +49,9 @@ pub unsafe extern "C" fn _start() -> ! {
     //             print!("{:x} ", b)
     //         }
     //     }
-    //     None => print!("NONE"),
+    // //     None => print!("NONE"),
     // }
-    // let _ = ALLOCATOR.assume_init_mut().init();
+
     // let a = ALLOCATOR.assume_init_ref().alloc(PageSize::Regular.into());
     // println!("{:?}", a);
     loop {}

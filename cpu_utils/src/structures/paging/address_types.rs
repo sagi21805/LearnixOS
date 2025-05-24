@@ -104,6 +104,7 @@ macro_rules! impl_common_address_functions {
             /// Create new instance from an address, copies bit 47 to bits 63-48
             ///
             /// `This method is auto-generated`
+            #[cfg(target_arch = "x86_64")]
             pub const fn new(address: usize) -> Self {
                 Self((address << 16) >> 16)
             }

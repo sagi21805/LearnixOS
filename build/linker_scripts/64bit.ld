@@ -1,7 +1,7 @@
 ENTRY(_start)
 
 SECTIONS {
-    . = 0xe000;
+    . = 0x9000;
 
     .start : { *(.start) }
 
