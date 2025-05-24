@@ -42,7 +42,7 @@ create_img: build-rust build-asm
 # Step 4: Run in QEMU
 run: all
 	@echo "Running bootloader in QEMU..."
-	$(QEMU) -d int -m 4096 -smp 1 -drive format=raw,file=$(OUTPUT)
+	$(QEMU) -m 4096 -smp 1 -drive format=raw,file=$(OUTPUT) -monitor stdio
 
 
 # Clean build artifacts

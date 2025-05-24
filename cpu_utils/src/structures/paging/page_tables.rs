@@ -118,9 +118,9 @@ impl PageTableEntry {
     /// and should be marked owned by it in a memory allocator
     pub const unsafe fn map_unchecked(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
         if !self.present() && frame.is_aligned(REGULAR_PAGE_ALIGNMENT) {
-            self.0 |= frame.as_usize() as u64 & 0x0000_fffffffff_000;
             self.set_flags(flags);
             self.set_present();
+            self.0 |= (frame.as_usize() as u64 & 0x0000_fffffffff_001);
         } else {
             todo!(
                 "Page is already mapped, raise a page fault when interrupt descriptor table is initialized"
@@ -140,7 +140,7 @@ impl PageTableEntry {
 
     #[inline]
     pub const unsafe fn mapped_address_unchecked(&self) -> PhysicalAddress {
-        PhysicalAddress::new((self.0 & 0x0000_fffffffff_000) as usize)
+        unsafe { PhysicalAddress::new_unchecked((self.0 & 0x0000_fffffffff_000) as usize) }
     }
 
     #[inline]
@@ -208,8 +208,12 @@ impl PageTable {
     #[inline]
     #[allow(unsafe_op_in_unsafe_fn)]
     pub unsafe fn empty_from_ptr(page_table_ptr: usize) -> &'static mut PageTable {
-        const PAGE_TABLE_SIZE: usize = size_of::<PageTable>();
-        core::ptr::write_bytes(page_table_ptr as *mut u8, 0, PAGE_TABLE_SIZE);
+        // core::ptr::write_bytes(page_table_ptr as *mut u8, 0, PAGE_TABLE_SIZE);
+        unsafe {
+            for i in 0..PAGE_DIRECTORY_ENTRIES {
+                ptr::write_volatile((page_table_ptr as *mut u64).add(i), 0);
+            }
+        }
         &mut *(page_table_ptr as *mut PageTable)
     }
 
@@ -222,7 +226,7 @@ impl PageTable {
 
     #[inline]
     pub fn address(&self) -> VirtualAddress {
-        VirtualAddress::new(self as *const Self as usize)
+        unsafe { VirtualAddress::new_unchecked(self as *const Self as usize) }
     }
 
     #[inline]
