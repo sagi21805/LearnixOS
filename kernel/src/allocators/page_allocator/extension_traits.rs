@@ -19,8 +19,6 @@ macro_rules! resolve_table {
         match $entry.as_table_mut() {
             None => {
                 let resolved_table = ALLOCATOR.assume_init_ref().alloc_table();
-                let a = resolved_table.address().as_usize();
-                println!("Allocating Table at: {:x?}", a);
                 $entry.map_unchecked(PhysicalAddress(resolved_table.address().as_usize()), $flags);
                 resolved_table
             }
@@ -53,8 +51,6 @@ impl BitMapExtension for BitMap {
 }
 
 pub(in super::super) trait VirtualAddressExtension {
-    fn resolve_walk(&self, page_size: PageSize) -> PageTableWalk;
-
     fn map(&self, address: PhysicalAddress, flags: PageEntryFlags, page_size: PageSize);
 }
 
@@ -69,36 +65,6 @@ impl PhysicalAddressExtension for PhysicalAddress {
 }
 
 impl VirtualAddressExtension for VirtualAddress {
-    fn resolve_walk(&self, page_size: PageSize) -> PageTableWalk {
-        // let mut entries: [Option<&'static mut PageTableEntry>; 4] = [const { None }; 4];
-        // let mut final_entry_index = 0;
-        // let mut table: &'static mut PageTable =
-        //     unsafe { core::mem::transmute(cr3_read() + PHYSICAL_MEMORY_OFFSET) };
-
-        // for i in 0..entries.len() {
-        //     let table_index = self.rev_nth_index_unchecked(i);
-        //     let entry_ptr = &mut table.entries[table_index] as *mut PageTableEntry;
-        //     unsafe {
-        //         if (*entry_ptr).present() {
-        //             entries[i] = Some(&mut *entry_ptr);
-        //             if !(*entry_ptr).huge_page() {
-        //                 table = (*entry_ptr).as_table_mut_unchecked();
-        //             } else {
-        //                 final_entry_index = i;
-        //                 break;
-        //             }
-        //         } else {
-        //             resolve_table!(&mut *entry_ptr, flag)
-        //         }
-        //     }
-        // }
-        // PageTableWalk {
-        //     entries,
-        //     final_entry_index,
-        // }
-        todo!("Write This Function")
-    }
-
     /// Map this `virtual address` into the given `physical_address` with the current page table, obtained  from `cr3`
     /// if a page table for the given virtual address doesn't exist, a new table **will** be created for it
     ///
@@ -118,7 +84,7 @@ impl VirtualAddressExtension for VirtualAddress {
                     let resolved_table = resolve_table!(entry, PageEntryFlags::table_flags());
                     table = resolved_table as *mut PageTable;
                 }
-                (*table).entries[self.nth_pt_index_unchecked(3 - page_size as usize)]
+                (*table).entries[self.rev_nth_index_unchecked(3 - page_size as usize)]
                     .map_unchecked(address, flags);
             }
         } else {
@@ -148,9 +114,6 @@ impl PageTableExtension for PageTable {
             (((third_level_entries_count + PAGE_DIRECTORY_ENTRIES - 1) / PAGE_DIRECTORY_ENTRIES)
                 .max(1))
             .min(256);
-        println!("Second: {}", second_level_entries_count);
-        println!("Third: {}", third_level_entries_count);
-        println!("Forth: {}", forth_level_entries_count);
         let mut next_mapped = PhysicalAddress(0);
         unsafe {
             for forth_entry in &mut self.entries[(PAGE_DIRECTORY_ENTRIES / 2)
