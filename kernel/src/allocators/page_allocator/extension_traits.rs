@@ -1,24 +1,26 @@
 use super::ALLOCATOR;
 use crate::allocators::bitmap::BitMap;
+use crate::println;
+use constants::addresses::PHYSICAL_MEMORY_OFFSET;
 use constants::enums::PageSize;
 use constants::values::{BIG_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES};
-use cpu_utils::registers::get_current_page_table;
+use cpu_utils::registers::cr3::{cr3_read, get_current_page_table};
 use cpu_utils::structures::paging::address_types::{
     PageTableWalk, PhysicalAddress, VirtualAddress,
 };
-use cpu_utils::structures::paging::page_tables::{PageEntryFlags, PageTable};
+use cpu_utils::structures::paging::page_tables::{PageEntryFlags, PageTable, PageTableEntry};
 
 /// This macro will return a valid table from an entry.
 /// If this entry has a mapped table, it will return it
 /// else, it would allocate a new table, an map it to the entry.
-///
+#[macro_export]
 macro_rules! resolve_table {
     ($entry:expr, $flags:expr) => {
         match $entry.as_table_mut() {
             None => {
-                let table = ALLOCATOR.assume_init_ref().alloc_table();
-                $entry.map_unchecked(PhysicalAddress(table as *const _ as usize), $flags);
-                table
+                let resolved_table = ALLOCATOR.assume_init_ref().alloc_table();
+                $entry.map_unchecked(PhysicalAddress(resolved_table.address().as_usize()), $flags);
+                resolved_table
             }
             Some(table) => table,
         }
@@ -49,16 +51,16 @@ impl BitMapExtension for BitMap {
 }
 
 pub(in super::super) trait VirtualAddressExtension {
-    fn map(&self, address: PhysicalAddress, flags: PageEntryFlags);
+    fn map(&self, address: PhysicalAddress, flags: PageEntryFlags, page_size: PageSize);
 }
 
 pub(in super::super) trait PhysicalAddressExtension {
-    fn map(&self, address: VirtualAddress, size: PageSize);
+    fn map(&self, address: VirtualAddress, flags: PageEntryFlags, page_size: PageSize);
 }
 
 impl PhysicalAddressExtension for PhysicalAddress {
-    fn map(&self, address: VirtualAddress, page_size: PageSize) {
-        address.map(self.clone(), page_size)
+    fn map(&self, address: VirtualAddress, flags: PageEntryFlags, page_size: PageSize) {
+        address.map(self.clone(), flags, page_size)
     }
 }
 
@@ -70,20 +72,19 @@ impl VirtualAddressExtension for VirtualAddress {
     ///
     /// - `address`: The physical address to map this to, this address is needed
     /// - `page_size`: The size of the page from the [`PageSize`] enum
-    fn map(&self, address: PhysicalAddress, flags: PageEntryFlags) {
-        todo!("Create a function that will infer page size from the alignment of the address");
-
-        if address.is_aligned(page_size.clone().alignment()) {
-            let mut table = get_current_page_table();
-
-            for table_number in 0..(3 - page_size.clone() as usize) {
-                let index = self.rev_nth_index_unchecked(table_number);
-                table = unsafe {
-                    resolve_table!(&mut table.entries[index], PageEntryFlags::table_flags())
-                };
-            }
+    #[allow(static_mut_refs)]
+    fn map(&self, address: PhysicalAddress, flags: PageEntryFlags, page_size: PageSize) {
+        if address.is_aligned(page_size.alignment()) && self.is_aligned(page_size.alignment()) {
+            // println!("Called This Function");
+            let mut table = get_current_page_table() as *mut PageTable; // must use pointers becase can't reassign mut ref in a loop.
             unsafe {
-                table.entries[self.nth_pt_index_unchecked(3 - page_size as usize)]
+                for table_number in 0..(3 - page_size.clone() as usize) {
+                    let index = self.rev_nth_index_unchecked(table_number);
+                    let entry = &mut (*table).entries[index];
+                    let resolved_table = resolve_table!(entry, PageEntryFlags::table_flags());
+                    table = resolved_table as *mut PageTable;
+                }
+                (*table).entries[self.rev_nth_index_unchecked(3 - page_size as usize)]
                     .map_unchecked(address, flags);
             }
         } else {
@@ -108,7 +109,7 @@ impl PageTableExtension for PageTable {
         let mut second_level_entries_count = (mem_size_bytes / BIG_PAGE_SIZE).max(1);
         let mut third_level_entries_count =
             ((second_level_entries_count + PAGE_DIRECTORY_ENTRIES - 1) / PAGE_DIRECTORY_ENTRIES)
-                .min(1);
+                .max(1);
         let forth_level_entries_count =
             (((third_level_entries_count + PAGE_DIRECTORY_ENTRIES - 1) / PAGE_DIRECTORY_ENTRIES)
                 .max(1))
@@ -129,8 +130,12 @@ impl PageTableExtension for PageTable {
                     for second_entry in &mut second_table.entries
                         [0..second_level_entries_count.min(PAGE_DIRECTORY_ENTRIES)]
                     {
-                        second_entry
-                            .map_unchecked(next_mapped.clone(), PageEntryFlags::huge_page_flags());
+                        if !second_entry.present() {
+                            second_entry.map_unchecked(
+                                next_mapped.clone(),
+                                PageEntryFlags::huge_page_flags(),
+                            );
+                        }
                         next_mapped += BIG_PAGE_SIZE;
                         second_level_entries_count -= 1;
                     }
@@ -141,11 +146,11 @@ impl PageTableExtension for PageTable {
 }
 
 pub(in super::super) trait PageSizeEnumExtension {
-    const fn default_flags(&self) -> PageEntryFlags;
+    fn default_flags(&self) -> PageEntryFlags;
 }
 
 impl PageSizeEnumExtension for PageSize {
-    const fn default_flags(&self) -> PageEntryFlags {
+    fn default_flags(&self) -> PageEntryFlags {
         match self {
             PageSize::Regular => PageEntryFlags::regular_page_flags(),
             PageSize::Big | PageSize::Huge => PageEntryFlags::huge_page_flags(),

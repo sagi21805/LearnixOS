@@ -2,9 +2,9 @@
 members = [ 
     "constants",
     "stages/first_stage",
-    "stages/second_stage", 
+    "stages/second_stage",
     "cpu_utils",
-    "kernel"
+    "kernel",
 ]
 resolver = "2"
 
