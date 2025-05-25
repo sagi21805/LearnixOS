@@ -36,24 +36,6 @@ pub unsafe extern "C" fn _start() -> ! {
     ok_msg!("Entered Long Mode");
     let _ = ALLOCATOR.assume_init_mut().init();
     ok_msg!("Allocator Initialized");
-    // let a = unsafe {
-    //     get_current_page_table().entries[0]
-    //         .as_table_mut_unchecked()
-    //         .entries[0]
-    //         .as_table_mut()
-    // };
-    // match a {
-    //     Some(c) => {
-    //         for e in c.entries.iter() {
-    //             let b = e.as_u64();
-    //             print!("{:x} ", b)
-    //         }
-    //     }
-    // //     None => print!("NONE"),
-    // }
-
-    // let a = ALLOCATOR.assume_init_ref().alloc(PageSize::Regular.into());
-    // println!("{:?}", a);
     loop {}
 }
 
