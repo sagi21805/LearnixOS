@@ -53,21 +53,14 @@ pub fn enable() {
             PhysicalAddress::new_unchecked(TOP_IDENTITY_PAGE_TABLE_L2_OFFSET),
             PageEntryFlags::table_flags(),
         );
-        for (i, (bot_entry, top_entry)) in IDENTITY_PAGE_TABLE_L2
-            .entries
-            .iter_mut()
-            .zip(TOP_IDENTITY_PAGE_TABLE_L2.entries.iter_mut())
-            .enumerate()
-        {
-            bot_entry.map_unchecked(
-                PhysicalAddress::new_unchecked(i * BIG_PAGE_SIZE),
-                PageEntryFlags::huge_page_flags(),
-            );
-            top_entry.map_unchecked(
-                PhysicalAddress::new_unchecked(i * BIG_PAGE_SIZE),
-                PageEntryFlags::huge_page_flags(),
-            );
-        }
+        IDENTITY_PAGE_TABLE_L2.entries[0].map_unchecked(
+            PhysicalAddress::new_unchecked(0),
+            PageEntryFlags::huge_page_flags(),
+        );
+        TOP_IDENTITY_PAGE_TABLE_L2.entries[0].map_unchecked(
+            PhysicalAddress::new_unchecked(0),
+            PageEntryFlags::huge_page_flags(),
+        );
         // Set the page table at cr3 register
         asm!(
             // load the address of the 4th page table to cr3 so the cpu can access it
