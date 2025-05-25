@@ -2,7 +2,8 @@ use crate::allocators::bitmap;
 use crate::println;
 
 use super::extension_traits::{
-    BitMapExtension, PageSizeEnumExtension, PhysicalAddressExtension, VirtualAddressExtension,
+    BitMapExtension, PageSizeEnumExtension, PageTableExtension, PhysicalAddressExtension,
+    VirtualAddressExtension,
 };
 use crate::allocators::bitmap::BitMap;
 use constants::{addresses::PHYSICAL_MEMORY_OFFSET, enums::PageSize, values::REGULAR_PAGE_SIZE};
@@ -13,11 +14,11 @@ use core::{
 };
 use cpu_utils::structures::paging::page_tables::PageEntryFlags;
 use cpu_utils::{
-    registers::cr3_write,
+    registers::cr3::cr3_write,
     structures::paging::address_types::{PhysicalAddress, VirtualAddress},
 };
 use cpu_utils::{
-    registers::get_current_page_table,
+    registers::cr3::get_current_page_table,
     structures::paging::page_tables::{PageTable, PageTableEntry},
 };
 
@@ -37,15 +38,17 @@ impl PageAllocator {
     pub const unsafe fn new(bitmap_address: PhysicalAddress, memory_size: usize) -> PageAllocator {
         let size_in_pages = memory_size / (REGULAR_PAGE_SIZE * u64::BITS as usize);
         PageAllocator(UnsafeCell::new(BitMap::new(bitmap_address, size_in_pages)))
-        // let allocator = unsafe { PageAllocator(
-        // ) };
-
         // allocator
     }
 
     pub fn init(&mut self) {
         unsafe {
             self.0.as_mut_unchecked().init();
+            self.0.as_mut_unchecked().set_bit_unchecked(0, 0); // set the first bit so zero is not counted;
+            // Alloc reserved addresses TODO
+            get_current_page_table().map_physical_memory(
+                self.0.as_ref_unchecked().as_slice().len() * u64::BITS as usize * REGULAR_PAGE_SIZE,
+            );
         };
     }
 
@@ -136,6 +139,12 @@ impl PageAllocator {
                     PageTable::empty(),
                 );
 
+                self.0.as_mut_unchecked().set_page_unchecked(
+                    map_index,
+                    bit_index,
+                    PageSize::Regular,
+                );
+
                 return &mut *physical_address.as_mut_ptr::<PageTable>();
             },
 
@@ -156,9 +165,7 @@ unsafe impl GlobalAlloc for PageAllocator {
                         let bitmap = self.0.as_mut_unchecked();
                         let phys = self.resolve_address(map_index, bit_index as usize);
                         bitmap.set_page_unchecked(map_index, bit_index, size.clone());
-                        if virt.alignment() == phys.alignment() {
-                            virt.map(phys, size.default_flags());
-                        }
+                        virt.map(phys, size.default_flags(), size);
                         unsafe {
                             return virt.as_mut_ptr(); // SHOULD BE VIRT
                         }

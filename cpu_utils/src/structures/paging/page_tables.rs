@@ -1,16 +1,18 @@
+use core::clone;
+
 /// This module contains very basic code that helps to interface and create initial page table
 ///
 /// The more advanced code that will be used in the future to allocate table will be in the kernel
 ///
 /// --------------------------------------------------------------------------------------------------
-use super::super::super::registers::get_current_page_table;
+use super::super::super::registers::cr3::get_current_page_table;
 use super::address_types::{PhysicalAddress, VirtualAddress};
 use crate::flag;
-use constants::addresses::IDENTITY_PAGE_TABLE_OFFSET;
 use constants::enums::PageSize;
 use constants::values::{
     BIG_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
 };
+use core::ptr;
 
 // Just a wrapper for the flags for easier use
 #[repr(transparent)]
@@ -55,7 +57,7 @@ impl PageEntryFlags {
 }
 
 #[repr(transparent)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PageTableEntry(u64);
 
 impl PageTableEntry {
@@ -116,9 +118,9 @@ impl PageTableEntry {
     /// and should be marked owned by it in a memory allocator
     pub const unsafe fn map_unchecked(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
         if !self.present() && frame.is_aligned(REGULAR_PAGE_ALIGNMENT) {
-            self.0 |= frame.as_usize() as u64 & 0x0000_fffffffff_000;
-            self.set_present();
             self.set_flags(flags);
+            self.set_present();
+            self.0 |= (frame.as_usize() as u64 & 0x0000_fffffffff_001);
         } else {
             todo!(
                 "Page is already mapped, raise a page fault when interrupt descriptor table is initialized"
@@ -138,7 +140,7 @@ impl PageTableEntry {
 
     #[inline]
     pub const unsafe fn mapped_address_unchecked(&self) -> PhysicalAddress {
-        PhysicalAddress::new((self.0 & 0x0000_fffffffff_000) as usize)
+        unsafe { PhysicalAddress::new_unchecked((self.0 & 0x0000_fffffffff_000) as usize) }
     }
 
     #[inline]
@@ -149,9 +151,7 @@ impl PageTableEntry {
         if !self.huge_page() && self.is_table() {
             match self.mapped_address() {
                 Some(mapped_address) => unsafe {
-                    Some(core::mem::transmute::<PhysicalAddress, &mut PageTable>(
-                        mapped_address,
-                    ))
+                    Some(&mut *mapped_address.as_mut_ptr::<PageTable>())
                 },
                 None => None,
             }
@@ -163,14 +163,20 @@ impl PageTableEntry {
     #[inline]
     #[allow(unsafe_op_in_unsafe_fn)]
     pub unsafe fn as_table_mut_unchecked(&self) -> &mut PageTable {
-        core::mem::transmute::<PhysicalAddress, &mut PageTable>(self.mapped_address_unchecked())
+        &mut *self.mapped_address_unchecked().as_mut_ptr::<PageTable>()
     }
 
     #[inline]
     #[allow(unsafe_op_in_unsafe_fn)]
-    unsafe fn as_table_unchecked(&self) -> &PageTable {
-        core::mem::transmute::<PhysicalAddress, &PageTable>(self.mapped_address_unchecked())
+    pub unsafe fn as_table_unchecked(&self) -> &PageTable {
+        &*self.mapped_address_unchecked().as_ptr::<PageTable>()
     }
+
+    // #[inline]
+    // #[allow(unsafe_op_in_unsafe_fn)]
+    // unsafe fn as_table_unchecked(&self) -> &PageTable {
+    //     core::mem::transmute::<PhysicalAddress, &PageTable>(self.mapped_address_unchecked())
+    // }
 
     #[inline]
     pub fn as_u64(&self) -> u64 {
@@ -180,28 +186,35 @@ impl PageTableEntry {
     /// Return a reference to the parent page table of this entry, this is a physical address meant to be accessed with the identity page table
     pub fn parent_page_table_unchecked(&self) -> &'static mut PageTable {
         unsafe {
-            core::mem::transmute(
-                (self as *const Self as usize) & (usize::MAX - (REGULAR_PAGE_SIZE - 1)),
-            )
+            &mut *(((self as *const Self as usize) & (usize::MAX - (REGULAR_PAGE_SIZE - 1)))
+                as *mut PageTable)
         }
     }
 }
 
 #[repr(C)]
 #[repr(align(4096))]
+#[derive(Debug)]
 pub struct PageTable {
     pub entries: [PageTableEntry; PAGE_DIRECTORY_ENTRIES],
 }
 
 impl PageTable {
     #[inline]
-    pub const fn from_ptr(page_table_ptr: usize) -> &'static mut PageTable {
-        unsafe { core::mem::transmute(page_table_ptr) }
+    pub const unsafe fn from_ptr(page_table_ptr: usize) -> &'static mut PageTable {
+        unsafe { &mut *(page_table_ptr as *mut PageTable) }
     }
 
     #[inline]
-    pub const fn identity() -> &'static mut PageTable {
-        PageTable::from_ptr(IDENTITY_PAGE_TABLE_OFFSET)
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn empty_from_ptr(page_table_ptr: usize) -> &'static mut PageTable {
+        // core::ptr::write_bytes(page_table_ptr as *mut u8, 0, PAGE_TABLE_SIZE);
+        unsafe {
+            for i in 0..PAGE_DIRECTORY_ENTRIES {
+                ptr::write_volatile((page_table_ptr as *mut u64).add(i), 0);
+            }
+        }
+        &mut *(page_table_ptr as *mut PageTable)
     }
 
     #[inline]
@@ -213,7 +226,7 @@ impl PageTable {
 
     #[inline]
     pub fn address(&self) -> VirtualAddress {
-        VirtualAddress::new(self as *const Self as usize)
+        unsafe { VirtualAddress::new_unchecked(self as *const Self as usize) }
     }
 
     #[inline]

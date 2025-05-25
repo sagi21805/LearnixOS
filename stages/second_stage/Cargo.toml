@@ -1,8 +1,14 @@
 [package]
+edition = "2024"
 name = "second_stage"
 version = "0.1.0"
-edition = "2024"
 
 [dependencies]
 constants = { path = "../../constants" }
-cpu_utils = { path = "../../cpu_utils", features = ["paging", "global_descriptor_table"] }
+cpu_utils = { path = "../../cpu_utils", features = [
+    "paging",
+    "global_descriptor_table",
+] }
+
+[profile.release]
+opt-level = 0
