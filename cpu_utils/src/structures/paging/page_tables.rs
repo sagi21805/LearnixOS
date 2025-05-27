@@ -120,7 +120,7 @@ impl PageTableEntry {
         if !self.present() && frame.is_aligned(REGULAR_PAGE_ALIGNMENT) {
             self.set_flags(flags);
             self.set_present();
-            self.0 |= (frame.as_usize() as u64 & 0x0000_fffffffff_001);
+            self.0 |= (frame.as_usize() as u64 & 0x0000_fffffffff_000);
         } else {
             todo!(
                 "Page is already mapped, raise a page fault when interrupt descriptor table is initialized"
