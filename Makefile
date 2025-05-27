@@ -20,30 +20,35 @@ TARGET_DIR = build/targets
 32BIT_TARGET = $(TARGET_DIR)/32bit_target
 64BIT_TARGET = $(TARGET_DIR)/64bit_target
 
+# Include Features
+KERNEL_FEATURES = ""
+test: KERNEL_FEATURES += test
+
+
 # Manifests
 TOML = Cargo.toml
-
-# Default rule
-all: build-rust create_img
 
 # Step 1: Build Rust code
 build-rust:
 	@echo "Compiling Rust code..."
 	$(CARGO) build --release --manifest-path $(FIRST)/$(TOML)  --target $(16BIT_TARGET).json
 	$(CARGO) build --release --manifest-path $(SECOND)/$(TOML) --target $(32BIT_TARGET).json
-	$(CARGO) build --release --manifest-path $(KERNEL)/$(TOML) --target $(64BIT_TARGET).json
+	$(CARGO) build --release --manifest-path $(KERNEL)/$(TOML) --target $(64BIT_TARGET).json --features "$(KERNEL_FEATURES)"
 # Step 3: Link everything
-create_img: build-rust build-asm
+create_img: build-rust
 	$(OBJCPY) -I elf32-i386 -O binary $(16BIT_ARTIFACT) 16bit.img
 	$(OBJCPY) -I elf32-i386 -O binary $(32BIT_ARTIFACT) 32bit.img
 	$(OBJCPY) -I elf64-x86-64 -O binary $(64BIT_ARTIFACT) 64bit.img
 	cat 16bit.img 32bit.img 64bit.img > $(OUTPUT)
 
 # Step 4: Run in QEMU
-run: all
+run: create_img
 	@echo "Running bootloader in QEMU..."
-	$(QEMU) -m 4096 -smp 1 -drive format=raw,file=$(OUTPUT) -monitor stdio
+	$(QEMU) -m 4096 -smp 1 -drive format=raw,file=$(OUTPUT)
 
+test: create_img
+	@echo "Running tests..."
+	$(QEMU) -m 4096 -smp 1 -drive format=raw,file=$(OUTPUT)
 
 # Clean build artifacts
 clean:

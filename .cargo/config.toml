@@ -1,3 +1,6 @@
 [unstable]
 build-std = ["core"]
 build-std-features = ["compiler-builtins-mem"]
+
+[env]
+CARGO_FEATURE_TEST = "1"

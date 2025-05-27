@@ -3,12 +3,14 @@
 #![allow(dead_code)]
 #![feature(optimize_attribute)]
 #![feature(ptr_as_ref_unchecked)]
-#![allow(static_mut_refs)]
 #![feature(unsafe_cell_access)]
 #![feature(ptr_alignment_type)]
+#![allow(static_mut_refs)]
 
 mod allocators;
 mod drivers;
+#[cfg(feature = "test")]
+mod unit_tests;
 
 use allocators::page_allocator::ALLOCATOR;
 use constants::enums::PageSize;
@@ -19,6 +21,8 @@ use core::panic::PanicInfo;
 use cpu_utils::registers::cr3::{cr3_read, get_current_page_table};
 use cpu_utils::structures::paging::page_tables::{PageTable, PageTableEntry};
 use drivers::vga_display::color_code::Color;
+#[cfg(feature = "test")]
+use unit_tests::test_runner;
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -31,6 +35,10 @@ pub unsafe extern "C" fn _start() -> ! {
         "mov ss, {0}",
         out(reg) _
     );
+
+    #[cfg(feature = "test")]
+    test_runner();
+
     ok_msg!("Entered Protected Mode");
     ok_msg!("Enabled Paging");
     ok_msg!("Entered Long Mode");

@@ -5,4 +5,10 @@ edition = "2024"
 
 [dependencies]
 constants = { path = "../constants" }
-cpu_utils = { path = "../cpu_utils", features = ["paging", "global_descriptor_table"]}
+cpu_utils = { path = "../cpu_utils", features = [
+    "paging",
+    "global_descriptor_table",
+] }
+
+[features]
+test = []
