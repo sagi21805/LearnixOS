@@ -6,7 +6,7 @@
 
 mod disk;
 
-use constants::{
+use common::constants::{
     addresses::{DISK_NUMBER_OFFSET, SECOND_STAGE_OFFSET},
     enums::{Interrupts, Sections, Video, VideoModes},
 };
@@ -43,6 +43,9 @@ pub extern "C" fn _start() -> ! {
             const VideoModes::VGA_TX_80X25_PB_9X16_PR_720X400 as u8,
             const Interrupts::VIDEO as u8
         );
+
+        // Obtain memory map
+        // todo!();
 
         // Load Global Descriptor Table
         GLOBAL_DESCRIPTOR_TABLE.load();

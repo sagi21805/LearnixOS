@@ -1,4 +1,4 @@
-use constants::enums::{Disk, Interrupts, PacketSize};
+use common::constants::enums::{Disk, Interrupts, PacketSize};
 use core::arch::asm;
 
 #[repr(C, packed)]

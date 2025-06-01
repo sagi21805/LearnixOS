@@ -1,9 +1,9 @@
 use super::ALLOCATOR;
 use crate::allocators::bitmap::BitMap;
 use crate::println;
-use constants::addresses::PHYSICAL_MEMORY_OFFSET;
-use constants::enums::PageSize;
-use constants::values::{BIG_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES};
+use common::constants::addresses::PHYSICAL_MEMORY_OFFSET;
+use common::constants::enums::PageSize;
+use common::constants::values::{BIG_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES};
 use cpu_utils::registers::cr3::{cr3_read, get_current_page_table};
 use cpu_utils::structures::paging::address_types::{
     PageTableWalk, PhysicalAddress, VirtualAddress,

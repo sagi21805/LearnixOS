@@ -2,8 +2,8 @@ use core::ptr::Alignment;
 
 use crate::registers::cr3::{cr3_read, get_current_page_table};
 #[cfg(target_arch = "x86_64")]
-use constants::addresses::PHYSICAL_MEMORY_OFFSET;
-use constants::enums::PageSize;
+use common::constants::addresses::PHYSICAL_MEMORY_OFFSET;
+use common::constants::enums::PageSize;
 
 use super::page_tables::{PageTable, PageTableEntry};
 
