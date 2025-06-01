@@ -1,6 +1,6 @@
 [workspace]
-members = [ 
-    "constants",
+members = [
+    "common",
     "stages/first_stage",
     "stages/second_stage",
     "cpu_utils",

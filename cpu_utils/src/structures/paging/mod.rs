@@ -1,7 +1,7 @@
 pub mod address_types;
 pub mod page_tables;
 
-use constants::{
+use common::constants::{
     addresses::{
         IDENTITY_PAGE_TABLE_L2_OFFSET, IDENTITY_PAGE_TABLE_L3_OFFSET,
         IDENTITY_PAGE_TABLE_L4_OFFSET, VGA_BUFFER_PTR,
@@ -16,7 +16,7 @@ use page_tables::{PageEntryFlags, PageTable};
 #[cfg(target_arch = "x86")]
 pub fn enable() {
     use address_types::PhysicalAddress;
-    use constants::{
+    use common::constants::{
         addresses::{TOP_IDENTITY_PAGE_TABLE_L2_OFFSET, TOP_IDENTITY_PAGE_TABLE_L3_OFFSET},
         values::BIG_PAGE_SIZE,
     };

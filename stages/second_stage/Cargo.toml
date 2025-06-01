@@ -4,7 +4,7 @@ name = "second_stage"
 version = "0.1.0"
 
 [dependencies]
-constants = { path = "../../constants" }
+common = { path = "../../common", features = ["structures", "constants"] }
 cpu_utils = { path = "../../cpu_utils", features = [
     "paging",
     "global_descriptor_table",
