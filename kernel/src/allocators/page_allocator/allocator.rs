@@ -6,7 +6,9 @@ use super::extension_traits::{
     VirtualAddressExtension,
 };
 use crate::allocators::bitmap::BitMap;
-use constants::{addresses::PHYSICAL_MEMORY_OFFSET, enums::PageSize, values::REGULAR_PAGE_SIZE};
+use common::constants::{
+    addresses::PHYSICAL_MEMORY_OFFSET, enums::PageSize, values::REGULAR_PAGE_SIZE,
+};
 use core::ptr::{self, null};
 use core::{
     alloc::{GlobalAlloc, Layout},
@@ -167,7 +169,7 @@ unsafe impl GlobalAlloc for PageAllocator {
                         bitmap.set_page_unchecked(map_index, bit_index, size.clone());
                         virt.map(phys, size.default_flags(), size);
                         unsafe {
-                            return virt.as_mut_ptr(); // SHOULD BE VIRT
+                            return virt.as_mut_ptr();
                         }
                     }
                     (_, _) => null::<u8>() as *mut u8,

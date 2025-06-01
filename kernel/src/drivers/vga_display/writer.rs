@@ -1,7 +1,7 @@
 use super::color_code::ColorCode;
 use super::screen_char::ScreenChar;
 use super::{SCREEN_HEIGHT, SCREEN_WIDTH};
-use constants::addresses::VGA_BUFFER_PTR;
+use common::constants::addresses::VGA_BUFFER_PTR;
 
 /// Writer implementation for the VGA driver.
 ///

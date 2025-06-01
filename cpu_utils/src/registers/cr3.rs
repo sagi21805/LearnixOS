@@ -5,7 +5,7 @@ use core::arch::asm;
 // #[allow(unsafe_op_in_unsafe_fn)]
 // #[cfg(target_arch = "x86_64")]
 // pub fn get_current_page_table() -> &'static mut PageTable {
-//     use constants::addresses::PHYSICAL_MEMORY_OFFSET;
+//     use common::constants::addresses::PHYSICAL_MEMORY_OFFSET;
 //     unsafe { &mut *((cr3_read() + PHYSICAL_MEMORY_OFFSET) as *mut PageTable) }
 // }
 

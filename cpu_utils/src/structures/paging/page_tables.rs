@@ -8,8 +8,8 @@ use core::clone;
 use super::super::super::registers::cr3::get_current_page_table;
 use super::address_types::{PhysicalAddress, VirtualAddress};
 use crate::flag;
-use constants::enums::PageSize;
-use constants::values::{
+use common::constants::enums::PageSize;
+use common::constants::values::{
     BIG_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
 };
 use core::ptr;
