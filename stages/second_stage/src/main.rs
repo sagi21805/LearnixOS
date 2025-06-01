@@ -6,7 +6,7 @@
 #![allow(static_mut_refs)]
 #![feature(unsafe_cell_access)]
 #![feature(ptr_alignment_type)]
-use constants::{addresses::KERNEL_OFFSET, enums::Sections};
+use common::constants::{addresses::KERNEL_OFFSET, enums::Sections};
 use core::{arch::asm, panic::PanicInfo};
 use cpu_utils::structures::{global_descriptor_table::GlobalDescriptorTable, paging};
 

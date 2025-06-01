@@ -11,7 +11,7 @@ mod allocators;
 mod drivers;
 
 use allocators::page_allocator::ALLOCATOR;
-use constants::enums::PageSize;
+use common::constants::enums::PageSize;
 use core::alloc::{GlobalAlloc, Layout};
 use core::arch::asm;
 use core::arch::x86_64::_mm_crc32_u8;

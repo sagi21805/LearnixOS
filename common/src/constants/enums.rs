@@ -1,6 +1,6 @@
 use core::{alloc::Layout, ptr::Alignment};
 
-use crate::values::{
+use crate::constants::values::{
     BIG_PAGE_ALIGNMENT, BIG_PAGE_SIZE, HUGE_PAGE_ALIGNMENT, HUGE_PAGE_SIZE, REGULAR_PAGE_ALIGNMENT,
     REGULAR_PAGE_SIZE,
 };
