@@ -1,11 +1,7 @@
-use crate::allocators::bitmap;
-use crate::println;
-
 use super::extension_traits::{
-    BitMapExtension, PageSizeEnumExtension, PageTableExtension, PhysicalAddressExtension,
-    VirtualAddressExtension,
+    BitMapExtension, PageSizeEnumExtension, PageTableExtension, VirtualAddressExtension,
 };
-use crate::allocators::bitmap::BitMap;
+use crate::memory::bitmap::BitMap;
 use common::constants::{
     addresses::PHYSICAL_MEMORY_OFFSET, enums::PageSize, values::REGULAR_PAGE_SIZE,
 };
@@ -47,7 +43,7 @@ impl PageAllocator {
         unsafe {
             self.0.as_mut_unchecked().init();
             self.0.as_mut_unchecked().set_bit_unchecked(0, 0); // set the first bit so zero is not counted;
-            // Alloc reserved addresses TODO
+                                                               // Alloc reserved addresses TODO
             get_current_page_table().map_physical_memory(
                 self.0.as_ref_unchecked().as_slice().len() * u64::BITS as usize * REGULAR_PAGE_SIZE,
             );
