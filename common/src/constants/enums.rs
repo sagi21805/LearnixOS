@@ -8,6 +8,7 @@ use crate::constants::values::{
 pub enum Interrupts {
     VIDEO = 0x10,
     DISK = 0x13,
+    MEMORY = 0x15,
 }
 
 pub enum Sections {
@@ -33,6 +34,17 @@ pub enum VideoModes {
     ///
     /// Pixel resolution 720x400
     VGA_TX_80X25_PB_9X16_PR_720X400 = 0x3,
+}
+
+#[repr(u32)]
+#[derive(Clone, Debug)]
+pub enum MemoryRegionType {
+    Unknown = 0u32,
+    Usable = 0x1u32,
+    Reserved = 0x2u32,
+    Reclaimable = 0x3u32,
+    ACPINVS = 0x4u32,
+    BadMemory = 0x5u32,
 }
 
 pub enum PacketSize {
