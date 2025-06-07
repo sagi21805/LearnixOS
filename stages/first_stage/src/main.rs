@@ -3,15 +3,16 @@
 #![allow(dead_code)]
 #![feature(optimize_attribute)]
 #![feature(ptr_as_ref_unchecked)]
-
+#![feature(naked_functions)]
 mod disk;
 
 use common::constants::{
-    addresses::{DISK_NUMBER_OFFSET, SECOND_STAGE_OFFSET},
+    addresses::{DISK_NUMBER_OFFSET, MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, SECOND_STAGE_OFFSET},
     enums::{Interrupts, Sections, Video, VideoModes},
+    values::MEMORY_MAP_MAGIC_NUMBER,
 };
 use core::{
-    arch::{asm, global_asm},
+    arch::{asm, global_asm, naked_asm},
     panic::PanicInfo,
 };
 use cpu_utils::structures::global_descriptor_table::GlobalDescriptorTable;
@@ -45,7 +46,7 @@ pub extern "C" fn _start() -> ! {
         );
 
         // Obtain memory map
-        // todo!();
+        obtain_memory_map();
 
         // Load Global Descriptor Table
         GLOBAL_DESCRIPTOR_TABLE.load();
@@ -70,6 +71,21 @@ pub extern "C" fn _start() -> ! {
     loop {}
 }
 
+#[naked]
+#[unsafe(no_mangle)]
+pub extern "C" fn obtain_memory_map() {
+    unsafe {
+        naked_asm!(
+            // Save all the registers.
+            include_str!("../asm/memory_map.s"),
+            len_address = const MEMORY_MAP_LENGTH,
+            map_address = const MEMORY_MAP_OFFSET,
+            smap = const MEMORY_MAP_MAGIC_NUMBER,
+            function_code = const 0xE820,
+            region_size = const 24
+        );
+    }
+}
 #[panic_handler]
 pub fn panic_handler(_info: &PanicInfo) -> ! {
     loop {}
