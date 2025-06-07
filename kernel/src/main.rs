@@ -7,18 +7,17 @@
 #![feature(unsafe_cell_access)]
 #![feature(ptr_alignment_type)]
 
-mod allocators;
 mod drivers;
+mod memory;
 
-use allocators::page_allocator::ALLOCATOR;
-use common::constants::enums::PageSize;
-use core::alloc::{GlobalAlloc, Layout};
+use common::constants::addresses::{MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET};
+use common::constants::enums::MemoryRegionType;
 use core::arch::asm;
-use core::arch::x86_64::_mm_crc32_u8;
 use core::panic::PanicInfo;
-use cpu_utils::registers::cr3::{cr3_read, get_current_page_table};
-use cpu_utils::structures::paging::page_tables::{PageTable, PageTableEntry};
 use drivers::vga_display::color_code::Color;
+use memory::allocators::page_allocator::ALLOCATOR;
+
+use crate::memory::memory_map::MemoryRegionExtended;
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -35,7 +34,28 @@ pub unsafe extern "C" fn _start() -> ! {
     ok_msg!("Enabled Paging");
     ok_msg!("Entered Long Mode");
     let _ = ALLOCATOR.assume_init_mut().init();
+
     ok_msg!("Allocator Initialized");
+    let mut usable = 0u64;
+    let mut reserved = 0u64;
+    let length = *(MEMORY_MAP_LENGTH as *const u32) as u16;
+    for i in 0..length {
+        unsafe {
+            let e = (*((MEMORY_MAP_OFFSET + i * 0x24) as *const MemoryRegionExtended)).clone();
+            println!("{:x?}\n", e);
+            match e.region_type {
+                MemoryRegionType::Reserved => reserved += e.length,
+                MemoryRegionType::Usable => usable += e.length,
+                _ => {}
+            }
+        }
+    }
+    let total = usable + reserved;
+    println!(
+        "Usable Mem: {}, Reserved Mem: {} Total Mem: {}",
+        usable, reserved, total
+    );
+
     loop {}
 }
 

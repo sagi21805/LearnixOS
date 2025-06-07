@@ -1,7 +1,5 @@
 use super::ALLOCATOR;
-use crate::allocators::bitmap::BitMap;
-use crate::println;
-use common::constants::addresses::PHYSICAL_MEMORY_OFFSET;
+use crate::memory::bitmap::BitMap;
 use common::constants::enums::PageSize;
 use common::constants::values::{BIG_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES};
 use cpu_utils::registers::cr3::{cr3_read, get_current_page_table};

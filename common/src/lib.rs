@@ -3,5 +3,3 @@
 
 #[cfg(feature = "constants")]
 pub mod constants;
-#[cfg(feature = "structures")]
-pub mod structures;
