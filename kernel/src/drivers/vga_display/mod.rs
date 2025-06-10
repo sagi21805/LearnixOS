@@ -47,7 +47,7 @@ macro_rules! print {
 
         unsafe {
             WRITER.color = $color;
-            write!(WRITER, $fmt, $($arg)*).unwrap();
+            write!(WRITER, $fmt $(, $arg)*).unwrap();
             WRITER.color = ColorCode::default();
         }
     }};
