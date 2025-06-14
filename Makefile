@@ -38,12 +38,12 @@ create_img: build-rust build-asm
 	$(OBJCPY) -I elf32-i386 -O binary $(32BIT_ARTIFACT) 32bit.img
 	$(OBJCPY) -I elf64-x86-64 -O binary $(64BIT_ARTIFACT) 64bit.img
 	cat 16bit.img 32bit.img 64bit.img > $(OUTPUT)
+	truncate -s'>515585' $(OUTPUT)
 
 # Step 4: Run in QEMU
 run: all
 	@echo "Running bootloader in QEMU..."
-	$(QEMU) -m 4096 -smp 1 -drive format=raw,file=$(OUTPUT) -monitor stdio
-
+	$(QEMU) -m 4096 -smp 1 -drive format=raw,file=$(OUTPUT) -machine pc -monitor stdio
 
 # Clean build artifacts
 clean:
