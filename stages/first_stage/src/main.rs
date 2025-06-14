@@ -82,7 +82,8 @@ pub extern "C" fn obtain_memory_map() {
             map_address = const MEMORY_MAP_OFFSET,
             smap = const MEMORY_MAP_MAGIC_NUMBER,
             function_code = const 0xE820,
-            region_size = const 24
+            extended_region_size = const 24,
+            regular_region_size = const 20
         );
     }
 }
