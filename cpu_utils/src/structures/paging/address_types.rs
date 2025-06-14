@@ -97,6 +97,7 @@ macro_rules! impl_common_address_functions {
             /// There is no check on the last bits of the address (bit 63-48 must be copies of bit 47)
             ///
             /// `This method is auto-generated`
+            #[inline]
             pub const unsafe fn new_unchecked(address: usize) -> Self {
                 Self(address)
             }
@@ -104,12 +105,14 @@ macro_rules! impl_common_address_functions {
             /// Create new instance from an address, copies bit 47 to bits 63-48
             ///
             /// `This method is auto-generated`
+            #[inline]
             #[cfg(target_arch = "x86_64")]
             pub const fn new(address: usize) -> Self {
                 Self((address << 16) >> 16)
             }
 
             /// Create new instance with the zero address
+            #[inline]
             pub const fn zero() -> Self {
                 Self(0)
             }
