@@ -37,7 +37,7 @@ pub enum VideoModes {
 }
 
 #[repr(u32)]
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum MemoryRegionType {
     Unknown = 0u32,
     Usable = 0x1u32,
