@@ -27,7 +27,7 @@ static SCREEN_HEIGHT: usize = 25;
 #[macro_export]
 macro_rules! print {
     // Case 1: Standard print with optional arguments.
-    ($fmt:expr $(, $arg:tt)*) => {{
+    ($fmt:expr $(, $arg:expr)* $(;)?) => {{
         use core::fmt::Write;
         use $crate::drivers::vga_display::WRITER;
         use $crate::drivers::vga_display::color_code::ColorCode;
@@ -40,7 +40,7 @@ macro_rules! print {
     }};
 
     // Case 2: Print with custom color.
-    ($fmt:expr $(, $arg:tt)* ; color = $color:expr) => {{
+    ($fmt:expr $(, $arg:expr)* ; color = $color:expr) => {{
         use core::fmt::Write;
         use $crate::drivers::vga_display::WRITER;
         use $crate::drivers::vga_display::color_code::ColorCode;
@@ -64,11 +64,11 @@ macro_rules! print {
 #[macro_export]
 macro_rules! println {
     // Case 1: Standard println with optional arguments.
-    ($fmt:expr $(, $arg:tt)*) => {
+    ($fmt:expr $(, $arg:expr)* $(;)?) => {
         $crate::print!(concat!($fmt, "\n") $(, $arg)*)
     };
     // Case 2: println with custom color.
-    ($fmt:expr $(, $arg:tt)* ; color = $color:expr) => {
+    ($fmt:expr $(, $arg:expr)* ; color = $color:expr) => {
         $crate::print!(concat!($fmt, "\n") $(, $arg)* ; color = $color)
     };
 }
