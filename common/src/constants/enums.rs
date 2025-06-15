@@ -96,7 +96,7 @@ impl PageSize {
         }
     }
 
-    pub const fn size_in_pages(&self) -> usize {
+    pub const fn size_in_regular_pages(&self) -> usize {
         match self {
             PageSize::Regular => 1,
 
