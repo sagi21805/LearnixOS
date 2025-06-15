@@ -1,11 +1,13 @@
-use core::{arch::x86_64::_MM_EXCEPT_INEXACT, cell::UnsafeCell, mem, ops::Add, slice};
+use core::slice;
 
 use common::constants::{
     addresses::{
         MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, PARSED_MEMORY_MAP_LENGTH, PARSED_MEMORY_MAP_OFFSET,
     },
     enums::MemoryRegionType,
+    values::{KiB, MiB},
 };
+use core::fmt::{self, Display, Formatter};
 use cpu_utils::structures::paging::address_types::PhysicalAddress;
 
 use crate::println;
@@ -33,6 +35,57 @@ pub struct MemoryRegion {
     pub base_address: u64,
     pub length: u64,
     pub region_type: MemoryRegionType,
+}
+
+pub struct ParsedMapDisplay(pub &'static [MemoryRegion]);
+
+impl Display for ParsedMapDisplay {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut usable = 0u64;
+        let mut reserved = 0u64;
+
+        for entry in self.0 {
+            let size_mib = entry.length / MiB as u64;
+            let size_kib = (entry.length - (size_mib * MiB as u64)) / KiB as u64;
+
+            write!(
+                f,
+                "[0x{:0>9x} - 0x{:0>9x}]: type: {}",
+                entry.base_address,
+                entry.base_address + entry.length,
+                entry.region_type as u32
+            )?;
+
+            match entry.region_type {
+                MemoryRegionType::Usable => {
+                    usable += entry.length;
+                    writeln!(f, " (Size: {:>4} MiB{:>4} KiB)", size_mib, size_kib)?;
+                }
+                MemoryRegionType::Reserved => {
+                    reserved += entry.length;
+                    writeln!(f, " (Size: {:>4} MiB{:>4} KiB)", size_mib, size_kib)?;
+                }
+                _ => writeln!(f)?,
+            }
+        }
+
+        let usable_mib = usable / MiB as u64;
+        let usable_kib = (usable % MiB as u64) / KiB as u64;
+        let reserved_mib = reserved / MiB as u64;
+        let reserved_kib = (reserved % MiB as u64) / KiB as u64;
+
+        writeln!(f)?;
+        writeln!(
+            f,
+            "Total Usable Memory:   {:>5} MiB {:>4} KiB",
+            usable_mib, usable_kib
+        )?;
+        writeln!(
+            f,
+            "Total Reserved Memory: {:>5} MiB {:>4} KiB",
+            reserved_mib, reserved_kib
+        )
+    }
 }
 
 /// This function will parse the memory map provided by the bios
