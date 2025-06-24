@@ -1,18 +1,56 @@
-use core::clone;
-
 /// This module contains very basic code that helps to interface and create initial page table
 ///
 /// The more advanced code that will be used in the future to allocate table will be in the kernel
 ///
 /// --------------------------------------------------------------------------------------------------
-use super::super::super::registers::cr3::get_current_page_table;
 use super::address_types::{PhysicalAddress, VirtualAddress};
+use super::error::{EntryError, TableError};
 use crate::flag;
+use crate::registers::cr3::cr3_read;
 use common::constants::enums::PageSize;
 use common::constants::values::{
-    BIG_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+    PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
 };
 use core::ptr;
+const ADDRESS_MASK: u64 = 0x0000_fffffffff_000;
+
+macro_rules! table_entry_flags {
+    () => {
+        // Is this page present?
+        flag!(present, 0);
+
+        // Is this page writable?
+        flag!(writable, 1);
+
+        // Can this page be accessed from user mode
+        flag!(usr_access, 2);
+
+        // Writes go directly to memory
+        flag!(write_through_cache, 3);
+
+        // Disable cache for this page
+        flag!(disable_cache, 4);
+
+        // This flag can help identifying if an entry is the last one, or it is pointing to another directory
+        // Is this page points to a custom memory address and not a page table?
+        flag!(huge_page, 7);
+
+        // Page isn’t flushed from caches on address space switch (PGE bit of CR4 register must be set)
+        flag!(global, 8);
+
+        // mark a table as full
+        flag!(full, 9);
+
+        // This entry points to a table
+        flag!(is_table, 10);
+
+        // This entry is at the top of the heirarchy.
+        flag!(root_entry, 11);
+
+        // This page is holding data and is not executable
+        flag!(not_executable, 63);
+    };
+}
 
 // Just a wrapper for the flags for easier use
 #[repr(transparent)]
@@ -41,16 +79,7 @@ impl PageEntryFlags {
             .set_chain_present()
             .set_chain_writable()
     }
-    flag!(present, 0);
-    flag!(writable, 1);
-    flag!(usr_access, 2);
-    flag!(write_through_cache, 3);
-    flag!(disable_cache, 4);
-    flag!(huge_page, 7);
-    flag!(global, 8);
-    flag!(full, 9);
-    flag!(is_table, 10);
-    flag!(not_executable, 63);
+    table_entry_flags!();
     pub const fn as_u64(&self) -> u64 {
         self.0
     }
@@ -66,39 +95,10 @@ impl PageTableEntry {
         Self(0)
     }
 
-    // Is this page present?
-    flag!(present, 0);
-
-    // Is this page writable?
-    flag!(writable, 1);
-
-    // Can this page be accessed from user mode
-    flag!(usr_access, 2);
-
-    // Writes go directly to memory
-    flag!(write_through_cache, 3);
-
-    // Disable cache for this page
-    flag!(disable_cache, 4);
-
-    // This flag can help identifying if an entry is the last one, or it is pointing to another directory
-    // Is this page points to a custom memory address and not a page table?
-    flag!(huge_page, 7);
-
-    // Page isn’t flushed from caches on address space switch (PGE bit of CR4 register must be set)
-    flag!(global, 8);
-
-    // mark a table as full
-    flag!(full, 9);
-
-    // This entry points to a table
-    flag!(is_table, 10);
-
-    // This page is holding data and is not executable
-    flag!(not_executable, 63);
+    table_entry_flags!();
 
     pub const fn set_flags(&mut self, flags: PageEntryFlags) {
-        self.0 &= 0x0000_fffffffff_000; // zero out all previous flags.
+        self.0 &= ADDRESS_MASK; // zero out all previous flags.
         self.0 |= flags.as_u64(); // set new flags;
     }
 
@@ -116,67 +116,58 @@ impl PageTableEntry {
     /// # Safety
     /// The `frame` address should not be used by anyone except the corresponding virtual address,
     /// and should be marked owned by it in a memory allocator
-    pub const unsafe fn map_unchecked(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
+    pub const fn map(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
         if !self.present() && frame.is_aligned(REGULAR_PAGE_ALIGNMENT) {
             self.set_flags(flags);
             self.set_present();
-            self.0 |= (frame.as_usize() as u64 & 0x0000_fffffffff_000);
+            self.0 |= frame.as_usize() as u64 & ADDRESS_MASK;
         } else {
-            todo!(
-                "Page is already mapped, raise a page fault when interrupt descriptor table is initialized"
-            );
+            // todo!(
+            // "Page is already mapped, raise a page fault when interrupt descriptor table is initialized"
+            // );
         }
     }
 
     #[inline]
     /// Return the physical address that is mapped by this entry, if this entry is not mapped, return None.
-    pub const fn mapped_address(&self) -> Option<PhysicalAddress> {
+    pub fn mapped(&self) -> Result<PhysicalAddress, EntryError> {
         if self.present() {
-            unsafe { Some(self.mapped_address_unchecked()) }
+            unsafe { Ok(self.mapped_unchecked()) }
         } else {
-            None
+            Err(EntryError::NoMapping(self.index_in_table()))
         }
     }
 
     #[inline]
-    pub const unsafe fn mapped_address_unchecked(&self) -> PhysicalAddress {
-        unsafe { PhysicalAddress::new_unchecked((self.0 & 0x0000_fffffffff_000) as usize) }
+    pub const unsafe fn mapped_unchecked(&self) -> PhysicalAddress {
+        unsafe { PhysicalAddress::new_unchecked((self.0 & ADDRESS_MASK) as usize) }
     }
 
     #[inline]
     /// Return the physical address mapped by this table as a reference into a page table.
     ///
     /// This method assumes all page tables are identity mapped.
-    pub fn as_table_mut(&self) -> Option<&mut PageTable> {
+    pub fn mapped_table_mut(&mut self) -> Result<(usize, &mut PageTable), EntryError> {
+        // first check if the entry is mapped.
+        let table = unsafe { &mut *self.mapped()?.as_mut_ptr::<PageTable>() };
+        // then check if it is a table.
         if !self.huge_page() && self.is_table() {
-            match self.mapped_address() {
-                Some(mapped_address) => unsafe {
-                    Some(&mut *mapped_address.as_mut_ptr::<PageTable>())
-                },
-                None => None,
-            }
+            Ok((self.index_in_table(), table))
         } else {
-            None
+            Err(EntryError::NotATable(self.index_in_table()))
         }
     }
 
-    #[inline]
-    #[allow(unsafe_op_in_unsafe_fn)]
-    pub unsafe fn as_table_mut_unchecked(&self) -> &mut PageTable {
-        &mut *self.mapped_address_unchecked().as_mut_ptr::<PageTable>()
+    pub fn mapped_table(&self) -> Result<(usize, &PageTable), EntryError> {
+        // first check if the entry is mapped.
+        let table = unsafe { &*self.mapped()?.as_ptr::<PageTable>() };
+        // then check if it is a table.
+        if !self.huge_page() && self.is_table() {
+            Ok((self.index_in_table(), table))
+        } else {
+            Err(EntryError::NotATable(self.index_in_table()))
+        }
     }
-
-    #[inline]
-    #[allow(unsafe_op_in_unsafe_fn)]
-    pub unsafe fn as_table_unchecked(&self) -> &PageTable {
-        &*self.mapped_address_unchecked().as_ptr::<PageTable>()
-    }
-
-    // #[inline]
-    // #[allow(unsafe_op_in_unsafe_fn)]
-    // unsafe fn as_table_unchecked(&self) -> &PageTable {
-    //     core::mem::transmute::<PhysicalAddress, &PageTable>(self.mapped_address_unchecked())
-    // }
 
     #[inline]
     pub fn as_u64(&self) -> u64 {
@@ -184,11 +175,8 @@ impl PageTableEntry {
     }
 
     /// Return a reference to the parent page table of this entry, this is a physical address meant to be accessed with the identity page table
-    pub fn parent_page_table_unchecked(&self) -> &'static mut PageTable {
-        unsafe {
-            &mut *(((self as *const Self as usize) & (usize::MAX - (REGULAR_PAGE_SIZE - 1)))
-                as *mut PageTable)
-        }
+    pub(self) fn index_in_table(&self) -> usize {
+        ((self as *const Self as usize) & (REGULAR_PAGE_SIZE - 1)) / size_of::<PageTableEntry>()
     }
 }
 
@@ -206,15 +194,11 @@ impl PageTable {
     }
 
     #[inline]
-    #[allow(unsafe_op_in_unsafe_fn)]
     pub unsafe fn empty_from_ptr(page_table_ptr: usize) -> &'static mut PageTable {
-        // core::ptr::write_bytes(page_table_ptr as *mut u8, 0, PAGE_TABLE_SIZE);
         unsafe {
-            for i in 0..PAGE_DIRECTORY_ENTRIES {
-                ptr::write_volatile((page_table_ptr as *mut u64).add(i), 0);
-            }
+            ptr::write_volatile(page_table_ptr as *mut PageTable, PageTable::empty());
+            &mut *(page_table_ptr as *mut PageTable)
         }
-        &mut *(page_table_ptr as *mut PageTable)
     }
 
     #[inline]
@@ -229,47 +213,70 @@ impl PageTable {
         unsafe { VirtualAddress::new_unchecked(self as *const Self as usize) }
     }
 
-    #[inline]
-    pub fn find_available_page(&self, page_size: PageSize) -> Option<VirtualAddress> {
-        for (i4, forth_entry) in self.entries.iter().enumerate() {
-            if !forth_entry.present() {
-                continue;
-            }
-
-            let third_table = unsafe { forth_entry.as_table_unchecked() };
-
-            for (i3, third_entry) in third_table.entries.iter().enumerate() {
-                if !third_entry.present() {
-                    return Some(VirtualAddress::from_indexes(i4, i3, 0, 0));
-                }
-
-                if third_entry.huge_page()
-                    || !matches!(page_size, PageSize::Big | PageSize::Regular)
-                {
-                    continue;
-                }
-
-                let second_table = unsafe { third_entry.as_table_unchecked() };
-
-                for (i2, second_entry) in second_table.entries.iter().enumerate() {
-                    if !second_entry.present() {
-                        return Some(VirtualAddress::from_indexes(i4, i3, i2, 0));
-                    }
-
-                    if second_entry.huge_page() || !matches!(page_size, PageSize::Regular) {
+    fn fetch_table_or_empty(
+        &self,
+        start_at: usize,
+        table_level: usize,
+        page_size: &PageSize,
+    ) -> Result<(usize, &PageTable), EntryError> {
+        for entry in self.entries.iter().skip(start_at) {
+            match entry.mapped_table() {
+                Ok(v) => {
+                    if page_size.exceeds(table_level) {
                         continue;
                     }
-
-                    let first_table = unsafe { second_entry.as_table_unchecked() };
-
-                    for (i1, first_entry) in first_table.entries.iter().enumerate() {
-                        if !first_entry.present() {
-                            return Some(VirtualAddress::from_indexes(i4, i3, i2, i1));
-                        }
-                    }
+                    return Ok(v);
                 }
+                Err(EntryError::NoMapping(v)) => return Err(EntryError::NoMapping(v)),
+                Err(EntryError::NotATable(_)) => continue,
+                _ => unreachable!(),
             }
         }
-        None
+        Err(EntryError::Full)
+    }
+
+    pub fn current_table() -> &'static PageTable {
+        unsafe { core::mem::transmute(cr3_read()) }
+    }
+
+    pub fn current_table_mut() -> &'static mut PageTable {
+        unsafe { core::mem::transmute(cr3_read()) }
+    }
+
+    /// Find an avavilable page.
+    pub fn find_contiguous_pages_in_current_table(
+        page_size: PageSize,
+    ) -> Result<VirtualAddress, TableError> {
+        const LEVELS: usize = 4;
+        let mut level_indices = [0usize; LEVELS];
+        let mut page_tables = [Self::current_table(); LEVELS];
+        let mut current_level = 0;
+        loop {
+            let current_table = page_tables[current_level];
+            page_tables[current_level + 1] = match current_table.fetch_table_or_empty(
+                level_indices[current_level],
+                current_level,
+                &page_size,
+            ) {
+                Ok((i, table)) => {
+                    level_indices[current_level] = i;
+                    table
+                }
+                Err(EntryError::NoMapping(i)) => {
+                    level_indices[current_level] = i;
+                    return Ok(VirtualAddress::from_indices(level_indices));
+                }
+                Err(EntryError::Full) => {
+                    if current_level == 0 {
+                        return Err(TableError::Full);
+                    }
+                    current_level -= 1;
+                    level_indices[current_level] += 1;
+                    continue;
+                }
+                _ => unreachable!(),
+            };
+            current_level += 1;
+        }
     }
 }

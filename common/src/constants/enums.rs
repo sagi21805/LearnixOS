@@ -51,7 +51,7 @@ pub enum PacketSize {
     Default = 0x10,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PageSize {
     /// 4Kib pages
     Regular = 0,
@@ -70,6 +70,10 @@ impl PageSize {
 
             PageSize::Huge => HUGE_PAGE_ALIGNMENT,
         }
+    }
+
+    pub fn exceeds(&self, table_level: usize) -> bool {
+        return (3 - self.clone() as usize) <= table_level;
     }
 
     /// Determines the appropriate `PageSizeAlignment` for a given memory layout.
