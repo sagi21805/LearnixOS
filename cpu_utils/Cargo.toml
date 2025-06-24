@@ -5,6 +5,10 @@ edition = "2024"
 
 [dependencies]
 common = { path = "../common", features = ["constants"] }
+derive_more = { version = "2.0.1", default-features = false, features = [
+    "full",
+] }
+thiserror = { version = "2.0.12", default-features = false }
 
 [features]
 # Define the features here
