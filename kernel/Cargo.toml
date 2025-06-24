@@ -9,3 +9,6 @@ cpu_utils = { path = "../cpu_utils", features = [
     "paging",
     "global_descriptor_table",
 ] }
+derive_more = { version = "2.0.1", default-features = false, features = [
+    "full",
+] }
