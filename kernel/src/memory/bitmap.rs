@@ -22,6 +22,7 @@ impl Position {
         None
     }
 
+    /// Create a position for the map and bit index without checking if `bit_index` < 64
     pub unsafe fn new_unchecked(map_index: usize, bit_index: usize) -> Position {
         Position {
             map_index,
@@ -58,10 +59,24 @@ impl ContiguousBlockLayout {
         )
     }
 
+    /// Resets the block to it's initial value without checking self.low_mask value
+    ///
+    /// # Safety
+    ///
+    /// This method expects that self.low_mask is 0!
+    pub(self) fn reset_unchecked(&mut self) {
+        let is_zero = self.index_count == 0;
+        self.index_count -= is_zero as usize;
+        self.low_mask = self.high_mask | (u64::MAX + !is_zero as u64);
+
+        self.high_mask &= u64::MAX + !is_zero as u64;
+    }
+
     pub(self) fn shift(&mut self) -> u64 {
-        self.low_mask <<= 1;
+        let (new_low_mask, overlowed) = self.low_mask.overflowing_shl(1);
+        self.low_mask = new_low_mask;
+        self.high_mask += overlowed as u64;
         self.high_mask <<= 1;
-        self.high_mask += 1;
         let val = self.high_mask.saturating_sub(u64::MAX - 1) as u64;
         self.high_mask += val;
         self.index_count += val as usize;
@@ -130,6 +145,9 @@ impl BitMap {
     }
 
     pub fn find_free_block(&self, bit_count: usize) -> Option<Position> {
+        if bit_count == 0 {
+            None
+        }
         let (mut block, mut end_position) = ContiguousBlockLayout::initial_from_bits(bit_count);
         let mut start_position = unsafe { Position::new_unchecked(0, 0) };
         while end_position.map_index < self.map.len() {
@@ -144,12 +162,10 @@ impl BitMap {
             {
                 return Some(start_position);
             }
-            // TODO think of a better name.
             let val = block.shift();
             start_position.bit_index += 1;
-            if start_position.bit_index == 64 {
-                start_position.bit_index = 0;
-            }
+            start_position.bit_index &= u64::BITS as usize;
+            start_position.map_index += (start_position.bit_index == 0) as usize;
             end_position.map_index += val as usize;
         }
 
