@@ -5,4 +5,3 @@ edition = "2024"
 
 [features]
 constants = []
-math = []
