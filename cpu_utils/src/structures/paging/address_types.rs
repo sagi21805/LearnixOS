@@ -164,7 +164,7 @@ impl VirtualAddress {
 impl PhysicalAddress {
     #[inline]
     #[cfg(target_arch = "x86_64")]
-    pub fn translate(&self) -> VirtualAddress {
+    pub const fn translate(&self) -> VirtualAddress {
         VirtualAddress(self.0 + PHYSICAL_MEMORY_OFFSET)
     }
 }
