@@ -1,6 +1,8 @@
-use core::{panic, slice, u64};
-use cpu_utils::structures::paging::address_types::PhysicalAddress;
+use core::{slice, u64};
+use cpu_utils::structures::paging::address_types::VirtualAddress;
 use derive_more::Constructor;
+
+use crate::println;
 
 #[derive(Debug, Clone, Default)]
 pub struct Position {
@@ -23,15 +25,24 @@ impl Position {
     }
 
     /// Create a position for the map and bit index without checking if `bit_index` < 64
-    pub unsafe fn new_unchecked(map_index: usize, bit_index: usize) -> Position {
+    pub const unsafe fn new_unchecked(map_index: usize, bit_index: usize) -> Position {
         Position {
             map_index,
             bit_index,
         }
     }
+
+    pub const fn from_abs_bit_index(bit_index: usize) -> Self {
+        unsafe {
+            Self::new_unchecked(
+                bit_index / u64::BITS as usize,
+                bit_index % u64::BITS as usize,
+            )
+        }
+    }
 }
 
-#[derive(Clone, Default, Constructor)]
+#[derive(Debug, Clone, Default, Constructor)]
 pub struct ContiguousBlockLayout {
     pub low_mask: u64,
     pub index_count: usize,
@@ -39,16 +50,17 @@ pub struct ContiguousBlockLayout {
 }
 
 impl ContiguousBlockLayout {
-    pub fn initial_from_bits(bit_count: usize) -> (Self, Position) {
-        let remaining_bits = bit_count.saturating_sub(u64::BITS as usize);
-        let low_bit_count = bit_count - remaining_bits; // This nubmer must be less then or equal to 64
-        let high_bit_count = remaining_bits % u64::BITS as usize;
-        let index_count = remaining_bits / u64::BITS as usize;
+    pub(self) fn initial_from_bits(size_bits: usize) -> (Self, Position) {
+        let remain_after_low = size_bits.saturating_sub(u64::BITS as usize);
+        let low_bit_count = size_bits - remain_after_low;
+        let remain_after_high = remain_after_low.saturating_sub(u64::BITS as usize);
+        let high_bit_count = remain_after_low - remain_after_high;
+        let index_count = remain_after_high / u64::BITS as usize;
         (
             Self::new(
-                u64::MAX >> (u64::BITS - low_bit_count as u32),
+                u64::MAX.unbounded_shr(u64::BITS - low_bit_count as u32),
                 index_count,
-                u64::MAX >> (u64::BITS - high_bit_count as u32),
+                u64::MAX.unbounded_shr(u64::BITS - high_bit_count as u32),
             ),
             unsafe {
                 Position::new_unchecked(
@@ -59,16 +71,33 @@ impl ContiguousBlockLayout {
         )
     }
 
+    /// Create a new contiguous block from a size and a start position.
+    ///
+    /// # Parameters
+    ///
+    /// - `p`: The start position of the block.
+    /// - `size`: The size of the block in bits.
+    pub fn from_start_size(p: &Position, size_bits: usize) -> Self {
+        let remain_after_low = size_bits.saturating_sub(u64::BITS as usize - p.bit_index);
+        let low_bit_count = size_bits - remain_after_low;
+        let index_count = remain_after_low / u64::BITS as usize;
+        let high_bit_count = remain_after_low & (u64::BITS as usize - 1);
+        Self::new(
+            (u64::MAX.unbounded_shr(u64::BITS - low_bit_count as u32)) << p.bit_index,
+            index_count,
+            u64::MAX.unbounded_shr(u64::BITS - high_bit_count as u32),
+        )
+    }
+
     /// Resets the block to it's initial value without checking self.low_mask value
     ///
     /// # Safety
     ///
     /// This method expects that self.low_mask is 0!
-    pub(self) fn reset_unchecked(&mut self) {
+    fn reset_unchecked(&mut self) {
         let is_zero = self.index_count == 0;
         self.index_count -= is_zero as usize;
         self.low_mask = self.high_mask | (u64::MAX + !is_zero as u64);
-
         self.high_mask &= u64::MAX + !is_zero as u64;
     }
 
@@ -80,6 +109,9 @@ impl ContiguousBlockLayout {
         let val = self.high_mask.saturating_sub(u64::MAX - 1) as u64;
         self.high_mask += val;
         self.index_count += val as usize;
+        if self.low_mask == 0 {
+            self.reset_unchecked();
+        }
         val
     }
 }
@@ -88,6 +120,20 @@ impl ContiguousBlockLayout {
 #[derive(Debug)]
 pub struct BitMap {
     pub map: &'static mut [u64],
+}
+
+impl core::ops::Index<usize> for BitMap {
+    type Output = u64;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.map[index]
+    }
+}
+
+impl core::ops::IndexMut<usize> for BitMap {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.map[index]
+    }
 }
 
 impl BitMap {
@@ -104,7 +150,7 @@ impl BitMap {
     /// # Safety
     ///
     /// The virtual address that is given to this structure is assumed to be owned by this structure.
-    pub const unsafe fn new(map_address: PhysicalAddress, map_size: usize) -> BitMap {
+    pub const unsafe fn new(map_address: VirtualAddress, map_size: usize) -> BitMap {
         BitMap {
             map: unsafe { slice::from_raw_parts_mut(map_address.as_mut_ptr::<u64>(), map_size) },
         }
@@ -130,23 +176,32 @@ impl BitMap {
         self.map[p.map_index] & (1 << p.bit_index) != 0
     }
 
+    /// Set a contiguous block, the contiguous low mask, and high mask should be relative to the positions map index.
+    pub unsafe fn set_contiguous_block(&mut self, p: &Position, block: &ContiguousBlockLayout) {
+        self.map[p.map_index] |= block.low_mask;
+        for i in 1..=block.index_count {
+            self.map[p.map_index + i] = u64::MAX;
+        }
+        self.map[p.map_index + block.index_count + 1] |= block.high_mask;
+    }
+
     pub fn count_ones(&self) -> usize {
         self.map
             .iter()
-            .map(|&x| x.count_ones() as usize)
+            .map(|x| x.count_ones() as usize)
             .sum::<usize>()
     }
 
     pub fn count_zeros(&self) -> usize {
         self.map
             .iter()
-            .map(|&x| x.count_zeros() as usize)
+            .map(|x| x.count_zeros() as usize)
             .sum::<usize>()
     }
 
-    pub fn find_free_block(&self, bit_count: usize) -> Option<Position> {
+    pub fn find_free_block(&self, bit_count: usize) -> Option<(Position, ContiguousBlockLayout)> {
         if bit_count == 0 {
-            None
+            return None;
         }
         let (mut block, mut end_position) = ContiguousBlockLayout::initial_from_bits(bit_count);
         let mut start_position = unsafe { Position::new_unchecked(0, 0) };
@@ -160,11 +215,11 @@ impl BitMap {
                 && start & block.low_mask == 0
                 && end & block.high_mask == 0
             {
-                return Some(start_position);
+                return Some((start_position, block));
             }
             let val = block.shift();
             start_position.bit_index += 1;
-            start_position.bit_index &= u64::BITS as usize;
+            start_position.bit_index &= u64::BITS as usize - 1;
             start_position.map_index += (start_position.bit_index == 0) as usize;
             end_position.map_index += val as usize;
         }
