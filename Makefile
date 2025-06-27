@@ -31,7 +31,7 @@ build-rust:
 	@echo "Compiling Rust code..."
 	$(CARGO) build --release --manifest-path $(FIRST)/$(TOML)  --target $(16BIT_TARGET).json
 	$(CARGO) build --release --manifest-path $(SECOND)/$(TOML) --target $(32BIT_TARGET).json
-	$(CARGO) build --release --manifest-path $(KERNEL)/$(TOML) --target $(64BIT_TARGET).json
+	RUSTFLAGS="-Zpolonius" $(CARGO) build --release --manifest-path $(KERNEL)/$(TOML) --target $(64BIT_TARGET).json
 # Step 3: Link everything
 create_img: build-rust build-asm
 	$(OBJCPY) -I elf32-i386 -O binary $(16BIT_ARTIFACT) 16bit.img
@@ -43,7 +43,7 @@ create_img: build-rust build-asm
 # Step 4: Run in QEMU
 run: all
 	@echo "Running bootloader in QEMU..."
-	$(QEMU) -m 4096 -smp 1 -drive format=raw,file=$(OUTPUT) -machine pc -monitor stdio
+	$(QEMU) -m 1006 -smp 1 -drive format=raw,file=$(OUTPUT) -machine pc -monitor stdio
 
 # Clean build artifacts
 clean:
