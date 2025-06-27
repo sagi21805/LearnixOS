@@ -71,7 +71,7 @@ pub extern "C" fn _start() -> ! {
     loop {}
 }
 
-#[naked]
+#[unsafe(naked)]
 #[unsafe(no_mangle)]
 pub extern "C" fn obtain_memory_map() {
     unsafe {
