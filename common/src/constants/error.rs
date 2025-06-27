@@ -11,9 +11,9 @@ pub enum TableError {
 #[derive(Error, Debug)]
 pub enum EntryError {
     #[error("There is no mapping to this entry")]
-    NoMapping(usize),
+    NoMapping,
     #[error("This entry contains memory block and not a table")]
-    NotATable(usize),
+    NotATable,
     #[error("Can't provide another entry, the table is full")]
     Full,
 }
