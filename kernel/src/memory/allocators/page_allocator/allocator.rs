@@ -1,24 +1,23 @@
-use super::extension_traits::{BitMapExtension, PageSizeEnumExtension, VirtualAddressExtension};
-use crate::memory::bitmap::{BitMap, Position};
+use crate::memory::bitmap::{BitMap, ContiguousBlockLayout, Position};
+use crate::{parsed_memory_map, println};
+use common::constants::addresses::FIRST_STAGE_OFFSET;
+use common::constants::enums::MemoryRegionType;
 use common::constants::values::REGULAR_PAGE_ALIGNMENT;
-use common::constants::{enums::PageSize, values::REGULAR_PAGE_SIZE};
+use common::constants::{addresses::PAGE_ALLOCATOR_OFFSET, values::REGULAR_PAGE_SIZE};
 use core::mem::MaybeUninit;
-use core::ptr::{self, null};
+use core::ptr::{self, Alignment, null};
 use core::{
     alloc::{GlobalAlloc, Layout},
     cell::UnsafeCell,
 };
-use cpu_utils::structures::paging::address_types::PhysicalAddress;
-use cpu_utils::{
-    registers::cr3::get_current_page_table, structures::paging::page_tables::PageTable,
-};
-
+use cpu_utils::structures::paging::address_types::{PhysicalAddress, VirtualAddress};
+use cpu_utils::structures::paging::page_tables::PageTable;
 #[derive(Debug)]
 // TODO: This is not thread safe, probably should use Mutex in the future
-/// Page allocator implemented with a bitmap, every bit corresponds to a physical page
-pub struct PageAllocator(UnsafeCell<BitMap>);
+/// Physical page allocator implemented with a bitmap, every bit corresponds to a physical page
+pub struct PhysicalPageAllocator(UnsafeCell<BitMap>);
 
-impl PageAllocator {
+impl PhysicalPageAllocator {
     /// Creates a new allocator from the `bitmap_address` and the `memory_size`.
     ///
     /// # Parameters
@@ -26,10 +25,20 @@ impl PageAllocator {
     /// - `bitmap_address`: Virtual address that is identity mapped and will use to store the map
     /// - `memory_size`: Memory size in <u>bytes</u>
     #[allow(unsafe_op_in_unsafe_fn)]
-    pub const unsafe fn new(bitmap_address: PhysicalAddress, memory_size: usize) -> PageAllocator {
+    pub const unsafe fn new(
+        bitmap_address: VirtualAddress,
+        memory_size: usize,
+    ) -> PhysicalPageAllocator {
         let size_in_pages = memory_size / (REGULAR_PAGE_SIZE * u64::BITS as usize);
-        PageAllocator(UnsafeCell::new(BitMap::new(bitmap_address, size_in_pages)))
-        // allocator
+        PhysicalPageAllocator(UnsafeCell::new(BitMap::new(bitmap_address, size_in_pages)))
+    }
+
+    pub const fn address_position(address: PhysicalAddress) -> Option<Position> {
+        if address.is_aligned(REGULAR_PAGE_ALIGNMENT) {
+            let bit_index = address.as_usize() / REGULAR_PAGE_SIZE;
+            return Some(Position::from_abs_bit_index(bit_index));
+        }
+        None
     }
 
     unsafe fn map(&self) -> &BitMap {
@@ -42,12 +51,44 @@ impl PageAllocator {
 
     pub fn init(uninit: &mut MaybeUninit<Self>) {
         unsafe {
-            // self.0.as_mut_unchecked().init();
-            // self.0.as_mut_unchecked().set_bit_unchecked(0, 0); // set the first bit so zero is not counted;
-            // Alloc reserved addresses TODO
-            // get_current_page_table().map_physical_memory(
-            // self.0.as_ref_unchecked().as_slice().len() * u64::BITS as usize * REGULAR_PAGE_SIZE,
-            // );
+            let memory_size = parsed_memory_map!()
+                .iter()
+                .map(|x| x.length as usize)
+                .sum::<usize>();
+            uninit.write(Self::new(
+                PhysicalAddress(PAGE_ALLOCATOR_OFFSET).translate(),
+                memory_size,
+            ));
+            let start_address = const {
+                PhysicalAddress::new_unchecked(FIRST_STAGE_OFFSET as usize)
+                    .align_down(REGULAR_PAGE_ALIGNMENT)
+            };
+            let start_position = Self::address_position(start_address.clone()).unwrap();
+            let initialized = uninit.assume_init_mut();
+            println!("Initial Memory: {}", initialized.available_memory());
+            // Allocate the addresses that are used for the code, and for other variables.
+            let end_address = PhysicalAddress::new(
+                PAGE_ALLOCATOR_OFFSET + (initialized.map().map.len() * size_of::<u64>()),
+            )
+            .align_up(REGULAR_PAGE_ALIGNMENT);
+            let size_bits = ((end_address - start_address) / 0x1000).as_usize();
+            let block = ContiguousBlockLayout::from_start_size(&start_position, size_bits);
+            initialized
+                .map_mut()
+                .set_contiguous_block(&start_position, &block);
+            parsed_memory_map!().iter().for_each(|region| {
+                if region.region_type != MemoryRegionType::Usable {
+                    let start_address_alligned = PhysicalAddress::new(
+                        region.base_address as usize & (u64::MAX ^ (0x1000 - 1)) as usize,
+                    );
+                    let start_position = Self::address_position(start_address_alligned).unwrap();
+                    let size_bits = region.length as usize / 0x1000;
+                    let block = ContiguousBlockLayout::from_start_size(&start_position, size_bits);
+                    initialized
+                        .map_mut()
+                        .set_contiguous_block(&start_position, &block);
+                }
+            });
         };
     }
 
@@ -59,7 +100,7 @@ impl PageAllocator {
     }
 
     pub fn available_memory(&self) -> usize {
-        unsafe { self.map().count_ones() * REGULAR_PAGE_SIZE }
+        unsafe { self.map().count_zeros() * REGULAR_PAGE_SIZE }
     }
 
     /// Return the physical address of this table
@@ -67,7 +108,7 @@ impl PageAllocator {
         let free_block = unsafe { self.map().find_free_block(1) };
 
         match free_block {
-            Some(p) => unsafe {
+            Some((p, _)) => unsafe {
                 let physical_address = self.resolve_position(&p);
 
                 ptr::write(
@@ -85,25 +126,20 @@ impl PageAllocator {
     }
 }
 
-pub trait LayoutExtension {
-    fn into_page_count(&self) -> (PageSize, usize);
-}
-
-impl LayoutExtension for Layout {
-    fn into_page_count(&self) -> (PageSize, usize) {
-        
-    }
-}
-
 #[allow(unsafe_op_in_unsafe_fn)]
-unsafe impl GlobalAlloc for PageAllocator {
+unsafe impl GlobalAlloc for PhysicalPageAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         match layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize()) {
-            Ok(layout) => {
-                let virt_region = PageTable::find_page_in_current_table(size.clone());
-                let phys_region = self.find_free_region(size.clone());
+            Ok(layout) => match self
+                .map()
+                .find_free_block(layout.size() / REGULAR_PAGE_SIZE)
+            {
+                Some((p, block)) => {
+                    self.map_mut().set_contiguous_block(&p, &block);
+                    self.resolve_position(&p).translate().as_mut_ptr::<u8>()
                 }
-            }
+                None => null::<u8>() as *mut u8,
+            },
             Err(_) => null::<u8>() as *mut u8,
         }
     }
@@ -111,4 +147,4 @@ unsafe impl GlobalAlloc for PageAllocator {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {}
 }
 
-unsafe impl Sync for PageAllocator {}
+unsafe impl Sync for PhysicalPageAllocator {}
