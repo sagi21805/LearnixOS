@@ -4,10 +4,10 @@
 ///
 /// --------------------------------------------------------------------------------------------------
 use super::address_types::{PhysicalAddress, VirtualAddress};
-use super::error::{EntryError, TableError};
 use crate::flag;
 use crate::registers::cr3::cr3_read;
-use common::constants::enums::PageSize;
+use common::constants::enums::{PageSize, PageTableLevel};
+use common::constants::error::{EntryError, TableError};
 use common::constants::values::{
     PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
 };
@@ -118,14 +118,15 @@ impl PageTableEntry {
     /// and should be marked owned by it in a memory allocator
     pub const fn map(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
         if !self.present() && frame.is_aligned(REGULAR_PAGE_ALIGNMENT) {
-            self.set_flags(flags);
-            self.set_present();
-            self.0 |= frame.as_usize() as u64 & ADDRESS_MASK;
-        } else {
-            // todo!(
-            // "Page is already mapped, raise a page fault when interrupt descriptor table is initialized"
-            // );
+            self.map_unchecked(frame, flags);
         }
+    }
+
+    pub const fn map_unchecked(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
+        self.set_flags(flags);
+        self.set_present();
+        self.0 &= !ADDRESS_MASK; // Zero out the address part of the entry.
+        self.0 |= frame.as_usize() as u64 & ADDRESS_MASK; // Set the new address
     }
 
     #[inline]
@@ -134,7 +135,7 @@ impl PageTableEntry {
         if self.present() {
             unsafe { Ok(self.mapped_unchecked()) }
         } else {
-            Err(EntryError::NoMapping(self.index_in_table()))
+            Err(EntryError::NoMapping)
         }
     }
 
@@ -147,36 +148,31 @@ impl PageTableEntry {
     /// Return the physical address mapped by this table as a reference into a page table.
     ///
     /// This method assumes all page tables are identity mapped.
-    pub fn mapped_table_mut(&mut self) -> Result<(usize, &mut PageTable), EntryError> {
+    pub fn mapped_table_mut(&self) -> Result<&mut PageTable, EntryError> {
         // first check if the entry is mapped.
         let table = unsafe { &mut *self.mapped()?.as_mut_ptr::<PageTable>() };
         // then check if it is a table.
         if !self.huge_page() && self.is_table() {
-            Ok((self.index_in_table(), table))
+            Ok(table)
         } else {
-            Err(EntryError::NotATable(self.index_in_table()))
+            Err(EntryError::NotATable)
         }
     }
 
-    pub fn mapped_table(&self) -> Result<(usize, &PageTable), EntryError> {
+    pub fn mapped_table(&self) -> Result<&PageTable, EntryError> {
         // first check if the entry is mapped.
         let table = unsafe { &*self.mapped()?.as_ptr::<PageTable>() };
         // then check if it is a table.
         if !self.huge_page() && self.is_table() {
-            Ok((self.index_in_table(), table))
+            Ok(table)
         } else {
-            Err(EntryError::NotATable(self.index_in_table()))
+            Err(EntryError::NotATable)
         }
     }
 
     #[inline]
     pub fn as_u64(&self) -> u64 {
         self.0
-    }
-
-    /// Return a reference to the parent page table of this entry, this is a physical address meant to be accessed with the identity page table
-    pub(self) fn index_in_table(&self) -> usize {
-        ((self as *const Self as usize) & (REGULAR_PAGE_SIZE - 1)) / size_of::<PageTableEntry>()
     }
 }
 
@@ -216,23 +212,23 @@ impl PageTable {
     fn fetch_table_or_empty(
         &self,
         start_at: usize,
-        table_level: usize,
+        table_level: &PageTableLevel,
         page_size: &PageSize,
-    ) -> Result<(usize, &PageTable), EntryError> {
-        for entry in self.entries.iter().skip(start_at) {
+    ) -> (usize, Option<&PageTable>) {
+        for (i, entry) in self.entries.iter().enumerate().skip(start_at) {
             match entry.mapped_table() {
                 Ok(v) => {
                     if page_size.exceeds(table_level) {
                         continue;
                     }
-                    return Ok(v);
+                    return (i, Some(v));
                 }
-                Err(EntryError::NoMapping(v)) => return Err(EntryError::NoMapping(v)),
-                Err(EntryError::NotATable(_)) => continue,
+                Err(EntryError::NoMapping) => return (i, None),
+                Err(EntryError::NotATable) => continue,
                 _ => unreachable!(),
             }
         }
-        Err(EntryError::Full)
+        (PAGE_DIRECTORY_ENTRIES, None)
     }
 
     pub fn current_table() -> &'static PageTable {
@@ -244,39 +240,38 @@ impl PageTable {
     }
 
     /// Find an avavilable page.
-    pub fn find_contiguous_pages_in_current_table(
-        page_size: PageSize,
-    ) -> Result<VirtualAddress, TableError> {
+    pub fn find_available_page(page_size: PageSize) -> Result<VirtualAddress, TableError> {
         const LEVELS: usize = 4;
         let mut level_indices = [0usize; LEVELS];
         let mut page_tables = [Self::current_table(); LEVELS];
-        let mut current_level = 0;
+        let mut current_level = PageTableLevel::ForthLevel;
         loop {
-            let current_table = page_tables[current_level];
-            page_tables[current_level + 1] = match current_table.fetch_table_or_empty(
-                level_indices[current_level],
-                current_level,
+            let current_table = page_tables[current_level.as_usize()];
+
+            let next_table = match current_table.fetch_table_or_empty(
+                level_indices[current_level.as_usize()],
+                &current_level,
                 &page_size,
             ) {
-                Ok((i, table)) => {
-                    level_indices[current_level] = i;
-                    table
-                }
-                Err(EntryError::NoMapping(i)) => {
-                    level_indices[current_level] = i;
-                    return Ok(VirtualAddress::from_indices(level_indices));
-                }
-                Err(EntryError::Full) => {
-                    if current_level == 0 {
-                        return Err(TableError::Full);
-                    }
-                    current_level -= 1;
-                    level_indices[current_level] += 1;
+                (PAGE_DIRECTORY_ENTRIES, None) => {
+                    current_level = current_level.prev()?;
+                    level_indices[current_level.as_usize()] += 1;
                     continue;
                 }
-                _ => unreachable!(),
+                (i, Some(table)) => {
+                    level_indices[current_level.as_usize()] = i;
+                    table
+                }
+                (i, None) => {
+                    level_indices[current_level.as_usize()] = i;
+                    return Ok(VirtualAddress::from_indices(level_indices));
+                }
             };
-            current_level += 1;
+            let next_level = current_level
+                .next()
+                .expect("Can't go next on a first level table");
+            page_tables[next_level.as_usize()] = next_table;
+            level_indices[next_level.as_usize()] += 1;
         }
     }
 }

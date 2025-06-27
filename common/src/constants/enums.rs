@@ -1,9 +1,9 @@
-use core::{alloc::Layout, ptr::Alignment};
-
+use super::error::TableError;
 use crate::constants::values::{
     BIG_PAGE_ALIGNMENT, BIG_PAGE_SIZE, HUGE_PAGE_ALIGNMENT, HUGE_PAGE_SIZE, REGULAR_PAGE_ALIGNMENT,
     REGULAR_PAGE_SIZE,
 };
+use core::{alloc::Layout, ptr::Alignment};
 
 pub enum Interrupts {
     VIDEO = 0x10,
@@ -60,6 +60,35 @@ pub enum PageSize {
     /// 1Gib pages
     Huge = 2,
 }
+#[derive(Clone)]
+pub enum PageTableLevel {
+    ForthLevel = 0,
+    ThirdLevel = 1,
+    SecondLevel = 2,
+    FirstTable = 3,
+}
+
+impl PageTableLevel {
+    pub fn next(&self) -> Option<Self> {
+        match self {
+            Self::FirstTable => None,
+            Self::SecondLevel => Some(Self::FirstTable),
+            Self::ThirdLevel => Some(Self::SecondLevel),
+            Self::ForthLevel => Some(Self::ThirdLevel),
+        }
+    }
+    pub fn prev(&self) -> Result<Self, TableError> {
+        match self {
+            Self::FirstTable => Ok(Self::SecondLevel),
+            Self::SecondLevel => Ok(Self::ThirdLevel),
+            Self::ThirdLevel => Ok(Self::ForthLevel),
+            Self::ForthLevel => Err(TableError::Full),
+        }
+    }
+    pub fn as_usize(&self) -> usize {
+        self.clone() as usize
+    }
+}
 
 impl PageSize {
     pub fn alignment(&self) -> Alignment {
@@ -72,8 +101,8 @@ impl PageSize {
         }
     }
 
-    pub fn exceeds(&self, table_level: usize) -> bool {
-        return (3 - self.clone() as usize) <= table_level;
+    pub fn exceeds(&self, table_level: &PageTableLevel) -> bool {
+        return (3 - self.clone() as usize) <= table_level.as_usize();
     }
 
     /// Determines the appropriate `PageSizeAlignment` for a given memory layout.
