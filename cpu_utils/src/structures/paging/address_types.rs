@@ -58,6 +58,18 @@ macro_rules! impl_common_address_functions {
             }
 
             #[inline]
+            pub const fn align_up(mut self, alignment: core::ptr::Alignment) -> Self {
+                self.0 = (self.0 + (alignment.as_usize() - 1)) & !(alignment.as_usize() - 1);
+                self
+            }
+
+            #[inline]
+            pub const fn align_down(mut self, alignment: core::ptr::Alignment) -> Self {
+                self.0 &= !(alignment.as_usize() - 1);
+                self
+            }
+
+            #[inline]
             /// Get the alignment of an address
             pub const fn alignment(&self) -> Alignment {
                 unsafe { Alignment::new_unchecked(1 << self.0.trailing_zeros()) }
