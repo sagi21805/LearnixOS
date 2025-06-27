@@ -1,5 +1,3 @@
-use core::slice;
-
 use common::constants::{
     addresses::{
         MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, PARSED_MEMORY_MAP_LENGTH, PARSED_MEMORY_MAP_OFFSET,
@@ -9,8 +7,41 @@ use common::constants::{
 };
 use core::fmt::{self, Display, Formatter};
 use cpu_utils::structures::paging::address_types::PhysicalAddress;
+#[macro_export]
+macro_rules! parsed_memory_map {
+    () => {
+        unsafe {
+            ::core::slice::from_raw_parts_mut(
+                cpu_utils::structures::paging::address_types::PhysicalAddress::new(
+                    common::constants::addresses::PARSED_MEMORY_MAP_OFFSET as usize,
+                )
+                .translate()
+                .as_mut_ptr::<crate::memory::memory_map::MemoryRegion>(),
+                *(cpu_utils::structures::paging::address_types::PhysicalAddress::new(
+                    common::constants::addresses::PARSED_MEMORY_MAP_LENGTH as usize,
+                )
+                .translate()
+                .as_mut_ptr::<u32>()) as usize,
+            )
+        }
+    };
+}
 
-use crate::println;
+#[macro_export]
+macro_rules! raw_memory_map {
+    () => {
+        unsafe {
+            ::core::slice::from_raw_parts_mut(
+                PhysicalAddress::new(common::constants::addresses::MEMORY_MAP_OFFSET as usize)
+                    .translate()
+                    .as_mut_ptr::<crate::memory::memory_map::MemoryRegionExtended>(),
+                *(PhysicalAddress::new(common::constants::addresses::MEMORY_MAP_LENGTH as usize)
+                    .translate()
+                    .as_mut_ptr::<u32>()) as usize,
+            )
+        }
+    };
+}
 
 macro_rules! write_region {
     ($position:expr, $region:expr) => {
@@ -95,14 +126,7 @@ impl Display for ParsedMapDisplay {
 /// The generated output will be saved to [`PARSED_MEMORY_MAP_OFFSET`],
 /// and will include non gapped, organized entries of type [`MemoryRegion`]
 pub fn parse_map() {
-    let memory_map = unsafe {
-        slice::from_raw_parts_mut(
-            PhysicalAddress::new(MEMORY_MAP_OFFSET as usize)
-                .translate()
-                .as_mut_ptr::<MemoryRegionExtended>(),
-            *(MEMORY_MAP_LENGTH as *const u32) as usize,
-        )
-    };
+    let memory_map = raw_memory_map!();
     let mut range_count = 0;
     let mut matched = unsafe { *memory_map.as_mut_ptr() };
     for region in memory_map {
