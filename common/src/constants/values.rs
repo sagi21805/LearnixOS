@@ -12,4 +12,4 @@ pub const REGULAR_PAGE_ALIGNMENT: Alignment =
     unsafe { Alignment::new_unchecked(REGULAR_PAGE_SIZE) };
 pub const BIG_PAGE_ALIGNMENT: Alignment = unsafe { Alignment::new_unchecked(BIG_PAGE_SIZE) };
 pub const HUGE_PAGE_ALIGNMENT: Alignment = unsafe { Alignment::new_unchecked(HUGE_PAGE_SIZE) };
-pub const MEMORY_MAP_MAGIC_NUMBER: u32 = unsafe { core::mem::transmute([b'P', b'A', b'M', b'S']) }; // 'SMAP' in little endian
+pub const MEMORY_MAP_MAGIC_NUMBER: u32 = u32::from_le_bytes([b'P', b'A', b'M', b'S']); // 'SMAP' in little endian
