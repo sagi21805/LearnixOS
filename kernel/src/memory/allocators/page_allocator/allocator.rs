@@ -18,12 +18,19 @@ use cpu_utils::structures::paging::page_tables::PageTable;
 pub struct PhysicalPageAllocator(UnsafeCell<BitMap>);
 
 impl PhysicalPageAllocator {
-    /// Creates a new allocator from the `bitmap_address` and the `memory_size`.
+    /// Constructs a new physical page allocator using the provided bitmap address and total memory size.
     ///
-    /// # Parameters
+    /// The allocator uses the given virtual address to store its internal bitmap, which tracks allocation status for each physical page. The memory size determines the number of pages managed by the allocator. The bitmap address must be identity mapped.
     ///
-    /// - `bitmap_address`: Virtual address that is identity mapped and will use to store the map
-    /// - `memory_size`: Memory size in <u>bytes</u>
+    /// # Safety
+    ///
+    /// The caller must ensure that the provided bitmap address is valid, properly aligned, and mapped for the required size.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let allocator = unsafe { PhysicalPageAllocator::new(bitmap_addr, total_memory_bytes) };
+    /// ```
     #[allow(unsafe_op_in_unsafe_fn)]
     pub const unsafe fn new(
         bitmap_address: VirtualAddress,
@@ -33,6 +40,17 @@ impl PhysicalPageAllocator {
         PhysicalPageAllocator(UnsafeCell::new(BitMap::new(bitmap_address, size_in_pages)))
     }
 
+    /// Returns the bitmap position corresponding to a physical address if it is page-aligned.
+    ///
+    /// Returns `None` if the address is not aligned to the regular page size. Otherwise, computes the bit index representing the page and returns its position in the bitmap.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let addr = PhysicalAddress::from(0x2000);
+    /// let pos = PhysicalPageAllocator::address_position(addr);
+    /// assert!(pos.is_some());
+    /// ```
     pub const fn address_position(address: PhysicalAddress) -> Option<Position> {
         if address.is_aligned(REGULAR_PAGE_ALIGNMENT) {
             let bit_index = address.as_usize() / REGULAR_PAGE_SIZE;
@@ -41,14 +59,55 @@ impl PhysicalPageAllocator {
         None
     }
 
+    /// Returns an immutable reference to the internal bitmap representing physical page allocation.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that no mutable references to the bitmap exist while this reference is in use, as the allocator is not thread-safe.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // SAFETY: Caller must ensure exclusive access if mutating elsewhere.
+    /// let bitmap = unsafe { allocator.map() };
+    /// ```
     unsafe fn map(&self) -> &BitMap {
         unsafe { self.0.as_ref_unchecked() }
     }
 
+    /// Returns a mutable reference to the internal bitmap used for tracking physical page allocation.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure exclusive access to the allocator to prevent data races, as this method provides mutable access to the underlying bitmap.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // SAFETY: Caller must ensure exclusive access to the allocator.
+    /// let bitmap = unsafe { allocator.map_mut() };
+    /// ```
     unsafe fn map_mut(&self) -> &mut BitMap {
         unsafe { self.0.as_mut_unchecked() }
     }
 
+    /// Initializes the physical page allocator in-place using the parsed memory map.
+    ///
+    /// This function sets up the allocator at a fixed physical address, marks pages used by the kernel and allocator metadata as allocated, and reserves all non-usable memory regions in the bitmap. It must be called before any allocations are performed.
+    ///
+    /// # Parameters
+    /// - `uninit`: A mutable reference to uninitialized memory where the allocator will be constructed.
+    ///
+    /// # Safety
+    /// This function performs raw pointer operations and assumes the provided memory is valid for initialization.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut uninit = core::mem::MaybeUninit::uninit();
+    /// PhysicalPageAllocator::init(&mut uninit);
+    /// let allocator = unsafe { uninit.assume_init() };
+    /// ```
     pub fn init(uninit: &mut MaybeUninit<Self>) {
         unsafe {
             let memory_size = parsed_memory_map!()
@@ -92,18 +151,55 @@ impl PhysicalPageAllocator {
         };
     }
 
-    /// Resolves `map_index` and `bit_index` into actual physical address
+    /// Converts a bitmap position to the corresponding physical address.
+    ///
+    /// The position is interpreted as an offset in the bitmap, where each bit represents a physical page.
+    /// The resulting address is page-aligned and calculated based on the page size and bit position.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let position = Position { map_index: 2, bit_index: 5 };
+    /// let address = allocator.resolve_position(&position);
+    /// assert_eq!(address.as_u64() % REGULAR_PAGE_SIZE as u64, 0);
+    /// ```
     pub fn resolve_position(&self, p: &Position) -> PhysicalAddress {
         return PhysicalAddress::new(
             ((p.map_index * (u64::BITS as usize)) + p.bit_index as usize) * REGULAR_PAGE_SIZE,
         );
     }
 
+    /// Returns the total amount of free physical memory in bytes.
+    ///
+    /// Calculates the number of unallocated pages by counting zero bits in the bitmap and multiplies by the regular page size.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let free_bytes = allocator.available_memory();
+    /// assert!(free_bytes % REGULAR_PAGE_SIZE == 0);
+    /// ```
     pub fn available_memory(&self) -> usize {
         unsafe { self.map().count_zeros() * REGULAR_PAGE_SIZE }
     }
 
-    /// Return the physical address of this table
+    /// Allocates a single physical page for use as a page table and returns a mutable reference to it.
+    ///
+    /// The allocated page is zero-initialized and marked as used in the bitmap.
+    /// Panics if no free physical page is available.
+    ///
+    /// # Returns
+    /// A mutable reference to the newly allocated and initialized `PageTable`.
+    ///
+    /// # Panics
+    /// Panics if there are no free physical pages available.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let table = allocator.alloc_table();
+    /// // Use `table` as a mutable PageTable
+    /// ```
     pub(super) fn alloc_table(&self) -> &'static mut PageTable {
         let free_block = unsafe { self.map().find_free_block(1) };
 
@@ -128,6 +224,22 @@ impl PhysicalPageAllocator {
 
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe impl GlobalAlloc for PhysicalPageAllocator {
+    /// Allocates a contiguous block of physical pages matching the specified layout.
+    ///
+    /// The allocation is aligned to the regular page size. Returns a pointer to the start of the allocated physical memory, or a null pointer if alignment fails or no suitable block is available.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the returned memory is used safely and that the allocator remains valid for the duration of use. Deallocation is not implemented.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use core::alloc::Layout;
+    /// let layout = Layout::from_size_align(4096, 4096).unwrap();
+    /// let ptr = unsafe { allocator.alloc(layout) };
+    /// assert!(!ptr.is_null());
+    /// ```
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         match layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize()) {
             Ok(layout) => match self
@@ -144,7 +256,10 @@ unsafe impl GlobalAlloc for PhysicalPageAllocator {
         }
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {}
+    /// Deallocation is not implemented for this allocator.
+///
+/// This method is a no-op and does not free any memory.
+unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {}
 }
 
 unsafe impl Sync for PhysicalPageAllocator {}

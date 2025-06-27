@@ -74,12 +74,32 @@ impl PageEntryFlags {
             .set_chain_writable()
             .set_chain_huge_page()
     }
+    /// Returns flags suitable for a regular present and writable page entry.
+    ///
+    /// The returned flags indicate that the page is present and writable, but do not set any special attributes such as huge page or table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let flags = PageEntryFlags::regular_page_flags();
+    /// assert!(flags.as_u64() & PageEntryFlags::PRESENT != 0);
+    /// assert!(flags.as_u64() & PageEntryFlags::WRITABLE != 0);
+    /// ```
     pub const fn regular_page_flags() -> Self {
         PageEntryFlags::new()
             .set_chain_present()
             .set_chain_writable()
     }
     table_entry_flags!();
+    /// Returns the raw 64-bit value of the page entry or flags.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let flags = PageEntryFlags::regular_page_flags();
+    /// let raw = flags.as_u64();
+    /// assert_eq!(raw & 0b11, 0b11); // present and writable bits set
+    /// ```
     pub const fn as_u64(&self) -> u64 {
         self.0
     }
@@ -90,38 +110,42 @@ impl PageEntryFlags {
 pub struct PageTableEntry(u64);
 
 impl PageTableEntry {
-    #[inline]
+    /// Returns a new instance with all flags cleared.
     pub(crate) const fn empty() -> Self {
         Self(0)
     }
 
     table_entry_flags!();
 
+    /// Sets the page table entry flags, preserving the address bits.
+    ///
+    /// Replaces any existing flags with the provided `flags`, while leaving the mapped address unchanged.
     pub const fn set_flags(&mut self, flags: PageEntryFlags) {
         self.0 &= ADDRESS_MASK; // zero out all previous flags.
         self.0 |= flags.as_u64(); // set new flags;
     }
 
-    #[inline]
-    /// Map a frame to the page table entry while checking flags and frame alignment but **not** the ownership of the frame address
-    /// This function **will** set the entry as present even if it was not specified in the flags.
+    /// Maps a physical frame to this page table entry if it is not already present and the frame is properly aligned.
+    ///
+    /// Sets the entry as present regardless of the provided flags. Raises a page fault if the entry is already mapped.
     ///
     /// # Parameters
     ///
-    /// - `frame`: The physical address of the mapped frame
-    ///
-    /// # Interrupts
-    /// This function will raise a PAGE_FAULT if the entry is already mapped
+    /// - `frame`: Physical address of the frame to map. Must be aligned to the regular page size.
+    /// - `flags`: Flags to set for the entry (the present flag will be enforced).
     ///
     /// # Safety
-    /// The `frame` address should not be used by anyone except the corresponding virtual address,
-    /// and should be marked owned by it in a memory allocator
+    ///
+    /// The caller must ensure that the `frame` is exclusively owned by the corresponding virtual address and properly tracked by the memory allocator.
     pub const fn map(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
         if !self.present() && frame.is_aligned(REGULAR_PAGE_ALIGNMENT) {
             self.map_unchecked(frame, flags);
         }
     }
 
+    /// Maps a physical frame to this page table entry without performing any checks.
+    ///
+    /// Overwrites the entry's address and flags with the provided values, marking it as present. No validation is performed on the frame alignment or existing entry state. Intended for use in contexts where safety is guaranteed externally.
     pub const fn map_unchecked(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
         self.set_flags(flags);
         self.set_present();
@@ -129,8 +153,10 @@ impl PageTableEntry {
         self.0 |= frame.as_usize() as u64 & ADDRESS_MASK; // Set the new address
     }
 
+    /// Returns the physical address mapped by this entry if it is present.
+    ///
+    /// Returns an error if the entry does not map a physical address.
     #[inline]
-    /// Return the physical address that is mapped by this entry, if this entry is not mapped, return None.
     pub fn mapped(&self) -> Result<PhysicalAddress, EntryError> {
         if self.present() {
             unsafe { Ok(self.mapped_unchecked()) }
@@ -139,15 +165,25 @@ impl PageTableEntry {
         }
     }
 
+    /// Returns the physical address mapped by this entry without checking if the entry is present.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the entry is valid and actually maps a physical address. Calling this on an unmapped or invalid entry may result in undefined behavior.
     #[inline]
     pub const unsafe fn mapped_unchecked(&self) -> PhysicalAddress {
         unsafe { PhysicalAddress::new_unchecked((self.0 & ADDRESS_MASK) as usize) }
     }
 
-    #[inline]
-    /// Return the physical address mapped by this table as a reference into a page table.
+    /// Returns a mutable reference to the page table mapped by this entry.
     ///
-    /// This method assumes all page tables are identity mapped.
+    /// The entry must be present, not a huge page, and marked as a table. Returns an error if the entry is not mapped or does not reference a page table. Assumes all page tables are identity mapped.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(&mut PageTable)` if the entry maps to a valid page table.
+    /// - `Err(EntryError::NoMapping)` if the entry is not present.
+    /// - `Err(EntryError::NotATable)` if the entry does not reference a page table.
     pub fn mapped_table_mut(&self) -> Result<&mut PageTable, EntryError> {
         // first check if the entry is mapped.
         let table = unsafe { &mut *self.mapped()?.as_mut_ptr::<PageTable>() };
@@ -159,6 +195,9 @@ impl PageTableEntry {
         }
     }
 
+    /// Returns a reference to the page table mapped by this entry if it is a table and not a huge page.
+    ///
+    /// Returns an error if the entry is not mapped or does not point to a page table.
     pub fn mapped_table(&self) -> Result<&PageTable, EntryError> {
         // first check if the entry is mapped.
         let table = unsafe { &*self.mapped()?.as_ptr::<PageTable>() };
@@ -170,6 +209,15 @@ impl PageTableEntry {
         }
     }
 
+    /// Returns the raw 64-bit value of the page entry or flags.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let flags = PageEntryFlags::regular_page_flags();
+    /// let raw = flags.as_u64();
+    /// assert_eq!(raw & 0b11, 0b11); // present and writable bits set
+    /// ```
     #[inline]
     pub fn as_u64(&self) -> u64 {
         self.0
@@ -184,11 +232,36 @@ pub struct PageTable {
 }
 
 impl PageTable {
+    /// Returns a mutable reference to a `PageTable` at the given memory address.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `page_table_ptr` is valid, properly aligned, and points to a region of memory that is safe to interpret as a `PageTable`. Using an invalid pointer may cause undefined behavior.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let ptr = 0x1000usize; // Must be a valid, aligned page table address
+    /// let table = unsafe { PageTable::from_ptr(ptr) };
+    /// ```
     #[inline]
     pub const unsafe fn from_ptr(page_table_ptr: usize) -> &'static mut PageTable {
         unsafe { &mut *(page_table_ptr as *mut PageTable) }
     }
 
+    /// Writes an empty page table to the specified memory address and returns a mutable reference to it.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `page_table_ptr` is valid, properly aligned, and points to writable memory large enough for a `PageTable`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let page_table_addr = 0x1000usize; // Must be a valid, aligned address
+    /// let table = unsafe { PageTable::empty_from_ptr(page_table_addr) };
+    /// assert!(table.entries.iter().all(|e| e.as_u64() == 0));
+    /// ```
     #[inline]
     pub unsafe fn empty_from_ptr(page_table_ptr: usize) -> &'static mut PageTable {
         unsafe {
@@ -204,11 +277,42 @@ impl PageTable {
         }
     }
 
+    /// Returns the virtual address of this page table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let table = PageTable::empty();
+    /// let addr = table.address();
+    /// assert_eq!(addr.as_usize(), &table as *const _ as usize);
+    /// ```
     #[inline]
     pub fn address(&self) -> VirtualAddress {
         unsafe { VirtualAddress::new_unchecked(self as *const Self as usize) }
     }
 
+    /// Searches for the next mapped page table or empty entry starting from a given index.
+    ///
+    /// Iterates over page table entries beginning at `start_at`, returning the index and a reference to the mapped table if found. If an empty entry is encountered, returns its index and `None`. Skips entries that are not tables or are huge pages. If no suitable entry is found, returns `(PAGE_DIRECTORY_ENTRIES, None)`.
+    ///
+    /// # Parameters
+    /// - `start_at`: The index to begin searching from within the entries.
+    /// - `table_level`: The current level of the page table hierarchy.
+    /// - `page_size`: The page size being considered.
+    ///
+    /// # Returns
+    /// A tuple containing the index of the found entry and an optional reference to the mapped page table. If no entry is found, the index will be `PAGE_DIRECTORY_ENTRIES` and the reference will be `None`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let (idx, table_opt) = page_table.fetch_table_or_empty(0, &table_level, &page_size);
+    /// if let Some(table) = table_opt {
+    ///     // Found a mapped table at index `idx`
+    /// } else {
+    ///     // Found an empty entry at index `idx`
+    /// }
+    /// ```
     fn fetch_table_or_empty(
         &self,
         start_at: usize,
@@ -231,15 +335,53 @@ impl PageTable {
         (PAGE_DIRECTORY_ENTRIES, None)
     }
 
+    /// Returns a reference to the current top-level page table by reading the CR3 register.
+    ///
+    /// # Safety
+    ///
+    /// The returned reference assumes that the address in CR3 is valid and mapped for the lifetime of the program.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let table = PageTable::current_table();
+    /// // Use `table` to inspect or traverse the current page table hierarchy.
+    /// ```
     pub fn current_table() -> &'static PageTable {
         unsafe { core::mem::transmute(cr3_read()) }
     }
 
+    /// Returns a mutable reference to the current top-level page table by reading the CR3 register.
+    ///
+    /// # Safety
+    ///
+    /// This function uses an unsafe transmute to cast the physical address from CR3 to a mutable reference.
+    /// The caller must ensure that this reference is valid and not aliased elsewhere.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let table = PageTable::current_table_mut();
+    /// // Now you can modify the current page table entries.
+    /// ```
     pub fn current_table_mut() -> &'static mut PageTable {
         unsafe { core::mem::transmute(cr3_read()) }
     }
 
-    /// Find an avavilable page.
+    /// Searches the page table hierarchy for the first available virtual page of the specified size.
+    ///
+    /// Traverses the page tables from the fourth level down, returning the virtual address of the first unmapped page suitable for the given `page_size`. Returns an error if no available page is found.
+    ///
+    /// # Returns
+    /// - `Ok(VirtualAddress)` with the address of the first available page.
+    /// - `Err(TableError)` if no suitable page is available.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let page = PageTable::find_available_page(PageSize::Regular).unwrap();
+    /// assert!(page.is_aligned(PageSize::Regular));
+    /// ```
     pub fn find_available_page(page_size: PageSize) -> Result<VirtualAddress, TableError> {
         const LEVELS: usize = 4;
         let mut level_indices = [0usize; LEVELS];

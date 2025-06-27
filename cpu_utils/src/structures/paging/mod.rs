@@ -12,8 +12,20 @@ use core::{arch::asm, ops::Add};
 use page_tables::PageTableEntry;
 #[allow(static_mut_refs)]
 use page_tables::{PageEntryFlags, PageTable};
-#[allow(static_mut_refs)]
-#[cfg(target_arch = "x86")]
+/// Sets up and enables identity paging on x86 architecture.
+///
+/// This function initializes the page table hierarchy at fixed physical addresses to establish identity mapping for the first 2 MiB of memory. It then loads the page table base address into the CR3 register, enables Physical Address Extension (PAE) in CR4, activates long mode via the EFER MSR, and finally enables paging by setting the PG bit in CR0. Intended for use during early system initialization before paging is active.
+///
+/// # Safety
+///
+/// This function performs direct memory and register manipulation using unsafe code and inline assembly. It assumes that the page tables are correctly set up at the specified physical addresses and should only be called in a controlled environment, such as during kernel or bootloader initialization.
+///
+/// # Examples
+///
+/// ```no_run
+/// // Enable identity paging on x86 (should be called only once during early boot)
+/// enable();
+/// ```
 pub fn enable() {
     use address_types::PhysicalAddress;
     use common::constants::{

@@ -69,6 +69,15 @@ pub enum PageTableLevel {
 }
 
 impl PageTableLevel {
+    /// Returns the next lower page table level, or `None` if already at the lowest level.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::PageTableLevel;
+    /// assert_eq!(PageTableLevel::ThirdLevel.next(), Some(PageTableLevel::SecondLevel));
+    /// assert_eq!(PageTableLevel::FirstTable.next(), None);
+    /// ```
     pub fn next(&self) -> Option<Self> {
         match self {
             Self::FirstTable => None,
@@ -77,6 +86,24 @@ impl PageTableLevel {
             Self::ForthLevel => Some(Self::ThirdLevel),
         }
     }
+    /// Returns the previous higher page table level, or an error if already at the highest level.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Self)`: The previous higher `PageTableLevel`.
+    /// - `Err(TableError::Full)`: If called on `ForthLevel`, indicating no higher level exists.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::PageTableLevel;
+    ///
+    /// let level = PageTableLevel::SecondLevel;
+    /// assert_eq!(level.prev().unwrap(), PageTableLevel::ThirdLevel);
+    ///
+    /// let top = PageTableLevel::ForthLevel;
+    /// assert!(top.prev().is_err());
+    /// ```
     pub fn prev(&self) -> Result<Self, TableError> {
         match self {
             Self::FirstTable => Ok(Self::SecondLevel),
@@ -85,12 +112,28 @@ impl PageTableLevel {
             Self::ForthLevel => Err(TableError::Full),
         }
     }
+    /// Returns the numeric representation of the page table level as a `usize`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let level = PageTableLevel::SecondLevel;
+    /// assert_eq!(level.as_usize(), 2);
+    /// ```
     pub fn as_usize(&self) -> usize {
         self.clone() as usize
     }
 }
 
 impl PageSize {
+    /// Returns the memory alignment associated with the page size.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let alignment = PageSize::Regular.alignment();
+    /// assert_eq!(alignment, REGULAR_PAGE_ALIGNMENT);
+    /// ```
     pub fn alignment(&self) -> Alignment {
         match self {
             PageSize::Regular => REGULAR_PAGE_ALIGNMENT,
@@ -101,6 +144,17 @@ impl PageSize {
         }
     }
 
+    /// Determines if the page size is equal to or larger than the specified page table level.
+    ///
+    /// Returns `true` if the page size corresponds to a level that is equal to or exceeds the given `PageTableLevel`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let page_size = PageSize::Big;
+    /// let level = PageTableLevel::SecondLevel;
+    /// assert!(page_size.exceeds(&level));
+    /// ```
     pub fn exceeds(&self, table_level: &PageTableLevel) -> bool {
         return (3 - self.clone() as usize) <= table_level.as_usize();
     }
@@ -120,6 +174,14 @@ impl PageSize {
         }
     }
 
+    /// Returns the `PageSize` corresponding to the given memory alignment, or `None` if the alignment does not match a known page size.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let page_size = PageSize::from_alignment(REGULAR_PAGE_ALIGNMENT);
+    /// assert_eq!(page_size, Some(PageSize::Regular));
+    /// ```
     pub const fn from_alignment(alignment: Alignment) -> Option<Self> {
         match alignment {
             REGULAR_PAGE_ALIGNMENT => Some(Self::Regular),
@@ -129,6 +191,19 @@ impl PageSize {
         }
     }
 
+    /// Returns the number of 4KiB regular pages contained in this page size.
+    ///
+    /// For example, a `Big` page (2MiB) contains 512 regular pages, and a `Huge` page (1GiB) contains 262,144 regular pages.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::PageSize;
+    ///
+    /// assert_eq!(PageSize::Regular.size_in_regular_pages(), 1);
+    /// assert_eq!(PageSize::Big.size_in_regular_pages(), 512);
+    /// assert_eq!(PageSize::Huge.size_in_regular_pages(), 262_144);
+    /// ```
     pub const fn size_in_regular_pages(&self) -> usize {
         match self {
             PageSize::Regular => 1,

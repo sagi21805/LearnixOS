@@ -6,6 +6,10 @@ use cpu_utils::structures::paging::page_tables::{PageEntryFlags, PageTable, Page
 use extend::ext;
 #[ext]
 impl PhysicalAddress {
+    /// Maps this physical address to the specified virtual address with the given flags and page size.
+    ///
+    /// Delegates the mapping operation to the virtual address, associating it with this physical address.
+    #[inline]
     fn map(&self, address: VirtualAddress, flags: PageEntryFlags, page_size: PageSize) {
         address.map(self.clone(), flags, page_size)
     }
@@ -13,9 +17,20 @@ impl PhysicalAddress {
 
 #[ext]
 pub impl PageTableEntry {
-    /// This function will return a table mapped in this entry if there is one.
+    /// Returns a mutable reference to the page table mapped by this entry, allocating and mapping a new table if necessary.
     ///
-    /// Else, it will override what is inside the entry and map a new table to it so valid table is guranteed to be returned.
+    /// If a page table is already mapped in this entry, it is returned. Otherwise, a new page table is allocated, mapped into this entry, and a mutable reference to it is returned. This guarantees that a valid page table is always provided.
+    ///
+    /// # Safety
+    ///
+    /// This function uses unsafe operations to allocate and map page tables. It assumes the presence of a global allocator and that the entry can be safely overwritten if not already mapped.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut entry = PageTableEntry::default();
+    /// let table: &mut PageTable = entry.force_resolve_table_mut();
+    /// ```
     fn force_resolve_table_mut(&mut self) -> &mut PageTable {
         if let Ok(table) = self.mapped_table_mut() {
             return table;
@@ -32,13 +47,27 @@ pub impl PageTableEntry {
 
 #[ext]
 pub impl VirtualAddress {
-    /// Map this `virtual address` into the given `physical_address` with the current page table, obtained  from `cr3`
-    /// if a page table for the given virtual address doesn't exist, a new table **will** be created for it
+    /// Maps this virtual address to the specified physical address in the current page table.
+    ///
+    /// If intermediate page tables required for this mapping do not exist, they are automatically created. Both the virtual and physical addresses must be aligned to the specified page size; otherwise, the function panics.
     ///
     /// # Parameters
     ///
-    /// - `address`: The physical address to map this to, this address is needed
-    /// - `page_size`: The size of the page from the [`PageSize`] enum
+    /// - `address`: The physical address to map to.
+    /// - `flags`: Page entry flags to use for the mapping.
+    /// - `page_size`: The page size for the mapping, determining the level in the page table hierarchy.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either the virtual or physical address is not properly aligned for the given page size.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let vaddr = VirtualAddress::new(0x4000_0000);
+    /// let paddr = PhysicalAddress::new(0x2000_0000);
+    /// vaddr.map(paddr, PageEntryFlags::PRESENT | PageEntryFlags::WRITABLE, PageSize::Regular);
+    /// ```
     #[allow(static_mut_refs)]
     fn map(&self, address: PhysicalAddress, flags: PageEntryFlags, page_size: PageSize) {
         if address.is_aligned(page_size.alignment()) && self.is_aligned(page_size.alignment()) {
@@ -59,12 +88,19 @@ pub impl VirtualAddress {
 
 #[ext]
 pub impl PageTable {
-    /// Map the region of memory from 0 to `mem_size_bytes` at the top of the page table so that
-    /// ```rust
-    /// VirtualAddress(0xffff800000000000) -> PhysicalAddress(0)
-    /// ```
+    /// Maps a contiguous region of physical memory starting at address 0 into the higher half of the virtual address space.
     ///
-    /// TODO: ADD SUPPORT FOR FULL FLAG
+    /// The mapping begins at virtual address `0xffff800000000000` and covers the range from physical address 0 up to `mem_size_bytes`, using huge pages where possible. Intermediate page tables are created as needed. The number of top-level entries mapped is limited to 256.
+    ///
+    /// # Parameters
+    /// - `mem_size_bytes`: The size in bytes of the physical memory region to map.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut page_table = PageTable::new();
+    /// page_table.map_physical_memory(1024 * 1024 * 1024); // Maps 1 GiB of physical memory
+    /// ```
     #[allow(unsafe_op_in_unsafe_fn)]
     fn map_physical_memory(&mut self, mem_size_bytes: usize) {
         let mut second_level_entries_count = (mem_size_bytes / BIG_PAGE_SIZE).max(1);
@@ -103,6 +139,16 @@ pub impl PageTable {
 
 #[ext]
 pub impl PageSize {
+    /// Returns the default page entry flags for the given page size.
+    ///
+    /// Regular pages use standard flags, while big and huge pages use huge page flags.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let flags = PageSize::Regular.default_flags();
+    /// assert_eq!(flags, PageEntryFlags::regular_page_flags());
+    /// ```
     fn default_flags(&self) -> PageEntryFlags {
         match self {
             PageSize::Regular => PageEntryFlags::regular_page_flags(),

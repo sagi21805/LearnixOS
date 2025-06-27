@@ -71,6 +71,17 @@ pub struct MemoryRegion {
 pub struct ParsedMapDisplay(pub &'static [MemoryRegion]);
 
 impl Display for ParsedMapDisplay {
+    /// Formats and displays the parsed memory map, listing each region's address range, type, and size, along with total usable and reserved memory.
+    ///
+    /// Each memory region is printed with its base and end addresses, type, and size in MiB and KiB. At the end, the total sizes of usable and reserved memory are summarized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::ParsedMapDisplay;
+    /// let parsed_map: &[MemoryRegion] = parsed_memory_map!();
+    /// println!("{}", ParsedMapDisplay(parsed_map));
+    /// ```
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut usable = 0u64;
         let mut reserved = 0u64;
@@ -119,12 +130,13 @@ impl Display for ParsedMapDisplay {
     }
 }
 
-/// This function will parse the memory map provided by the bios
+/// Parses the BIOS-provided memory map into a cleaned, contiguous list of memory regions.
 ///
-/// This memory map is provided in the constatnt address of the global [`MEMORY_MAP_OFFSET`]
+/// Reads the raw memory map from the fixed address `MEMORY_MAP_OFFSET`, merges adjacent usable or reserved regions,
+/// inserts reserved regions for gaps, and writes the organized result to `PARSED_MEMORY_MAP_OFFSET` as `MemoryRegion` entries.
+/// The total number of parsed regions is updated at `PARSED_MEMORY_MAP_LENGTH`.
 ///
-/// The generated output will be saved to [`PARSED_MEMORY_MAP_OFFSET`],
-/// and will include non gapped, organized entries of type [`MemoryRegion`]
+/// Skips unsupported or unhandled region types. The resulting parsed memory map contains only non-gapped, organized entries.
 pub fn parse_map() {
     let memory_map = raw_memory_map!();
     let mut range_count = 0;

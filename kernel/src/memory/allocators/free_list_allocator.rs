@@ -21,6 +21,19 @@ pub struct FreeSpaceNode {
 }
 
 impl FreeSpaceNode {
+    /// Creates a new `FreeSpaceNode` with the specified start address, memory size, and alignment.
+    ///
+    /// # Parameters
+    /// - `start_address`: The starting physical address of the free memory region.
+    /// - `mem_size`: The size of the free memory region in bytes.
+    /// - `alignment`: The alignment requirement for the memory region.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let node = FreeSpaceNode::new(PhysicalAddress(0x1000), 4096, 4096);
+    /// assert_eq!(node.start_address, PhysicalAddress(0x1000));
+    /// ```
     #[inline]
     const fn new(start_address: PhysicalAddress, mem_size: usize, alignment: usize) -> Self {
         Self {
@@ -30,6 +43,7 @@ impl FreeSpaceNode {
         }
     }
 
+    /// Sets the next node in the free list to the specified node.
     #[inline]
     const fn set_next(&mut self, next: &'static mut FreeSpaceNode) {
         self.next = Some(next);
@@ -41,6 +55,15 @@ pub struct FreeListFrameAllocator {
 }
 
 impl FreeListFrameAllocator {
+    /// Creates a new free-list frame allocator covering the entire available memory.
+    ///
+    /// The allocator is initialized with a single free node spanning from address zero to the total memory size, aligned to the regular page alignment.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let allocator = FreeListFrameAllocator::new();
+    /// ```
     #[inline]
     pub const fn new() -> Self {
         Self {
@@ -76,6 +99,28 @@ struct Allocator {
 
 /// TODO: Probably should add some kind of locking behavior when understanding it.
 unsafe impl GlobalAlloc for Allocator {
+    /// Allocates a memory block with the specified layout from the free list.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it may return a pointer to uninitialized or invalid memory if the allocator is not properly initialized or if the requested layout cannot be satisfied.
+    ///
+    /// # Returns
+    ///
+    /// A pointer to the beginning of the allocated memory block, or panics if allocation fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the requested alignment does not match the page alignment or if no suitable free block is available.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Usage requires a properly initialized allocator and valid layout.
+    /// let layout = Layout::from_size_align(4096, 4096).unwrap();
+    /// let ptr = unsafe { ALLOCATOR.alloc(layout) };
+    /// assert!(!ptr.is_null());
+    /// ```
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         //     if layout.align() != PAGE_ALIGNMENT.as_usize() {
         //         panic!("Page Error!");
@@ -94,6 +139,17 @@ unsafe impl GlobalAlloc for Allocator {
         todo!()
     }
 
+    /// Deallocates a previously allocated memory block, returning it to the free list.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `ptr` was allocated by this allocator and that `layout` matches the original allocation.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Usage depends on allocator integration; see allocator documentation.
+    /// ```
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         todo!();
     }

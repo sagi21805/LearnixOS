@@ -19,9 +19,25 @@ use memory::allocators::page_allocator::ALLOCATOR;
 
 use crate::memory::memory_map::MemoryRegionExtended;
 
-#[unsafe(no_mangle)]
-#[unsafe(link_section = ".start")]
-#[allow(unsafe_op_in_unsafe_fn)]
+/// Kernel entry point for initializing memory management and reporting memory regions.
+///
+/// This function is the first code executed after entering long mode. It sets up segment registers,
+/// prints status messages, initializes the global page allocator, and parses the system memory map
+/// from fixed memory addresses. It reports each memory region and accumulates totals for usable and
+/// reserved memory, printing a summary before halting execution in an infinite loop.
+///
+/// # Safety
+///
+/// This function must be called only as the initial entry point after boot, with all required
+/// memory map and environment setup already performed. It assumes the presence of a valid memory
+/// map at predefined addresses and does not return.
+///
+/// # Examples
+///
+/// ```no_run
+/// // This function is not intended to be called directly from Rust code.
+/// // It is invoked by the bootloader as the kernel entry point.
+/// ```
 pub unsafe extern "C" fn _start() -> ! {
     asm!(
         "mov {0}, 0x10",

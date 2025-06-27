@@ -22,7 +22,17 @@ static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTable = GlobalDescriptorTable::p
 
 global_asm!(include_str!("../asm/boot.s"));
 
-#[unsafe(no_mangle)]
+/// Bootloader entry point that loads the next stage and transitions to protected mode.
+///
+/// This function is the initial entry point for the bootloader. It loads disk sectors containing the next boot stage into memory, sets the VGA text mode, retrieves the system memory map, loads the Global Descriptor Table (GDT), enables protected mode, and performs a far jump to the next stage. Execution does not return from this function; if the jump fails, it enters an infinite loop.
+///
+/// # Safety
+///
+/// This function performs low-level hardware operations, uses inline assembly, and transitions the CPU into protected mode. It must only be called as the bootloader entry point by the system firmware.
+///
+/// # Panics
+///
+/// This function does not return and will enter an infinite loop if execution continues past the protected mode jump.
 pub extern "C" fn _start() -> ! {
     // Read the disk number the sofware was booted from
     let disk_number = unsafe { core::ptr::read(DISK_NUMBER_OFFSET as *const u8) };
@@ -71,6 +81,23 @@ pub extern "C" fn _start() -> ! {
     loop {}
 }
 
+/// Retrieves the system memory map using BIOS interrupt 0xE820.
+///
+/// This naked function executes assembly code to query the BIOS for the system's memory regions,
+/// storing the results at a predefined memory location. The memory map is used to identify usable
+/// and reserved memory areas for subsequent boot stages. The function preserves all registers and
+/// does not return any value.
+///
+/// # Safety
+///
+/// This function must only be called in real mode before entering protected mode, as it relies on BIOS interrupts.
+///
+/// # Examples
+///
+/// ```no_run
+/// // Called during bootloader initialization
+/// obtain_memory_map();
+/// ```
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 pub extern "C" fn obtain_memory_map() {
@@ -87,7 +114,9 @@ pub extern "C" fn obtain_memory_map() {
         );
     }
 }
-#[panic_handler]
+/// Halts execution indefinitely on panic.
+///
+/// This panic handler enters an infinite loop, effectively stopping the system when a panic occurs in a no_std environment.
 pub fn panic_handler(_info: &PanicInfo) -> ! {
     loop {}
 }

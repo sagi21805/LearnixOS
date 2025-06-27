@@ -8,6 +8,20 @@ const HEIGHT: usize = 25;
 const BLUE: ScreenChar = ScreenChar::new(b' ', ColorCode::new(Color::Black, Color::Blue));
 const WHITE_ON_BLUE: ScreenChar = ScreenChar::new(b' ', ColorCode::new(Color::White, Color::White));
 
+/// Creates a screen buffer representing a blue screen of death (BSOD) with a centered face pattern.
+///
+/// The returned buffer is filled with a blue background, and a stylized white face is drawn in the center using a fixed pattern.
+///
+/// # Returns
+/// An array of `ScreenChar` representing the BSOD with a face graphic, sized to fit the screen dimensions.
+///
+/// # Examples
+///
+/// ```
+/// let buffer = make_bsod_with_face();
+/// assert_eq!(buffer.len(), WIDTH * HEIGHT);
+/// // The buffer contains a blue background with a white face pattern in the center.
+/// ```
 pub fn make_bsod_with_face() -> [ScreenChar; WIDTH * HEIGHT] {
     let mut buffer = [BLUE; WIDTH * HEIGHT];
 
