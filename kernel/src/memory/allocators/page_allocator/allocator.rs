@@ -145,7 +145,11 @@ unsafe impl GlobalAlloc for PhysicalPageAllocator {
         }
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {}
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        let freed_address = VirtualAddress::new(ptr as usize).align_down(REGULAR_PAGE_ALIGNMENT);
+        let physical_page = freed_address.translate().unwrap();
+        let position = Self::address_position(physical_page).unwrap_unchecked();
+    }
 }
 
 unsafe impl Sync for PhysicalPageAllocator {}
