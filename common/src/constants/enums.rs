@@ -5,25 +5,30 @@ use crate::constants::values::{
 };
 use core::{alloc::Layout, ptr::Alignment};
 
+#[repr(u8)]
 pub enum Interrupts {
     VIDEO = 0x10,
     DISK = 0x13,
     MEMORY = 0x15,
 }
 
+#[repr(u8)]
 pub enum Sections {
     Null = 0x0,
     KernelCode = 0x8,
     KernelData = 0x10,
 }
 
+#[repr(u8)]
 pub enum Disk {
     ExtendedRead = 0x42,
 }
 
+#[repr(u8)]
 pub enum Video {
     SetMode = 0x0,
 }
+#[repr(u8)]
 #[allow(non_camel_case_types)]
 pub enum VideoModes {
     /// VGA Common Text Mode ->
@@ -47,6 +52,7 @@ pub enum MemoryRegionType {
     BadMemory = 0x5u32,
 }
 
+#[repr(u8)]
 pub enum PacketSize {
     Default = 0x10,
 }
