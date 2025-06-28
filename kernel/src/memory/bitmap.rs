@@ -178,6 +178,9 @@ impl BitMap {
 
     /// Set a contiguous block, the contiguous low mask, and high mask should be relative to the positions map index.
     pub unsafe fn set_contiguous_block(&mut self, p: &Position, block: &ContiguousBlockLayout) {
+        if (p.map_index + block.index_count + 1) > self.map.len() {
+            panic!("The block passes the bound of this map!")
+        }
         self.map[p.map_index] |= block.low_mask;
         for i in 1..=block.index_count {
             self.map[p.map_index + i] = u64::MAX;
