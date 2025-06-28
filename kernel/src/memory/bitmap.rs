@@ -166,6 +166,14 @@ impl BitMap {
         self.map[p.map_index] = u64::MAX;
     }
 
+    pub fn unset_index(&mut self, p: &Position) {
+        self.map[p.map_index] = 0;
+    }
+
+    pub fn unset_bit(&mut self, p: &Position) {
+        self.map[p.map_index] &= !(1 << p.bit_index)
+    }
+
     /// Sets the bit corresponding to the `map_index` and the `bit_index`
     pub fn set_bit(&mut self, p: &Position) {
         self.map[p.map_index] |= 1 << p.bit_index;
