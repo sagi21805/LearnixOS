@@ -29,8 +29,9 @@ impl PhysicalPageAllocator {
         bitmap_address: VirtualAddress,
         memory_size: usize,
     ) -> PhysicalPageAllocator {
-        let size_in_pages = memory_size / (REGULAR_PAGE_SIZE * u64::BITS as usize);
-        PhysicalPageAllocator(UnsafeCell::new(BitMap::new(bitmap_address, size_in_pages)))
+        let size_in_pages = memory_size / REGULAR_PAGE_SIZE;
+        let map_size = size_in_pages / u64::BITS as usize;
+        PhysicalPageAllocator(UnsafeCell::new(BitMap::new(bitmap_address, map_size)))
     }
 
     pub const fn address_position(address: PhysicalAddress) -> Option<Position> {
