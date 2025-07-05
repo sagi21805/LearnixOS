@@ -1,23 +1,21 @@
-use common::constants::{
-    addresses::{
-        MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, PARSED_MEMORY_MAP_LENGTH, PARSED_MEMORY_MAP_OFFSET,
-    },
-    enums::MemoryRegionType,
-    values::{KiB, MiB},
-};
 use core::fmt::{self, Display, Formatter};
-use cpu_utils::structures::paging::address_types::PhysicalAddress;
+
+use common::{
+    constants::{KiB, MiB, PARSED_MEMORY_MAP_LENGTH},
+    enums::MemoryRegionType,
+};
+
 #[macro_export]
 macro_rules! parsed_memory_map {
     () => {
         unsafe {
             ::core::slice::from_raw_parts_mut(
-                cpu_utils::structures::paging::address_types::PhysicalAddress::new(
+                common::address_types::PhysicalAddress::new(
                     common::constants::addresses::PARSED_MEMORY_MAP_OFFSET as usize,
                 )
                 .translate()
                 .as_mut_ptr::<crate::memory::memory_map::MemoryRegion>(),
-                *(cpu_utils::structures::paging::address_types::PhysicalAddress::new(
+                *(common::address_types::PhysicalAddress::new(
                     common::constants::addresses::PARSED_MEMORY_MAP_LENGTH as usize,
                 )
                 .translate()
@@ -32,12 +30,16 @@ macro_rules! raw_memory_map {
     () => {
         unsafe {
             ::core::slice::from_raw_parts_mut(
-                PhysicalAddress::new(common::constants::addresses::MEMORY_MAP_OFFSET as usize)
-                    .translate()
-                    .as_mut_ptr::<crate::memory::memory_map::MemoryRegionExtended>(),
-                *(PhysicalAddress::new(common::constants::addresses::MEMORY_MAP_LENGTH as usize)
-                    .translate()
-                    .as_mut_ptr::<u32>()) as usize,
+                common::address_types::PhysicalAddress::new(
+                    common::constants::addresses::MEMORY_MAP_OFFSET as usize,
+                )
+                .translate()
+                .as_mut_ptr::<crate::memory::memory_map::MemoryRegionExtended>(),
+                *(common::address_types::PhysicalAddress::new(
+                    common::constants::addresses::MEMORY_MAP_LENGTH as usize,
+                )
+                .translate()
+                .as_mut_ptr::<u32>()) as usize,
             )
         }
     };
@@ -45,7 +47,7 @@ macro_rules! raw_memory_map {
 
 macro_rules! write_region {
     ($position:expr, $region:expr) => {
-        (PARSED_MEMORY_MAP_OFFSET as *mut MemoryRegion)
+        (common::constants::PARSED_MEMORY_MAP_OFFSET as *mut MemoryRegion)
             .add($position)
             .write_volatile($region);
         $position += 1;

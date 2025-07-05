@@ -14,6 +14,4 @@ pub enum EntryError {
     NoMapping,
     #[error("This entry contains memory block and not a table")]
     NotATable,
-    #[error("Can't provide another entry, the table is full")]
-    Full,
 }

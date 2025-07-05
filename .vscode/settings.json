@@ -21,7 +21,8 @@
         "virt",
         "wrmsr"
     ],
-    "rust-analyzer.inlayHints.chainingHints.enable": false
-    
+    "rust-analyzer.inlayHints.chainingHints.enable": false,
+    "rust-analyzer.cargo.extraEnv": {
+        "RUSTFLAGS": "-Zpolonius"
+    },
 }
-  

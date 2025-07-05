@@ -1,62 +1,12 @@
-use super::error::TableError;
-use crate::constants::values::{
-    BIG_PAGE_ALIGNMENT, BIG_PAGE_SIZE, HUGE_PAGE_ALIGNMENT, HUGE_PAGE_SIZE, REGULAR_PAGE_ALIGNMENT,
-    REGULAR_PAGE_SIZE,
-};
 use core::{alloc::Layout, ptr::Alignment};
 
-#[repr(u8)]
-pub enum Interrupts {
-    VIDEO = 0x10,
-    DISK = 0x13,
-    MEMORY = 0x15,
-}
-
-#[repr(u8)]
-pub enum Sections {
-    Null = 0x0,
-    KernelCode = 0x8,
-    KernelData = 0x10,
-}
-
-#[repr(u8)]
-pub enum Disk {
-    ExtendedRead = 0x42,
-}
-
-#[repr(u8)]
-pub enum Video {
-    SetMode = 0x0,
-}
-#[repr(u8)]
-#[allow(non_camel_case_types)]
-pub enum VideoModes {
-    /// VGA Common Text Mode ->
-    ///
-    /// Text resolution 80x25
-    ///
-    /// PixelBox resolution 9x16
-    ///
-    /// Pixel resolution 720x400
-    VGA_TX_80X25_PB_9X16_PR_720X400 = 0x3,
-}
-
-#[repr(u32)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum MemoryRegionType {
-    Unknown = 0u32,
-    Usable = 0x1u32,
-    Reserved = 0x2u32,
-    Reclaimable = 0x3u32,
-    ACPINVS = 0x4u32,
-    BadMemory = 0x5u32,
-}
-
-#[repr(u8)]
-pub enum PacketSize {
-    Default = 0x10,
-}
-
+use crate::{
+    constants::{
+        BIG_PAGE_ALIGNMENT, BIG_PAGE_SIZE, HUGE_PAGE_ALIGNMENT, HUGE_PAGE_SIZE,
+        REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+    },
+    error::TableError,
+};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PageSize {
     /// 4Kib pages
@@ -91,6 +41,7 @@ impl PageTableLevel {
             Self::ForthLevel => Err(TableError::Full),
         }
     }
+
     pub fn as_usize(&self) -> usize {
         self.clone() as usize
     }

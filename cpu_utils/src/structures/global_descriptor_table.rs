@@ -1,4 +1,4 @@
-use crate::flag;
+use common::flag;
 use core::arch::asm;
 struct AccessByte(u8);
 
@@ -96,22 +96,18 @@ impl GlobalDescriptorTable {
                 0,
                 0xfffff,
                 AccessByte::new()
-                    .set_chain_present()
+                    .present()
                     .dpl(0)
-                    .set_chain_code_or_data()
-                    .set_chain_executable()
-                    .set_chain_readable(),
-                LimitFlags::new().set_chain_paging().set_chain_protected(),
+                    .code_or_data()
+                    .executable()
+                    .readable(),
+                LimitFlags::new().paging().protected(),
             ),
             kernel_data: GlobalDescriptorTableEntry32::new(
                 0,
                 0xfffff,
-                AccessByte::new()
-                    .set_chain_present()
-                    .dpl(0)
-                    .set_chain_code_or_data()
-                    .set_chain_writable(),
-                LimitFlags::new().set_chain_paging().set_chain_protected(),
+                AccessByte::new().present().dpl(0).code_or_data().writable(),
+                LimitFlags::new().paging().protected(),
             ),
         }
     }
@@ -124,19 +120,16 @@ impl GlobalDescriptorTable {
                 0,
                 0,
                 AccessByte::new()
-                    .set_chain_code_or_data()
-                    .set_chain_present()
-                    .set_chain_writable()
-                    .set_chain_executable(),
-                LimitFlags::new().set_chain_long(),
+                    .code_or_data()
+                    .present()
+                    .writable()
+                    .executable(),
+                LimitFlags::new().long(),
             ),
             kernel_data: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
-                AccessByte::new()
-                    .set_chain_code_or_data()
-                    .set_chain_present()
-                    .set_chain_writable(),
+                AccessByte::new().code_or_data().present().writable(),
                 LimitFlags::new(),
             ),
         }
