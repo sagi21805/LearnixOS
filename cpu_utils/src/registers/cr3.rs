@@ -1,4 +1,3 @@
-use super::super::structures::paging::page_tables::PageTable;
 use core::arch::asm;
 
 /// Write `val` to cr3 and return the previous value

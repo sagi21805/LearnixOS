@@ -1,17 +1,27 @@
-use crate::memory::bitmap::{BitMap, ContiguousBlockLayout, Position};
-use crate::{parsed_memory_map, println};
-use common::constants::addresses::FIRST_STAGE_OFFSET;
-use common::constants::enums::MemoryRegionType;
-use common::constants::values::REGULAR_PAGE_ALIGNMENT;
-use common::constants::{addresses::PAGE_ALLOCATOR_OFFSET, values::REGULAR_PAGE_SIZE};
-use core::mem::MaybeUninit;
-use core::ptr::{self, Alignment, null};
 use core::{
     alloc::{GlobalAlloc, Layout},
     cell::UnsafeCell,
+    mem::MaybeUninit,
+    ptr::{self, null},
 };
-use cpu_utils::structures::paging::address_types::{PhysicalAddress, VirtualAddress};
-use cpu_utils::structures::paging::page_tables::PageTable;
+
+use common::{
+    address_types::{PhysicalAddress, VirtualAddress},
+    constants::{
+        FIRST_STAGE_OFFSET, PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+    },
+    enums::MemoryRegionType,
+};
+use cpu_utils::structures::paging::PageTable;
+
+use crate::{
+    memory::{
+        allocators::page_allocator::extensions::{PhysicalAddressExt, VirtualAddressExt},
+        bitmap::{BitMap, ContiguousBlockLayout, Position},
+    },
+    parsed_memory_map, println,
+};
+
 #[derive(Debug)]
 // TODO: This is not thread safe, probably should use Mutex in the future
 /// Physical page allocator implemented with a bitmap, every bit corresponds to a physical page
@@ -147,7 +157,7 @@ unsafe impl GlobalAlloc for PhysicalPageAllocator {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let freed_address = VirtualAddress::new(ptr as usize).align_down(REGULAR_PAGE_ALIGNMENT);
-        let physical_page = freed_address.translate().unwrap();
+        let physical_page = freed_address.translate();
         let position = Self::address_position(physical_page).unwrap_unchecked();
     }
 }

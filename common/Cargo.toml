@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-constants = []
+first_stage = []
+second_stage = ["first_stage"]
+paging = ["first_stage", "second_stage"]
+kernel = ["first_stage", "second_stage", "paging"]
 
 [dependencies]
 derive_more = { version = "2.0.1", default-features = false, features = [

@@ -1,8 +1,6 @@
+use common::address_types::VirtualAddress;
 use core::{slice, u64};
-use cpu_utils::structures::paging::address_types::VirtualAddress;
 use derive_more::Constructor;
-
-use crate::println;
 
 #[derive(Debug, Clone, Default)]
 pub struct Position {

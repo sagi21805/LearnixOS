@@ -39,8 +39,5 @@ pub unsafe extern "C" fn _start() -> ! {
 /// This function is called on panic.
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {
-    // for i in 0..512 {
-    //     unsafe { (VGA_BUFFER_PTR.add((i * 2) as u32) as *mut u16).write_volatile(0x024F) };
-    // }
     loop {}
 }

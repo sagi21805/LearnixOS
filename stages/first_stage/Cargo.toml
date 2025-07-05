@@ -4,7 +4,7 @@ name = "first_stage"
 version = "0.1.0"
 
 [dependencies]
-common = { path = "../../common", features = ["constants"] }
+common = { path = "../../common", features = ["first_stage"] }
 cpu_utils = { path = "../../cpu_utils", features = [
     "global_descriptor_table",
     "master_boot_record",

@@ -1,12 +1,3 @@
-use core::ptr::Alignment;
-
-use super::page_tables::{PageTable, PageTableEntry};
-#[cfg(target_arch = "x86_64")]
-use common::constants::addresses::PHYSICAL_MEMORY_OFFSET;
-use derive_more::{
-    Add, AddAssign, AsMut, AsRef, Div, DivAssign, From, Mul, MulAssign, Sub, SubAssign,
-};
-
 macro_rules! impl_common_address_functions {
     ($struct_name:ident) => {
         impl $struct_name {
@@ -71,100 +62,61 @@ macro_rules! impl_common_address_functions {
 
             #[inline]
             /// Get the alignment of an address
-            pub const fn alignment(&self) -> Alignment {
-                unsafe { Alignment::new_unchecked(1 << self.0.trailing_zeros()) }
+            pub const fn alignment(&self) -> core::ptr::Alignment {
+                unsafe { core::ptr::Alignment::new_unchecked(1 << self.0.trailing_zeros()) }
             }
         }
     };
 }
 
-#[derive(
-    Clone,
-    Debug,
-    Add,
-    AddAssign,
-    Sub,
-    SubAssign,
-    Mul,
-    MulAssign,
-    Div,
-    DivAssign,
-    Default,
-    AsMut,
-    AsRef,
-    From,
-)]
-pub struct PhysicalAddress(pub usize);
+#[macro_export]
+/// This macro will obtain `flag_name` and the corresponding `bit_number`
+///
+/// With this information it will automatically generate three methods
+///
+/// 1. `set_<flag_name>`: will set the bit without returning self
+/// 2. `set_chain_<flag_name>`: will set the bit and will return self
+/// 3. `<flag_name>`: will read the flag and return true if the flag is set or false if not
+macro_rules! flag {
+    ($flag_name:ident, $bit_number:literal) => {
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Sets the corresponding flag
+        ///
+        /// `This method is auto-generated`
+        pub const fn ${concat(set_, $flag_name)}(&mut self) {
+            self.0 |= 1 << $bit_number;
+        }
 
-impl_common_address_functions!(PhysicalAddress);
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Sets the corresponding flag while returning self
+        ///
+        /// `This method is auto-generated`
+        pub const fn $flag_name(self) -> Self {
+            Self(self.0 | (1 << $bit_number))
+        }
 
-#[derive(
-    Clone,
-    Debug,
-    Add,
-    AddAssign,
-    Sub,
-    SubAssign,
-    Mul,
-    MulAssign,
-    Div,
-    DivAssign,
-    Default,
-    AsMut,
-    AsRef,
-    From,
-)]
-pub struct VirtualAddress(pub usize);
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Unset the corresponding flag
+        ///
+        /// `This method is auto-generated`
+        pub const fn ${concat(unset_, $flag_name)}(&mut self) {
+            self.0 &= !(1 << $bit_number)
+        }
 
-impl_common_address_functions!(VirtualAddress);
-
-pub struct PageTableWalk {
-    pub entries: [Option<&'static mut PageTableEntry>; 4],
-    pub final_entry_index: usize,
-}
-
-impl VirtualAddress {
-    #[allow(arithmetic_overflow)]
-    pub const fn from_indexes(i4: usize, i3: usize, i2: usize, i1: usize) -> Self {
-        Self((i4 << 39) | (i3 << 30) | (i2 << 21) | (i1 << 12) | 0)
-    }
-
-    pub const fn from_indices(indices: [usize; 4]) -> Self {
-        Self::from_indexes(indices[0], indices[1], indices[2], indices[3])
-    }
-
-    /// indexing for the n_th page table
-    ///
-    /// 4 -> index of 4th table
-    ///
-    /// 3 -> index of 3rd table
-    ///
-    /// 2 -> index of 2nd table
-    ///
-    /// 1 -> index of 1st table
-    pub const unsafe fn nth_pt_index_unchecked(&self, n: usize) -> usize {
-        (self.0 >> (39 - 9 * (4 - n))) & 0o777
-    }
-
-    /// Reverse indexing for the address:
-    ///
-    /// 0 -> index of 4th table
-    ///
-    /// 1 -> index of 3rd table
-    ///
-    /// 2 -> index of 2nd table
-    ///
-    /// 3 -> index of 1st table
-    #[allow(arithmetic_overflow)]
-    pub const fn rev_nth_index_unchecked(&self, n: usize) -> usize {
-        (self.0 >> (39 - (9 * n))) & 0o777
-    }
-}
-
-impl PhysicalAddress {
-    #[inline]
-    #[cfg(target_arch = "x86_64")]
-    pub const fn translate(&self) -> VirtualAddress {
-        VirtualAddress(self.0 + PHYSICAL_MEMORY_OFFSET)
-    }
+        /// Checks if the corresponding flag in set to 1
+        ///
+        /// `This method is auto-generated`
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        pub const fn ${concat(is_, $flag_name)}(&self) -> bool {
+            self.0 & (1 << $bit_number) != 0
+        }
+    };
 }

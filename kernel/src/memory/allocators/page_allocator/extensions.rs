@@ -1,13 +1,19 @@
 use super::ALLOCATOR;
-use common::constants::enums::PageSize;
-use common::constants::values::{BIG_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES};
-use cpu_utils::structures::paging::address_types::{PhysicalAddress, VirtualAddress};
-use cpu_utils::structures::paging::page_tables::{PageEntryFlags, PageTable, PageTableEntry};
+use common::{
+    address_types::{PhysicalAddress, VirtualAddress},
+    constants::{BIG_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES, PHYSICAL_MEMORY_OFFSET},
+    enums::PageSize,
+};
+use cpu_utils::structures::paging::{PageEntryFlags, PageTable, PageTableEntry};
 use extend::ext;
 #[ext]
-impl PhysicalAddress {
+pub(super) impl PhysicalAddress {
     fn map(&self, address: VirtualAddress, flags: PageEntryFlags, page_size: PageSize) {
         address.map(self.clone(), flags, page_size)
+    }
+
+    fn translate(&self) -> VirtualAddress {
+        return unsafe { VirtualAddress::new_unchecked(PHYSICAL_MEMORY_OFFSET + self.0) };
     }
 }
 
@@ -55,6 +61,10 @@ pub impl VirtualAddress {
             panic!("address alignment doesn't match page type alignment, todo! raise a page fault")
         }
     }
+
+    fn translate(&self) -> PhysicalAddress {
+        todo!()
+    }
 }
 
 #[ext]
@@ -90,7 +100,7 @@ pub impl PageTable {
                 for second_entry in &mut second_table.entries
                     [0..second_level_entries_count.min(PAGE_DIRECTORY_ENTRIES)]
                 {
-                    if !second_entry.present() {
+                    if !second_entry.is_present() {
                         second_entry.map(next_mapped.clone(), PageEntryFlags::huge_page_flags());
                     }
                     next_mapped += BIG_PAGE_SIZE.into();
@@ -109,5 +119,4 @@ pub impl PageSize {
             PageSize::Big | PageSize::Huge => PageEntryFlags::huge_page_flags(),
         }
     }
-    //     resolve_table!(&mut table.entries[index], PageEntryFlags::table_flags())
 }
