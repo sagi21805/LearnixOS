@@ -1,4 +1,4 @@
-use common::constants::enums::{Disk, Interrupts, PacketSize};
+use common::enums::{BiosInterrupts, Disk, DiskPacketSize};
 use core::arch::asm;
 
 #[repr(C, packed)]
@@ -38,7 +38,7 @@ impl DiskAddressPacket {
         abs_block_num: u64,
     ) -> Self {
         Self {
-            packet_size: PacketSize::Default as u8,
+            packet_size: DiskPacketSize::Default as u8,
             zero: 0,
             num_of_sectors: if num_of_sectors <= 128 {
                 num_of_sectors
@@ -67,7 +67,7 @@ impl DiskAddressPacket {
                 "pop si",
                 const Disk::ExtendedRead as u8,
                 in(reg_byte) disk_number,
-                const Interrupts::DISK as u8,
+                const BiosInterrupts::DISK as u8,
                 in(reg) self as *const Self as u32,
             )
         }

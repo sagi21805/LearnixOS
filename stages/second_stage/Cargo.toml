@@ -9,6 +9,3 @@ cpu_utils = { path = "../../cpu_utils", features = [
     "paging",
     "global_descriptor_table",
 ] }
-
-[profile.release]
-opt-level = 0
