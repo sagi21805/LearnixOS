@@ -28,7 +28,7 @@ macro_rules! table_entry_flags {
         // This entry points to a table
         common::flag!(table, 10);
 
-        // This entry is at the top of the heirarchy.
+        // This entry is at the top of the hierarchy.
         common::flag!(root_entry, 11);
 
         // This page is holding data and is not executable

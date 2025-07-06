@@ -6,10 +6,12 @@
 #![feature(naked_functions)]
 mod disk;
 
-use common::constants::{
-    addresses::{DISK_NUMBER_OFFSET, MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, SECOND_STAGE_OFFSET},
-    enums::{Interrupts, Sections, Video, VideoModes},
-    values::MEMORY_MAP_MAGIC_NUMBER,
+use common::{
+    constants::{
+        DISK_NUMBER_OFFSET, MEMORY_MAP_LENGTH, MEMORY_MAP_MAGIC_NUMBER, MEMORY_MAP_OFFSET,
+        SECOND_STAGE_OFFSET,
+    },
+    enums::{BiosInterrupts, Sections, Video, VideoModes},
 };
 use core::{
     arch::{asm, global_asm, naked_asm},
@@ -24,7 +26,7 @@ global_asm!(include_str!("../asm/boot.s"));
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    // Read the disk number the sofware was booted from
+    // Read the disk number the os was booted from
     let disk_number = unsafe { core::ptr::read(DISK_NUMBER_OFFSET as *const u8) };
 
     // Create a disk packet which will load 128 sectors (512 bytes each) from the disk to memory address 0x7e00
@@ -42,7 +44,7 @@ pub extern "C" fn _start() -> ! {
             "int {2}",
             const Video::SetMode as u8,
             const VideoModes::VGA_TX_80X25_PB_9X16_PR_720X400 as u8,
-            const Interrupts::VIDEO as u8
+            const BiosInterrupts::VIDEO as u8
         );
 
         // Obtain memory map

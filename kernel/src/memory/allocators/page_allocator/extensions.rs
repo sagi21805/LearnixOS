@@ -7,7 +7,7 @@ use common::{
 use cpu_utils::structures::paging::{PageEntryFlags, PageTable, PageTableEntry};
 use extend::ext;
 #[ext]
-pub(super) impl PhysicalAddress {
+pub impl PhysicalAddress {
     fn map(&self, address: VirtualAddress, flags: PageEntryFlags, page_size: PageSize) {
         address.map(self.clone(), flags, page_size)
     }

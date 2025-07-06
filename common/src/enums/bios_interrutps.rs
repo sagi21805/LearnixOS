@@ -1,5 +1,5 @@
 #[repr(u8)]
-pub enum BiosInterupts {
+pub enum BiosInterrupts {
     VIDEO = 0x10,
     DISK = 0x13,
     MEMORY = 0x15,
