@@ -1,3 +1,7 @@
 [unstable]
 build-std = ["core"]
 build-std-features = ["compiler-builtins-mem"]
+bindeps = true
+unstable-options = true
+[build]
+rustflags = ["-Zpolonius"]
