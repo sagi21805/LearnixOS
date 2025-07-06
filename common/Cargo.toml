@@ -5,8 +5,8 @@ edition = "2024"
 
 [features]
 first_stage = []
-second_stage = ["first_stage"]
-paging = ["first_stage", "second_stage"]
+paging = []
+second_stage = ["first_stage", "paging"]
 kernel = ["first_stage", "second_stage", "paging"]
 
 [dependencies]
