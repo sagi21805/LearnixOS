@@ -1,3 +1,13 @@
+[package]
+name = "LearnixOS"
+description = "An OS which is all about learning"
+repository.workspace = true
+authors = ["Sagi Or"]
+edition = "2024"
+
+[workspace.package]
+repository = "https://github.com/sagi21805/LearnixOS"
+
 [workspace]
 members = [
     "common",
@@ -6,8 +16,12 @@ members = [
     "cpu_utils",
     "kernel",
 ]
-resolver = "2"
+resolver = "3"
 
 [profile.release]
 opt-level = 's'
 overflow-checks = false
+panic = "abort"
+
+[profile.dev]
+panic = "abort"
