@@ -2,3 +2,4 @@
 **/*.img
 **/*.lock
 backup/**
+build/bin
