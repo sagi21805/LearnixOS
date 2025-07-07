@@ -18,6 +18,10 @@ members = [
 ]
 resolver = "3"
 
+[[bin]]
+name = "LearnixOS"
+path = "src/main.rs"
+
 [profile.release]
 opt-level = 's'
 overflow-checks = false

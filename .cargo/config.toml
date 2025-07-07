@@ -5,3 +5,6 @@ bindeps = true
 unstable-options = true
 [build]
 rustflags = ["-Zpolonius"]
+
+[target.'cfg(all())']
+runner = "qemu-system-x86_64 -m 512 -smp 1 -drive format=raw,file=final.bin -machine pc -monitor stdio"

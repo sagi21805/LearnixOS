@@ -1,4 +1,5 @@
 use std::fs::{self, File};
+use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -23,11 +24,12 @@ fn build_stage(name: &str, path: &str, target: &str, profile: &str) -> Child {
         .spawn()
         .expect("Failed to run cargo build");
 
-    println!("cargo:rerun-if-changed={}/src", path);
+    println!("cargo::rerun-if-changed={}/src", path);
     child
 }
 
 fn main() {
+    println!("cargo::rerun-if-changed=concatenated.bin");
     let profile = std::env::var("PROFILE").unwrap();
     let mut first_stage = build_stage(
         "first_stage",
@@ -52,26 +54,16 @@ fn main() {
         let _status = child.wait().expect("Failed to wait");
     }
 
-    let input_dir = "build/bin"; // Change to your folder path
-    let output_file = "concatenated.bin";
-
-    let mut output = File::create(output_file).unwrap();
-
-    let mut entries: Vec<_> = fs::read_dir(input_dir)
-        .unwrap()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.path().is_file())
-        .collect();
-
-    // Optional: sort files by name
-    entries.sort_by_key(|entry| entry.path());
-
-    for entry in entries {
-        let path = entry.path();
-        println!("Reading {:?}", path);
-
-        let data = fs::read(&path).unwrap();
-        output.write_all(&data).unwrap();
+    let input_dir = PathBuf::from("build/bin"); // Change to your folder path
+    let input_files = [
+        input_dir.join("first_stage"),
+        input_dir.join("second_stage"),
+        input_dir.join("kernel"),
+    ];
+    let mut output = File::create("final.bin").unwrap();
+    for file_name in &input_files {
+        let mut input = File::open(file_name).unwrap();
+        io::copy(&mut input, &mut output).unwrap();
     }
 
     println!("finished building the kernel");
