@@ -1,15 +1,16 @@
 {
-    "rust-analyzer.cargo.target": "x86_64-unknown-none",
     "rust-analyzer.check.allTargets": false,
     "rust-analyzer.linkedProjects": [
-        "${workspaceFolder}/stages/first_stage/Cargo.toml",
-        "${workspaceFolder}/stages/second_stage/Cargo.toml",
+        "${workspaceFolder}/kernel/stages/first_stage/Cargo.toml",
+        "${workspaceFolder}/kernel/stages/second_stage/Cargo.toml",
         "${workspaceFolder}/kernel/Cargo.toml",
-        "${workspaceFolder}/cpu_utils/Cargo.toml",
+        "${workspaceFolder}/shared/cpu_utils/Cargo.toml",
+        "${workspaceFolder}/shared/common/Cargo.toml",
     ],
     "cSpell.words": [
         "bootable",
         "EFER",
+        "Learnix",
         "lgdt",
         "ljmp",
         "rdmsr",
@@ -17,6 +18,7 @@
         "rodata",
         "rustc",
         "sofware",
+        "thiserror",
         "Uninit",
         "virt",
         "wrmsr"
