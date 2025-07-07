@@ -1,0 +1,16 @@
+[package]
+name = "common"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+first_stage = []
+paging = []
+second_stage = ["first_stage", "paging"]
+kernel = ["first_stage", "second_stage", "paging"]
+
+[dependencies]
+derive_more = { version = "2.0.1", default-features = false, features = [
+    "full",
+] }
+thiserror = { version = "2.0.12", default-features = false }

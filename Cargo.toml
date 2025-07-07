@@ -1,13 +1,21 @@
 [workspace]
 members = [
-    "common",
-    "stages/first_stage",
-    "stages/second_stage",
-    "cpu_utils",
+    "shared/common",
+    "kernel/stages/first_stage",
+    "kernel/stages/second_stage",
+    "shared/cpu_utils",
     "kernel",
+    "build",
 ]
-resolver = "2"
+resolver = "3"
+default-members = ["build"]
+
+[workspace.dependencies]
 
 [profile.release]
 opt-level = 's'
 overflow-checks = false
+panic = "abort"
+
+[profile.dev]
+panic = "abort"

@@ -1,0 +1,11 @@
+[package]
+edition = "2024"
+name = "first_stage"
+version = "0.1.0"
+
+[dependencies]
+common = { path = "../../../shared/common", features = ["first_stage"] }
+cpu_utils = { path = "../../../shared/cpu_utils", features = [
+    "global_descriptor_table",
+    "master_boot_record",
+] }
