@@ -1,26 +1,16 @@
-[package]
-name = "LearnixOS"
-description = "An OS which is all about learning"
-repository.workspace = true
-authors = ["Sagi Or"]
-edition = "2024"
-
-[workspace.package]
-repository = "https://github.com/sagi21805/LearnixOS"
-
 [workspace]
 members = [
-    "common",
-    "stages/first_stage",
-    "stages/second_stage",
-    "cpu_utils",
+    "shared/common",
+    "kernel/stages/first_stage",
+    "kernel/stages/second_stage",
+    "shared/cpu_utils",
     "kernel",
+    "build",
 ]
 resolver = "3"
+default-members = ["build"]
 
-[[bin]]
-name = "LearnixOS"
-path = "src/main.rs"
+[workspace.dependencies]
 
 [profile.release]
 opt-level = 's'
