@@ -21,6 +21,7 @@ pub unsafe extern "C" fn _start() -> ! {
     asm!("mov eax, 0x10", "mov ds, eax",);
 
     // Enable paging and load page tables with an identity mapping
+    #[cfg(target_arch = "x86")]
     paging::enable();
     // Load the global descriptor table for long mode
     GLOBAL_DESCRIPTOR_TABLE_LONG_MODE.load();
