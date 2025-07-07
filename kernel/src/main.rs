@@ -6,19 +6,16 @@
 #![allow(static_mut_refs)]
 #![feature(unsafe_cell_access)]
 #![feature(ptr_alignment_type)]
-
-mod allocators;
+#![feature(const_trait_impl)]
 mod drivers;
+mod memory;
 
-use allocators::page_allocator::ALLOCATOR;
-use common::constants::enums::PageSize;
-use core::alloc::{GlobalAlloc, Layout};
+use crate::memory::memory_map::{ParsedMapDisplay, parse_map};
+use common::constants::values::{KiB, MiB};
 use core::arch::asm;
-use core::arch::x86_64::_mm_crc32_u8;
 use core::panic::PanicInfo;
-use cpu_utils::registers::cr3::{cr3_read, get_current_page_table};
-use cpu_utils::structures::paging::page_tables::{PageTable, PageTableEntry};
 use drivers::vga_display::color_code::Color;
+use memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -34,9 +31,20 @@ pub unsafe extern "C" fn _start() -> ! {
     ok_msg!("Entered Protected Mode");
     ok_msg!("Enabled Paging");
     ok_msg!("Entered Long Mode");
-    let _ = ALLOCATOR.assume_init_mut().init();
+    parse_map();
+    ok_msg!("Obtained Memory Map");
+    println!("{}", ParsedMapDisplay(parsed_memory_map!()));
+    PhysicalPageAllocator::init(&mut ALLOCATOR);
     ok_msg!("Allocator Initialized");
-    loop {}
+    println!(
+        "Total Memory: {:#?}Bytes",
+        ALLOCATOR.assume_init_ref().available_memory()
+    );
+    loop {
+        unsafe {
+            asm!("hlt");
+        }
+    }
 }
 
 /// This function is called on panic.

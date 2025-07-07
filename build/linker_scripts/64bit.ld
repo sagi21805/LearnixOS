@@ -1,7 +1,8 @@
+OUTPUT_FORMAT(binary)
 ENTRY(_start)
 
 SECTIONS {
-    . = 0x9000;
+    . = 0xa000;
 
     .start : { *(.start) }
 

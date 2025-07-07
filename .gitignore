@@ -1,3 +1,6 @@
 **/target
 **/*.img
 **/*.lock
+backup/**
+build/bin
+**/image.bin

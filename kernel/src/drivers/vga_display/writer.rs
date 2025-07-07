@@ -7,8 +7,8 @@ use common::constants::addresses::VGA_BUFFER_PTR;
 ///
 /// This implementation will help track the wanted position to write to the screen
 pub struct Writer {
-    col: usize,
-    row: usize,
+    pub col: usize,
+    pub row: usize,
     pub color: ColorCode,
 }
 
