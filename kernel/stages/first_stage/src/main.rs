@@ -1,9 +1,5 @@
 #![no_std] // don't link the Rust standard library
 #![no_main] // disable all Rust-level entry points
-#![allow(dead_code)]
-#![feature(optimize_attribute)]
-#![feature(ptr_as_ref_unchecked)]
-#![feature(naked_functions)]
 mod disk;
 
 use common::{
@@ -25,7 +21,7 @@ static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTable = GlobalDescriptorTable::p
 global_asm!(include_str!("../asm/boot.s"));
 
 #[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
+pub fn first_stage() -> ! {
     // Read the disk number the os was booted from
     let disk_number = unsafe { core::ptr::read(DISK_NUMBER_OFFSET as *const u8) };
 
@@ -76,18 +72,16 @@ pub extern "C" fn _start() -> ! {
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 pub extern "C" fn obtain_memory_map() {
-    unsafe {
-        naked_asm!(
-            // Save all the registers.
-            include_str!("../asm/memory_map.s"),
-            len_address = const MEMORY_MAP_LENGTH,
-            map_address = const MEMORY_MAP_OFFSET,
-            smap = const MEMORY_MAP_MAGIC_NUMBER,
-            function_code = const 0xE820,
-            extended_region_size = const 24,
-            regular_region_size = const 20
-        );
-    }
+    naked_asm!(
+        // Save all the registers.
+        include_str!("../asm/memory_map.s"),
+        len_address = const MEMORY_MAP_LENGTH,
+        map_address = const MEMORY_MAP_OFFSET,
+        smap = const MEMORY_MAP_MAGIC_NUMBER,
+        function_code = const 0xE820,
+        extended_region_size = const 24,
+        regular_region_size = const 20
+    );
 }
 #[panic_handler]
 pub fn panic_handler(_info: &PanicInfo) -> ! {

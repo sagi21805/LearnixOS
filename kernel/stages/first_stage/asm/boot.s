@@ -47,6 +47,6 @@ check_int13h_extensions:
     hlt
 .int13_pass:
 
-# push disk number into the stack will be at 0x7bfe and call the start function
+# push disk number into the stack will be at 0x7bfe and call the first_stage function
 push dx    
 call first_stage
