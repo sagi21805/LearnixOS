@@ -29,17 +29,11 @@ pub enum MemoryRegionSize {
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum MemoryRegionType {
-    Unknown = 0u32,
     Usable = 0x1u32,
     Reserved = 0x2u32,
     Reclaimable = 0x3u32,
     ACPINVS = 0x4u32,
     BadMemory = 0x5u32,
-}
-
-#[repr(u8)]
-pub enum DiskPacketSize {
-    Default = 0x10,
 }
 
 #[repr(u8)]
