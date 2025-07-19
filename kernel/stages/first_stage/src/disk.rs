@@ -1,4 +1,4 @@
-use common::enums::{BiosInterrupts, Disk, DiskPacketSize};
+use common::enums::{BiosInterrupts, Disk};
 use core::arch::asm;
 
 #[repr(C, packed)]
@@ -31,20 +31,11 @@ impl DiskAddressPacket {
     /// - `memory_address`: The starting memory address of the segment to load the sectors to
     /// - `segment`: The memory segment start address
     /// - `abs_block_num`: The starting sector Logical Block Address (LBA)
-    pub const fn new(
-        num_of_sectors: u16,
-        memory_address: u16,
-        segment: u16,
-        abs_block_num: u64,
-    ) -> Self {
+    pub fn new(num_of_sectors: u16, memory_address: u16, segment: u16, abs_block_num: u64) -> Self {
         Self {
-            packet_size: DiskPacketSize::Default as u8,
+            packet_size: size_of::<Self>() as u8,
             zero: 0,
-            num_of_sectors: if num_of_sectors <= 128 {
-                num_of_sectors
-            } else {
-                128
-            },
+            num_of_sectors: num_of_sectors.min(128),
             memory_address,
             segment,
             abs_block_num,
@@ -59,16 +50,17 @@ impl DiskAddressPacket {
     pub fn load(&self, disk_number: u8) {
         unsafe {
             asm!(
-                "push si",     // si register is required for llvm it's content needs to be saved
-                "mov si, {3:x}",
-                "mov ah, {0}",
-                "mov dl, {1}",
-                "int {2}",
+                // si register is required for llvm it's content needs to be saved
+                "push si",
+                "mov si, {0:x}",
+                "mov ah, {1}",
+                "mov dl, {2}",
+                "int {3}",
                 "pop si",
+                in(reg) self as *const Self as u16,
                 const Disk::ExtendedRead as u8,
                 in(reg_byte) disk_number,
                 const BiosInterrupts::DISK as u8,
-                in(reg) self as *const Self as u32,
             )
         }
     }
