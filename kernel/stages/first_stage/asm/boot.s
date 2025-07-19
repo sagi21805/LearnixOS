@@ -1,9 +1,8 @@
+# This will define a boot section for this asm code,
+# which we can put at the start of our binary.
 .section .boot, "awx"
 .global start
 .code16
-
-# This stage initializes the stack, enables the A20 line
-
 start:
     # zero segment registers
     xor ax, ax
@@ -20,30 +19,34 @@ start:
     # initialize stack
     mov sp, 0x7c00
 
+# Enable the A20 line via I/O Port 0x92
+# This method might not work on all motherboards
+# Use with care!
 enable_a20:
-    # enable A20-Line via IO-Port 92, might not work on all motherboards
+    # Check if a20 is already enabled
     in al, 0x92
     test al, 2
+
+    # If so, skip the enabling code
     jnz enable_a20_after
+    
+    # Else, enable the a20 line
     or al, 2
     and al, 0xFE
     out 0x92, al
 enable_a20_after:
 
 check_int13h_extensions:
+
+    # Set function constants `dl` already contains the driver
     mov ah, 0x41
     mov bx, 0x55aa
-    # dl contains drive number
     int 0x13
     jnc .int13_pass
-.int13_pass:
-    pop ax      # pop error code again
-
-rust:
-    # push arguments
-    push dx    # disk number
-    call _start
-    # Fail code if first stage returns
-spin:
+    # hlt system if there is no support
     hlt
-    jmp spin
+.int13_pass:
+
+# push disk number into the stack will be at 0x7bfe and call the start function
+push dx    
+call first_stage
