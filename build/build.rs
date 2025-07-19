@@ -28,7 +28,7 @@ fn build_stage(name: &str, path: &str, target: &str, profile: &str) -> Child {
 }
 
 fn main() {
-    println!("cargo::rerun-if-changed=concatenated.bin");
+    println!("cargo::rerun-if-changed=image.bin");
     let profile = std::env::var("PROFILE").unwrap();
     let mut first_stage = build_stage(
         "first_stage",
