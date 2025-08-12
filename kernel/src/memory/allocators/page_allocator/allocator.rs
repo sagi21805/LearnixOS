@@ -60,7 +60,7 @@ impl PhysicalPageAllocator {
         unsafe { self.0.as_mut_unchecked() }
     }
 
-    pub fn init(uninit: &mut MaybeUninit<Self>) {
+    pub fn init(uninit: &mut MaybeUninit<Self>) -> Option<()> {
         unsafe {
             let memory_size = parsed_memory_map!()
                 .iter()
@@ -80,31 +80,32 @@ impl PhysicalPageAllocator {
             // Allocate the addresses that are used for the code, and for other variables.
             let end_address = PhysicalAddress::new(
                 PAGE_ALLOCATOR_OFFSET + (initialized.map().map.len() * size_of::<u64>()),
-            )
+            )?
             .align_up(REGULAR_PAGE_ALIGNMENT);
             let size_bits = ((end_address - start_address) / 0x1000).as_usize();
             let block = ContiguousBlockLayout::from_start_size(&start_position, size_bits);
             initialized
                 .map_mut()
                 .set_contiguous_block(&start_position, &block);
-            parsed_memory_map!().iter().for_each(|region| {
+            for region in parsed_memory_map!() {
                 if region.region_type != MemoryRegionType::Usable {
-                    let start_address_alligned = PhysicalAddress::new(
+                    let start_address_aligned = PhysicalAddress::new(
                         region.base_address as usize & (u64::MAX ^ (0x1000 - 1)) as usize,
-                    );
-                    let start_position = Self::address_position(start_address_alligned).unwrap();
+                    )?;
+                    let start_position = Self::address_position(start_address_aligned).unwrap();
                     let size_bits = region.length as usize / 0x1000;
                     let block = ContiguousBlockLayout::from_start_size(&start_position, size_bits);
                     initialized
                         .map_mut()
                         .set_contiguous_block(&start_position, &block);
                 }
-            });
+            }
         };
+        Some(())
     }
 
     /// Resolves `map_index` and `bit_index` into actual physical address
-    pub fn resolve_position(&self, p: &Position) -> PhysicalAddress {
+    pub fn resolve_position(&self, p: &Position) -> Option<PhysicalAddress> {
         return PhysicalAddress::new(
             ((p.map_index * (u64::BITS as usize)) + p.bit_index as usize) * REGULAR_PAGE_SIZE,
         );
@@ -120,7 +121,7 @@ impl PhysicalPageAllocator {
 
         match free_block {
             Some((p, _)) => unsafe {
-                let physical_address = self.resolve_position(&p);
+                let physical_address = self.resolve_position(&p).unwrap();
 
                 ptr::write(
                     physical_address.translate().as_mut_ptr::<PageTable>(),
@@ -147,7 +148,10 @@ unsafe impl GlobalAlloc for PhysicalPageAllocator {
             {
                 Some((p, block)) => {
                     self.map_mut().set_contiguous_block(&p, &block);
-                    self.resolve_position(&p).translate().as_mut_ptr::<u8>()
+                    self.resolve_position(&p)
+                        .unwrap()
+                        .translate()
+                        .as_mut_ptr::<u8>()
                 }
                 None => null::<u8>() as *mut u8,
             },
@@ -156,9 +160,9 @@ unsafe impl GlobalAlloc for PhysicalPageAllocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        let freed_address = VirtualAddress::new(ptr as usize).align_down(REGULAR_PAGE_ALIGNMENT);
-        let physical_page = freed_address.translate();
-        let position = Self::address_position(physical_page).unwrap_unchecked();
+        // let freed_address = VirtualAddress::new(ptr as usize).align_down(REGULAR_PAGE_ALIGNMENT);
+        // let physical_page = freed_address.translate();
+        // let position = Self::address_position(physical_page).unwrap_unchecked();
     }
 }
 
