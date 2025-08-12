@@ -59,10 +59,9 @@ pub fn first_stage() -> ! {
 
         // Jump to the next stage
         asm!(
-            "ljmp ${section}, ${next_stage}",
+            "jmp ${section}, ${next_stage}",
             section = const Sections::KernelCode as u8,
             next_stage = const SECOND_STAGE_OFFSET, // Change this to the correct address
-            options(att_syntax)
         );
     }
 
