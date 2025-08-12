@@ -4,7 +4,6 @@ macro_rules! impl_common_address_functions {
         mod ${concat(__impl_for_, $struct_name)} {
             use super::*;
             use core::ptr::Alignment;
-            use crate::constants::{ADDRESS_EXTENSION_OFFSET, ADDRESS_EXTENSION_TOP};
             impl $struct_name {
                 /// Create new instance from an address
                 ///
@@ -18,13 +17,10 @@ macro_rules! impl_common_address_functions {
                 }
 
                 #[inline]
-                pub const fn new(address: usize) -> Option<Self> {
-                    let address_extension = address >> ADDRESS_EXTENSION_OFFSET;
-                    if address_extension == 0 ||
-                       address_extension == ADDRESS_EXTENSION_TOP  {
-                        return unsafe { Some(Self::new_unchecked(address)) };
-                    }
-                    None
+                #[cfg(target_arch = "x86_64")]
+                pub fn new(address: usize) -> Self {
+                    Self(((address << 16) as isize >> 16) as usize);
+                    todo!("Check this function and make const");
                 }
 
                 #[inline]
