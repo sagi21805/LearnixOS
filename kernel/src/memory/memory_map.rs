@@ -10,12 +10,12 @@ macro_rules! parsed_memory_map {
         unsafe {
             use crate::memory::allocators::page_allocator::extensions::PhysicalAddressExt;
             ::core::slice::from_raw_parts_mut(
-                common::address_types::PhysicalAddress::new(
+                common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::PARSED_MEMORY_MAP_OFFSET as usize,
                 )
                 .translate()
                 .as_mut_ptr::<crate::memory::memory_map::MemoryRegion>(),
-                *(common::address_types::PhysicalAddress::new(
+                *(common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::PARSED_MEMORY_MAP_LENGTH as usize,
                 )
                 .translate()
@@ -31,12 +31,12 @@ macro_rules! raw_memory_map {
         unsafe {
             use crate::memory::allocators::page_allocator::extensions::PhysicalAddressExt;
             ::core::slice::from_raw_parts_mut(
-                common::address_types::PhysicalAddress::new(
+                common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::MEMORY_MAP_OFFSET as usize,
                 )
                 .translate()
                 .as_mut_ptr::<crate::memory::memory_map::MemoryRegionExtended>(),
-                *(common::address_types::PhysicalAddress::new(
+                *(common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::MEMORY_MAP_LENGTH as usize,
                 )
                 .translate()
