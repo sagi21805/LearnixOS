@@ -1,69 +1,76 @@
 macro_rules! impl_common_address_functions {
     ($struct_name:ident) => {
-        impl $struct_name {
-            /// Create new instance from an address
-            ///
-            /// # Safety
-            /// There is no check on the last bits of the address (bit 63-48 must be copies of bit 47)
-            ///
-            /// `This method is auto-generated`
-            #[inline]
-            pub const unsafe fn new_unchecked(address: usize) -> Self {
-                Self(address)
-            }
+        #[allow(non_snake_case)]
+        mod ${concat(__impl_for_, $struct_name)} {
+            use super::*;
+            use core::ptr::Alignment;
+            impl $struct_name {
+                /// Create new instance from an address
+                ///
+                /// # Safety
+                /// There is no check on the last bits of the address (bit 63-48 must be copies of bit 47)
+                ///
+                /// `This method is auto-generated`
+                #[inline]
+                pub const unsafe fn new_unchecked(address: usize) -> Self {
+                    Self(address)
+                }
 
-            /// Create new instance from an address, copies bit 47 to bits 63-48
-            ///
-            /// `This method is auto-generated`
-            #[inline]
-            #[cfg(target_arch = "x86_64")]
-            pub const fn new(address: usize) -> Self {
-                Self((address << 16) >> 16)
-            }
+                #[inline]
+                pub const fn new(address: usize) -> Option<Self> {
+                    const ADDRESS_EXTENSION_TOP: usize = 0xffff8;
+                    const ADDRESS_EXTENSION_ADDRESS_OFFSET: usize = 44;
+                    let address_extension = address >> ADDRESS_EXTENSION_ADDRESS_OFFSET;
+                    if address_extension == 0 || address_extension == ADDRESS_EXTENSION_TOP  {
+                        return unsafe { Some(Self::new_unchecked(address)) };
+                    }
+                    None
+                }
 
-            #[inline]
-            /// Return the underlying usize
-            pub const fn as_usize(&self) -> usize {
-                self.0
-            }
+                #[inline]
+                /// Return the underlying usize
+                pub const fn as_usize(&self) -> usize {
+                    self.0
+                }
 
-            #[inline]
-            /// Return the underlying number as mutable pointer to data
-            ///
-            /// # Safety
-            /// This method returns a mutable pointer without checking if this address is used or not
-            pub const unsafe fn as_mut_ptr<T>(&self) -> *mut T {
-                self.0 as *mut T
-            }
+                #[inline]
+                /// Return the underlying number as mutable pointer to data
+                ///
+                /// # Safety
+                /// This method returns a mutable pointer without checking if this address is used or not
+                pub const unsafe fn as_mut_ptr<T>(&self) -> *mut T {
+                    self.0 as *mut T
+                }
 
-            #[inline]
-            /// Return the underlying number as immutable pointer to data
-            pub const fn as_ptr<T>(&self) -> *const T {
-                self.0 as *const T
-            }
+                #[inline]
+                /// Return the underlying number as immutable pointer to data
+                pub const fn as_ptr<T>(&self) -> *const T {
+                    self.0 as *const T
+                }
 
-            #[inline]
-            /// Checks if this address is aligned to a certain alignment
-            pub const fn is_aligned(&self, alignment: core::ptr::Alignment) -> bool {
-                self.0 & (alignment.as_usize() - 1) == 0
-            }
+                #[inline]
+                /// Checks if this address is aligned to a certain alignment
+                pub const fn is_aligned(&self, alignment: Alignment) -> bool {
+                    self.0 & (alignment.as_usize() - 1) == 0
+                }
 
-            #[inline]
-            pub const fn align_up(mut self, alignment: core::ptr::Alignment) -> Self {
-                self.0 = (self.0 + (alignment.as_usize() - 1)) & !(alignment.as_usize() - 1);
-                self
-            }
+                #[inline]
+                pub const fn align_up(mut self, alignment: Alignment) -> Self {
+                    self.0 = (self.0 + (alignment.as_usize() - 1)) & !(alignment.as_usize() - 1);
+                    self
+                }
 
-            #[inline]
-            pub const fn align_down(mut self, alignment: core::ptr::Alignment) -> Self {
-                self.0 &= !(alignment.as_usize() - 1);
-                self
-            }
+                #[inline]
+                pub const fn align_down(mut self, alignment: Alignment) -> Self {
+                    self.0 &= !(alignment.as_usize() - 1);
+                    self
+                }
 
-            #[inline]
-            /// Get the alignment of an address
-            pub const fn alignment(&self) -> core::ptr::Alignment {
-                unsafe { core::ptr::Alignment::new_unchecked(1 << self.0.trailing_zeros()) }
+                #[inline]
+                /// Get the alignment of an address
+                pub const fn alignment(&self) -> Alignment {
+                    unsafe { Alignment::new_unchecked(1 << self.0.trailing_zeros()) }
+                }
             }
         }
     };
@@ -74,9 +81,10 @@ macro_rules! impl_common_address_functions {
 ///
 /// With this information it will automatically generate three methods
 ///
-/// 1. `set_<flag_name>`: will set the bit without returning self
-/// 2. `set_chain_<flag_name>`: will set the bit and will return self
-/// 3. `<flag_name>`: will read the flag and return true if the flag is set or false if not
+/// 1. `set_<flag_name>`: set the bit without returning self
+/// 2. `<flag_name>`: set the bit and will return self
+/// 3. `unset_<flag_name>:` unset the bit without returning self
+/// 4. `is_<flag_name>`: return true if the flag is set or false if not
 macro_rules! flag {
     ($flag_name:ident, $bit_number:literal) => {
         #[inline]
