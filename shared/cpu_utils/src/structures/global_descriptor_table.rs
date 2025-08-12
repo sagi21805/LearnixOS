@@ -8,37 +8,45 @@ impl AccessByte {
         Self(0)
     }
 
-    // Is this a viable segment?
+    // Is this a valid segment?
+    // for all active segments this should be turned on.
     flag!(present, 7);
 
-    /// Sets the privilage level while returning self.
+    /// Sets the privilege level while returning self.
+    /// This is corresponding to the cpu ring of this segment
+    /// 0 is commonly called kernel mode, 4 is commonly called user mode
     pub const fn dpl(mut self, level: u8) -> Self {
         self.0 |= (level & 0x3) << 5;
         self
     }
-    // Is this a code or data segment (defaults to system segment).
+    // Is this a code / data segment or a system segment.
     flag!(code_or_data, 4);
-    // Will this segment contains executable code?.
+    // Will this segment contains executable code?
     flag!(executable, 3);
     // Will the segment grow downwards?
+    // relevant for non executable segments
     flag!(direction, 2);
     // Can this code be executed from lower privilege segments.
+    // relevant to executable segments
     flag!(conforming, 2);
-    // Can this segment be read or it is only executable?.
+    // Can this segment be read or it is only executable?
+    // relevant for code segment
     flag!(readable, 1);
-    // Is this segment NOT read only?.
+    // Is this segment writable?
+    // relevant for data segments
     flag!(writable, 1);
 }
 
 struct LimitFlags(u8);
 
 impl LimitFlags {
+    /// Creates a default limit flags with all flags turned off.
     pub const fn new() -> Self {
         Self(0)
     }
     // Toggle on paging for this segment (limit *= 0x1000)
-    flag!(paging, 7);
-    // Is this segment going to use 32bit memory?
+    flag!(granularity, 7);
+    // Is this segment going to use 32bit mode?
     flag!(protected, 6);
     // Set long mode flag, this will also clear protected mode
     flag!(long, 5);
@@ -83,8 +91,8 @@ pub struct GlobalDescriptorTableRegister32 {
 #[allow(dead_code)]
 pub struct GlobalDescriptorTable {
     null: GlobalDescriptorTableEntry32,
-    kernel_code: GlobalDescriptorTableEntry32,
-    kernel_data: GlobalDescriptorTableEntry32,
+    code: GlobalDescriptorTableEntry32,
+    data: GlobalDescriptorTableEntry32,
 }
 
 impl GlobalDescriptorTable {
@@ -92,7 +100,7 @@ impl GlobalDescriptorTable {
     pub const fn protected_mode() -> Self {
         GlobalDescriptorTable {
             null: GlobalDescriptorTableEntry32::new(0, 0, AccessByte::new(), LimitFlags::new()),
-            kernel_code: GlobalDescriptorTableEntry32::new(
+            code: GlobalDescriptorTableEntry32::new(
                 0,
                 0xfffff,
                 AccessByte::new()
@@ -101,13 +109,13 @@ impl GlobalDescriptorTable {
                     .code_or_data()
                     .executable()
                     .readable(),
-                LimitFlags::new().paging().protected(),
+                LimitFlags::new().granularity().protected(),
             ),
-            kernel_data: GlobalDescriptorTableEntry32::new(
+            data: GlobalDescriptorTableEntry32::new(
                 0,
                 0xfffff,
                 AccessByte::new().present().dpl(0).code_or_data().writable(),
-                LimitFlags::new().paging().protected(),
+                LimitFlags::new().granularity().protected(),
             ),
         }
     }
@@ -116,7 +124,7 @@ impl GlobalDescriptorTable {
     pub const fn long_mode() -> Self {
         GlobalDescriptorTable {
             null: GlobalDescriptorTableEntry32::new(0, 0, AccessByte::new(), LimitFlags::new()),
-            kernel_code: GlobalDescriptorTableEntry32::new(
+            code: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
                 AccessByte::new()
@@ -126,7 +134,7 @@ impl GlobalDescriptorTable {
                     .executable(),
                 LimitFlags::new().long(),
             ),
-            kernel_data: GlobalDescriptorTableEntry32::new(
+            data: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
                 AccessByte::new().code_or_data().present().writable(),
@@ -135,7 +143,6 @@ impl GlobalDescriptorTable {
         }
     }
 
-    #[allow(unsafe_op_in_unsafe_fn)]
     pub unsafe fn load(&'static self) {
         let global_descriptor_table_register: GlobalDescriptorTableRegister32 = {
             GlobalDescriptorTableRegister32 {
@@ -143,13 +150,14 @@ impl GlobalDescriptorTable {
                 base: self as *const GlobalDescriptorTable,
             }
         };
-
-        asm!(
-            "cli",
-            "lgdt [{}]",
-            in(reg) &global_descriptor_table_register,
-            options(readonly, nostack, preserves_flags)
-        );
+        unsafe {
+            asm!(
+                "cli",
+                "lgdt [{}]",
+                in(reg) &global_descriptor_table_register,
+                options(readonly, nostack, preserves_flags)
+            );
+        }
     }
 }
 
