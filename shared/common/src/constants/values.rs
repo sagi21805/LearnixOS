@@ -1,5 +1,7 @@
 use core::ptr::Alignment;
 
+use crate::enums::paging;
+
 #[cfg(feature = "paging")]
 pub const PAGE_DIRECTORY_ENTRIES: usize = 512;
 #[cfg(feature = "paging")]
@@ -26,3 +28,5 @@ pub const HUGE_PAGE_ALIGNMENT: Alignment = unsafe { Alignment::new_unchecked(HUG
 pub const MEMORY_MAP_MAGIC_NUMBER: u32 = u32::from_le_bytes([b'P', b'A', b'M', b'S']); // 'SMAP' in little endian
 #[cfg(feature = "paging")]
 pub const ENTRY_ADDRESS_MASK: u64 = 0x0000_fffffffff_000;
+pub const ADDRESS_EXTENSION_TOP: usize = 0xffff8;
+pub const ADDRESS_EXTENSION_OFFSET: usize = 44;
