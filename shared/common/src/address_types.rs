@@ -1,3 +1,5 @@
+use crate::constants::PHYSICAL_MEMORY_OFFSET;
+
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Div, DivAssign, From, Mul, MulAssign, Sub, SubAssign,
 };
@@ -96,10 +98,10 @@ impl VirtualAddress {
     // }
 }
 
-// impl PhysicalAddress {
-//     #[inline]
-//     #[cfg(target_arch = "x86_64")]
-//     pub const fn translate(&self) -> VirtualAddress {
-//         VirtualAddress(self.0 + PHYSICAL_MEMORY_OFFSET)
-//     }
-// }
+impl PhysicalAddress {
+    #[inline]
+    #[cfg(target_arch = "x86_64")]
+    pub const fn translate(&self) -> VirtualAddress {
+        VirtualAddress(self.0 + PHYSICAL_MEMORY_OFFSET)
+    }
+}
