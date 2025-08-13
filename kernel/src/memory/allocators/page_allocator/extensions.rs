@@ -21,16 +21,18 @@ pub impl PhysicalAddress {
 pub impl PageTableEntry {
     /// This function will return a table mapped in this entry if there is one.
     ///
-    /// Else, it will override what is inside the entry and map a new table to it so valid table is guranteed to be returned.
+    /// Else, it will override what is inside the entry and map a new table to it so valid table is guaranteed to be returned.
     fn force_resolve_table_mut(&mut self) -> &mut PageTable {
         if let Ok(table) = self.mapped_table_mut() {
             return table;
         } else {
             let resolved_table = unsafe { ALLOCATOR.assume_init_ref().alloc_table() };
-            self.map_unchecked(
-                PhysicalAddress(resolved_table.address().as_usize()),
-                PageEntryFlags::table_flags(),
-            );
+            unsafe {
+                self.map_unchecked(
+                    PhysicalAddress(resolved_table.address().as_usize()),
+                    PageEntryFlags::table_flags(),
+                );
+            }
             unsafe { &mut *self.mapped_unchecked().as_mut_ptr::<PageTable>() }
         }
     }
@@ -55,8 +57,10 @@ pub impl VirtualAddress {
                 let resolved_table = entry.force_resolve_table_mut();
                 table = resolved_table;
             }
-            table.entries[self.rev_nth_index_unchecked(3 - page_size as usize)]
-                .map_unchecked(address, flags);
+            unsafe {
+                table.entries[self.rev_nth_index_unchecked(3 - page_size as usize)]
+                    .map_unchecked(address, flags);
+            }
         } else {
             panic!("address alignment doesn't match page type alignment, todo! raise a page fault")
         }
@@ -101,7 +105,10 @@ pub impl PageTable {
                     [0..second_level_entries_count.min(PAGE_DIRECTORY_ENTRIES)]
                 {
                     if !second_entry.is_present() {
-                        second_entry.map(next_mapped.clone(), PageEntryFlags::huge_page_flags());
+                        unsafe {
+                            second_entry
+                                .map(next_mapped.clone(), PageEntryFlags::huge_page_flags());
+                        }
                     }
                     next_mapped += BIG_PAGE_SIZE.into();
                     second_level_entries_count -= 1;

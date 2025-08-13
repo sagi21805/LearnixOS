@@ -12,16 +12,37 @@ use super::PageEntryFlags;
 pub struct PageTableEntry(u64);
 
 impl PageTableEntry {
+    table_entry_flags!();
+
     #[inline]
     pub(crate) const fn empty() -> Self {
         Self(0)
     }
 
-    table_entry_flags!();
+    /// Set all of the flags to zero.
+    pub const fn reset_flags(&mut self) {
+        self.0 &= ENTRY_ADDRESS_MASK;
+    }
 
+    /// Set the flags without a reset to previous flags.
+    ///
+    /// # Safety
+    /// If there are some flags set prior to this, it will lead to undefined behavior
+    pub const unsafe fn set_flags_unchecked(&mut self, flags: PageEntryFlags) {
+        self.0 |= flags.as_u64()
+    }
+
+    /// Set the flags of the entry
     pub const fn set_flags(&mut self, flags: PageEntryFlags) {
-        self.0 &= ENTRY_ADDRESS_MASK; // zero out all previous flags.
-        self.0 |= flags.as_u64(); // set new flags;
+        self.reset_flags();
+        unsafe { self.set_flags_unchecked(flags) };
+    }
+
+    pub const unsafe fn map_unchecked(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
+        *self = Self::empty();
+        unsafe { self.set_flags_unchecked(flags) };
+        self.set_present();
+        self.0 |= frame.as_usize() as u64 & ENTRY_ADDRESS_MASK; // Set the new address
     }
 
     #[inline]
@@ -38,17 +59,15 @@ impl PageTableEntry {
     /// # Safety
     /// The `frame` address should not be used by anyone except the corresponding virtual address,
     /// and should be marked owned by it in a memory allocator
-    pub const fn map(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
+    pub const unsafe fn map(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
         if !self.is_present() && frame.is_aligned(REGULAR_PAGE_ALIGNMENT) {
-            self.map_unchecked(frame, flags);
+            unsafe { self.map_unchecked(frame, flags) };
         }
     }
 
-    pub const fn map_unchecked(&mut self, frame: PhysicalAddress, flags: PageEntryFlags) {
-        self.set_flags(flags);
-        self.set_present();
-        self.0 &= !ENTRY_ADDRESS_MASK; // Zero out the address part of the entry.
-        self.0 |= frame.as_usize() as u64 & ENTRY_ADDRESS_MASK; // Set the new address
+    #[inline]
+    pub const unsafe fn mapped_unchecked(&self) -> PhysicalAddress {
+        unsafe { PhysicalAddress::new_unchecked((self.0 & ENTRY_ADDRESS_MASK) as usize) }
     }
 
     #[inline]
@@ -59,11 +78,6 @@ impl PageTableEntry {
         } else {
             Err(EntryError::NoMapping)
         }
-    }
-
-    #[inline]
-    pub const unsafe fn mapped_unchecked(&self) -> PhysicalAddress {
-        unsafe { PhysicalAddress::new_unchecked((self.0 & ENTRY_ADDRESS_MASK) as usize) }
     }
 
     #[inline]
@@ -83,7 +97,7 @@ impl PageTableEntry {
 
     pub fn mapped_table(&self) -> Result<&PageTable, EntryError> {
         // first check if the entry is mapped.
-        let table = unsafe { &*self.mapped()?.as_ptr::<PageTable>() };
+        let table = unsafe { &*self.mapped()?.translate().as_ptr::<PageTable>() };
         // then check if it is a table.
         if self.is_huge_page() && self.is_table() {
             Ok(table)
