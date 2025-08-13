@@ -1,6 +1,5 @@
 #[macro_use]
 pub mod entry_flags;
-pub mod extensions;
 pub mod init;
 pub mod page_table;
 pub mod page_table_entry;

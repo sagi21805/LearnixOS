@@ -37,7 +37,6 @@ macro_rules! table_entry_flags {
 }
 
 // Just a wrapper for the flags for easier use
-#[repr(transparent)]
 #[derive(Debug, Clone)]
 pub struct PageEntryFlags(u64);
 
