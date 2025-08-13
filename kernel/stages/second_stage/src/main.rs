@@ -27,7 +27,6 @@ pub unsafe extern "C" fn _start() -> ! {
     GLOBAL_DESCRIPTOR_TABLE_LONG_MODE.load();
 
     // Update global descriptor table to enable long mode and jump to kernel code
-    // loop {}
     asm!(
         "ljmp ${section}, ${next_stage}",
         section = const Sections::KernelCode as u8,

@@ -1,7 +1,4 @@
 use core::ptr::Alignment;
-
-use crate::enums::paging;
-
 #[cfg(feature = "paging")]
 pub const PAGE_DIRECTORY_ENTRIES: usize = 512;
 #[cfg(feature = "paging")]
