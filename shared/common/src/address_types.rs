@@ -1,3 +1,4 @@
+#[cfg(target_arch = "x86_64")]
 use crate::constants::PHYSICAL_MEMORY_OFFSET;
 
 use derive_more::{
@@ -20,7 +21,7 @@ use derive_more::{
     AsRef,
     From,
 )]
-pub struct PhysicalAddress(pub usize);
+pub struct PhysicalAddress(usize);
 
 impl_common_address_functions!(PhysicalAddress);
 
@@ -40,7 +41,7 @@ impl_common_address_functions!(PhysicalAddress);
     AsRef,
     From,
 )]
-pub struct VirtualAddress(pub usize);
+pub struct VirtualAddress(usize);
 
 impl_common_address_functions!(VirtualAddress);
 

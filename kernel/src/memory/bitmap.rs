@@ -11,7 +11,7 @@ impl Position {
     /// Create a new position for the map and bit index.
     ///
     /// This function will return None if the `bit_index` >= 64
-    /// because its inedex exceeds array with length  [`u64::BITS`]  
+    /// because its indices exceeds array with length  [`u64::BITS`]  
     pub fn new(map_index: usize, bit_index: usize) -> Option<Self> {
         if bit_index < 64 {
             Some(Position {
