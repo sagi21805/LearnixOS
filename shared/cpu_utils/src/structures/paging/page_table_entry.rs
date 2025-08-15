@@ -80,13 +80,13 @@ impl PageTableEntry {
         }
     }
 
-    #[inline]
+    #[cfg(target_arch = "x86_64")]
     /// Return the physical address mapped by this table as a reference into a page table.
     ///
     /// This method assumes all page tables are identity mapped.
     pub fn mapped_table_mut(&self) -> Result<&mut PageTable, EntryError> {
         // first check if the entry is mapped.
-        let table = unsafe { &mut *self.mapped()?.as_mut_ptr::<PageTable>() };
+        let table = unsafe { &mut *self.mapped()?.translate().as_mut_ptr::<PageTable>() };
         // then check if it is a table.
         if !self.is_huge_page() && self.is_table() {
             Ok(table)
@@ -95,6 +95,7 @@ impl PageTableEntry {
         }
     }
 
+    #[cfg(target_arch = "x86_64")]
     pub fn mapped_table(&self) -> Result<&PageTable, EntryError> {
         // first check if the entry is mapped.
         let table = unsafe { &*self.mapped()?.translate().as_ptr::<PageTable>() };

@@ -6,6 +6,5 @@ pub mod paging;
 
 pub use bios_interrupts::*;
 pub use global_descriptor_table::*;
-pub use interrupts::*;
 #[cfg(feature = "paging")]
 pub use paging::*;

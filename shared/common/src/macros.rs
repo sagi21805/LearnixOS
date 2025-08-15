@@ -22,7 +22,6 @@ macro_rules! impl_common_address_functions {
                     Self(((address << 16) as isize >> 16) as usize);
                     todo!("Check this function and make const");
                 }
-
                 #[inline]
                 /// Return the underlying usize
                 pub const fn as_usize(&self) -> usize {

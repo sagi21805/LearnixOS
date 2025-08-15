@@ -7,8 +7,8 @@ use core::fmt::{self, Display, Formatter};
 #[macro_export]
 macro_rules! parsed_memory_map {
     () => {
+        #[allow(unused_unsafe)]
         unsafe {
-            use crate::memory::allocators::page_allocator::extensions::PhysicalAddressExt;
             ::core::slice::from_raw_parts_mut(
                 common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::PARSED_MEMORY_MAP_OFFSET as usize,
@@ -28,8 +28,8 @@ macro_rules! parsed_memory_map {
 #[macro_export]
 macro_rules! raw_memory_map {
     () => {
+        #[allow(unused_unsafe)]
         unsafe {
-            use crate::memory::allocators::page_allocator::extensions::PhysicalAddressExt;
             ::core::slice::from_raw_parts_mut(
                 common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::MEMORY_MAP_OFFSET as usize,

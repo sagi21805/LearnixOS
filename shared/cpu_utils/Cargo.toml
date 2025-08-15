@@ -12,14 +12,12 @@ thiserror = { version = "2.0.12", default-features = false }
 extend = "1.2.0"
 
 [features]
-# Define the features here
 global_descriptor_table = []
 interrupt_descriptor_table = []
 master_boot_record = []
 paging = []
 linked_list = []
 
-# Optionally, you can define a default set of features
 all = [
     "global_descriptor_table",
     "interrupt_descriptor_table",

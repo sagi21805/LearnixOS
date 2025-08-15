@@ -32,8 +32,8 @@ macro_rules! print {
         use $crate::drivers::vga_display::WRITER;
         use $crate::drivers::vga_display::color_code::ColorCode;
 
+        #[allow(unused_unsafe)]
         unsafe {
-            #[allow(static_mut_refs)]
             write!(WRITER, $fmt $(, $arg)*).unwrap();
             WRITER.color = ColorCode::default();
         }
@@ -45,6 +45,7 @@ macro_rules! print {
         use $crate::drivers::vga_display::WRITER;
         use $crate::drivers::vga_display::color_code::ColorCode;
 
+        #[allow(unused_unsafe)]
         unsafe {
             WRITER.color = $color;
             write!(WRITER, $fmt $(, $arg)*).unwrap();
