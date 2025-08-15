@@ -13,7 +13,7 @@ pub impl PhysicalAddress {
     }
 
     fn translate(&self) -> VirtualAddress {
-        return unsafe { VirtualAddress::new_unchecked(PHYSICAL_MEMORY_OFFSET + self.0) };
+        return unsafe { VirtualAddress::new_unchecked(PHYSICAL_MEMORY_OFFSET + self.as_usize()) };
     }
 }
 
@@ -29,7 +29,7 @@ pub impl PageTableEntry {
             let resolved_table = unsafe { ALLOCATOR.assume_init_ref().alloc_table() };
             unsafe {
                 self.map_unchecked(
-                    PhysicalAddress(resolved_table.address().as_usize()),
+                    PhysicalAddress::new_unchecked(resolved_table.address().as_usize()),
                     PageEntryFlags::table_flags(),
                 );
             }
@@ -50,7 +50,7 @@ pub impl VirtualAddress {
     #[allow(static_mut_refs)]
     fn map(&self, address: PhysicalAddress, flags: PageEntryFlags, page_size: PageSize) {
         if address.is_aligned(page_size.alignment()) && self.is_aligned(page_size.alignment()) {
-            let mut table = PageTable::current_table_mut(); // must use pointers becase can't reassign mut ref in a loop.
+            let mut table = PageTable::current_table_mut();
             for table_number in 0..(3 - page_size.clone() as usize) {
                 let index = self.rev_nth_index_unchecked(table_number);
                 let entry = &mut table.entries[index];
@@ -89,7 +89,7 @@ pub impl PageTable {
             (((third_level_entries_count + PAGE_DIRECTORY_ENTRIES - 1) / PAGE_DIRECTORY_ENTRIES)
                 .max(1))
             .min(256);
-        let mut next_mapped = PhysicalAddress(0);
+        let mut next_mapped = unsafe { PhysicalAddress::new_unchecked(0) };
         for forth_entry in &mut self.entries[(PAGE_DIRECTORY_ENTRIES / 2)
             ..(forth_level_entries_count + (PAGE_DIRECTORY_ENTRIES / 2))]
         {

@@ -1,5 +1,5 @@
 #[cfg(target_arch = "x86")]
-pub fn enable() {
+pub fn enable() -> Option<()> {
     use super::{PageEntryFlags, PageTable};
     use common::{
         address_types::PhysicalAddress,
@@ -10,17 +10,16 @@ pub fn enable() {
         },
     };
     use core::arch::asm;
-
     let identity_page_table_l4 =
-        unsafe { PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L4_OFFSET) };
+        unsafe { PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L4_OFFSET.into())? };
     let identity_page_table_l3 =
-        unsafe { PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L3_OFFSET) };
+        unsafe { PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L3_OFFSET.into())? };
     let identity_page_table_l2 =
-        unsafe { PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L2_OFFSET) };
+        unsafe { PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L2_OFFSET.into())? };
     let top_identity_page_table_l3 =
-        unsafe { PageTable::empty_from_ptr(TOP_IDENTITY_PAGE_TABLE_L3_OFFSET) };
+        unsafe { PageTable::empty_from_ptr(TOP_IDENTITY_PAGE_TABLE_L3_OFFSET.into())? };
     let top_identity_page_table_l2 =
-        unsafe { PageTable::empty_from_ptr(TOP_IDENTITY_PAGE_TABLE_L2_OFFSET) };
+        unsafe { PageTable::empty_from_ptr(TOP_IDENTITY_PAGE_TABLE_L2_OFFSET.into())? };
 
     unsafe {
         // Setup identity paging
@@ -75,4 +74,5 @@ pub fn enable() {
         );
         asm!("mov eax, cr0", "or eax, 1 << 31", "mov cr0, eax");
     }
+    Some(())
 }
