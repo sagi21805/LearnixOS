@@ -1,10 +1,30 @@
-use common::{address_types::VirtualAddress, flag};
+use common::{address_types::VirtualAddress, enums::ProtectionLevel, flag};
 
-pub type InterruptServiceRoutine = extern "x86-interrupt" fn(InterruptStackFrame);
-pub type InterruptServiceRoutineWithError =
+pub type InterruptHandlerFunction = extern "x86-interrupt" fn(InterruptStackFrame);
+pub type InterruptHandlerFunctionWithError =
     extern "x86-interrupt" fn(InterruptStackFrame, error_code: u64);
-pub type PageFaultInterruptServiceRoutine =
+pub type PageFaultHandlerFunction =
     extern "x86-interrupt" fn(InterruptStackFrame, error_code: PageFaultErrorCode);
+
+pub trait InterruptHandlerType {
+    fn as_virtual_address(&self) -> VirtualAddress;
+}
+
+macro_rules! impl_handler_type {
+    ($t:ty) => {
+        impl InterruptHandlerType for $t {
+            #[inline]
+            fn as_virtual_address(&self) -> VirtualAddress {
+                VirtualAddress::new(self as *const _ as usize)
+            }
+        }
+    };
+}
+
+impl_handler_type!(InterruptHandlerFunction);
+impl_handler_type!(InterruptHandlerFunctionWithError);
+impl_handler_type!(PageFaultHandlerFunction);
+
 /// Interrupt Table Indices
 ///
 /// These indices were taken directly from intel manual
@@ -46,14 +66,16 @@ pub struct InterruptStackTable(u8);
 
 #[repr(C)]
 pub struct InterruptAttributes(u8);
+
+pub struct SegmentSelector(u16);
 #[repr(C)]
 pub struct InterruptDescriptorTableEntry {
-    isr_offset_low: u16,
-    segment_selector: u16,
+    handler_offset_low: u16,
+    segment_selector: SegmentSelector,
     ist: InterruptStackTable,
     attributes: InterruptAttributes,
-    isr_offset_mid: u16,
-    isr_offset_high: u32,
+    handler_offset_mid: u16,
+    handler_offset_high: u32,
     zero: u32,
 }
 
@@ -79,25 +101,25 @@ pub struct InterruptStackFrame {
 }
 
 impl InterruptDescriptorTableEntry {
-    pub fn new(
-        isr: InterruptServiceRoutine,
+    pub fn new<F: InterruptHandlerType>(
+        handler_function: F,
         ist: InterruptStackTable,
         attributes: InterruptAttributes,
     ) -> Self {
-        todo!()
+        let function_address = handler_function.as_virtual_address().as_usize();
+        let handler_offset_low = function_address as u16;
+        let handler_offset_mid = (function_address >> 16) as u16;
+        let handler_offset_high = (function_address >> 32) as u32;
     }
 }
 
 impl InterruptDescriptorTable {
-    pub fn set_interrupt(routine: Interrupt, handler_function: InterruptServiceRoutine) {}
-
-    pub fn set_interrupt_with_error(
+    pub fn set_interrupt_handler<F: InterruptHandlerType>(
+        &mut self,
         routine: Interrupt,
-        handler_function: InterruptServiceRoutineWithError,
+        handler_function: F,
     ) {
     }
-
-    pub fn set_page_fault(routine: Interrupt, handler_function: PageFaultInterruptServiceRoutine) {}
 
     pub fn load(&'static self) {}
 }
@@ -109,5 +131,5 @@ impl InterruptAttributes {
 
     pub fn set_gate_type(gate_type: InterruptGate) {}
 
-    pub fn set_dpl(dpl: u8) {}
+    pub fn set_dpl(dpl: ProtectionLevel) {}
 }
