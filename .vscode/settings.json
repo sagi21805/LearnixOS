@@ -8,6 +8,7 @@
         "${workspaceFolder}/shared/common/Cargo.toml",
     ],
     "cSpell.words": [
+        "ACPINVS",
         "bootable",
         "EFER",
         "Learnix",
@@ -17,6 +18,7 @@
         "repr",
         "rodata",
         "rustc",
+        "SMAP",
         "sofware",
         "thiserror",
         "Uninit",
