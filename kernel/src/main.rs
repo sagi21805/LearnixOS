@@ -8,12 +8,21 @@
 #![feature(ptr_alignment_type)]
 #![feature(const_trait_impl)]
 #![feature(stmt_expr_attributes)]
+#![feature(abi_x86_interrupt)]
 mod drivers;
 mod memory;
 
+use crate::drivers::timer::{self, timer_interrupt_handler};
 use crate::memory::memory_map::{ParsedMapDisplay, parse_map};
-use core::arch::asm;
+use common::address_types::VirtualAddress;
+use common::constants::IDT_OFFSET;
+use core::alloc::Layout;
 use core::panic::PanicInfo;
+use core::{alloc::GlobalAlloc, arch::asm};
+use cpu_utils::structures::interrupt_descriptor_table::{
+    IDT, Interrupt, InterruptDescriptorTable, InterruptHandlerFunction, InterruptHandlerType,
+    InterruptStackFrame,
+};
 use drivers::vga_display::color_code::Color;
 use memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
 
@@ -28,11 +37,38 @@ pub unsafe extern "C" fn _start() -> ! {
     println!("{}", ParsedMapDisplay(parsed_memory_map!()));
     PhysicalPageAllocator::init(unsafe { &mut ALLOCATOR });
     ok_msg!("Allocator Initialized");
-    println!("I am new here");
     println!(
-        "Total Memory: {:#?}Bytes",
+        "Total Memory: {}",
         ALLOCATOR.assume_init_ref().available_memory()
     );
+
+    // let idt_address = unsafe {
+    //     ALLOCATOR
+    //         .assume_init_ref()
+    //         .alloc(Layout::new::<InterruptDescriptorTable>())
+    //         as *mut InterruptDescriptorTable
+    // };
+    println!("This is some text");
+    unsafe {
+        InterruptDescriptorTable::init(&mut IDT, IDT_OFFSET as *mut InterruptDescriptorTable);
+    }
+
+    ok_msg!("Initialized interrupt descriptor table");
+    unsafe {
+        asm!("cli");
+        let e = IDT.assume_init_mut().set_default_interrupt_handler(
+            Interrupt::Timer,
+            timer_interrupt_handler as InterruptHandlerFunction,
+        );
+        println!("{:x?}", e);
+        println!(
+            "{:x?}",
+            (timer_interrupt_handler as InterruptHandlerFunction)
+                .as_virtual_address()
+                .as_usize()
+        );
+        asm!("sti")
+    }
     loop {
         unsafe {
             asm!("hlt");
