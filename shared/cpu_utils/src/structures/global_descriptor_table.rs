@@ -4,6 +4,8 @@ use common::{
 };
 use core::arch::asm;
 
+use crate::structures::segments::SegmentSelector;
+
 struct AccessByte(u8);
 
 impl AccessByte {
@@ -112,7 +114,8 @@ pub struct GlobalDescriptorTableRegister {
     pub base: usize,
 }
 
-struct SystemSegmentDescriptor64 {
+#[repr(C, packed)]
+pub struct SystemSegmentDescriptor64 {
     limit_low: u16,
     base_low: u16,
     base_mid: u8,
@@ -138,20 +141,25 @@ impl SystemSegmentDescriptor64 {
     }
 
     #[cfg(target_arch = "x86_64")]
-    pub const fn new(base: u64, limit: u32, access_byte: AccessByte, flags: LimitFlags) -> Self {
+    pub const fn new(base: u64, limit: u32, segment_type: SystemSegmentType) -> Self {
         let base_low = (base & 0xffff) as u16;
         let base_mid = ((base >> 16) & 0xff) as u8;
         let base_high = ((base >> 24) & 0xff) as u8;
         let limit_low = (limit & 0xffff) as u16;
         let limit_high = ((limit >> 16) & 0xf) as u8;
-        let limit_flags = flags.0 | limit_high;
         let base_extra = (base >> 32) as u32;
+
+        let access_byte = AccessByte::new()
+            .present()
+            .dpl(ProtectionLevel::Ring0)
+            .set_system_type(segment_type);
+
         Self {
             limit_low,
             base_low,
             base_mid,
             access_byte,
-            limit_flags: LimitFlags(limit_flags),
+            limit_flags: LimitFlags(limit_high),
             base_high,
             base_extra,
             _reserved: 0,
@@ -271,6 +279,17 @@ impl GlobalDescriptorTableLong {
                 LimitFlags::new(),
             ),
             tss: SystemSegmentDescriptor64::empty(),
+        }
+    }
+
+    pub fn load_tss(&mut self, tss: SystemSegmentDescriptor64) {
+        self.tss = tss;
+        let tss_selector = SegmentSelector::new().set_table_index(5);
+        unsafe {
+            asm!(
+                "ltr {0:x}",
+                in(reg) tss_selector.as_u16()
+            )
         }
     }
 
