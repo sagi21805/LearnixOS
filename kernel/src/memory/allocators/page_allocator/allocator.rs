@@ -7,6 +7,7 @@ use core::{
 
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
+    bitmap::{BitMap, ContiguousBlockLayout, Position},
     constants::{
         FIRST_STAGE_OFFSET, PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
@@ -14,10 +15,7 @@ use common::{
 };
 use cpu_utils::structures::paging::PageTable;
 
-use crate::{
-    memory::bitmap::{BitMap, ContiguousBlockLayout, Position},
-    parsed_memory_map, println,
-};
+use crate::{parsed_memory_map, println};
 
 #[derive(Debug)]
 // TODO: This is not thread safe, probably should use Mutex in the future
@@ -57,7 +55,7 @@ impl PhysicalPageAllocator {
         unsafe { self.0.as_mut_unchecked() }
     }
 
-    pub fn init(uninit: &mut MaybeUninit<Self>) {
+    pub fn init(uninit: &'static mut MaybeUninit<Self>) {
         unsafe {
             let memory_size = parsed_memory_map!()
                 .iter()

@@ -5,6 +5,7 @@
 #[macro_use]
 pub mod macros;
 pub mod address_types;
+pub mod bitmap;
 pub mod constants;
 pub mod enums;
 pub mod error;
