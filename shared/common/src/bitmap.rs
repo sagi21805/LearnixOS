@@ -1,4 +1,4 @@
-use common::address_types::VirtualAddress;
+use crate::address_types::VirtualAddress;
 use core::{slice, u64};
 use derive_more::Constructor;
 
