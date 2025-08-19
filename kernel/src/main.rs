@@ -9,19 +9,16 @@
 #![feature(const_trait_impl)]
 #![feature(stmt_expr_attributes)]
 #![feature(abi_x86_interrupt)]
+#![feature(macro_metavar_expr_concat)]
 mod drivers;
 mod memory;
-
-use crate::drivers::timer::{self, timer_interrupt_handler};
+use crate::drivers::timer::default_handler;
 use crate::memory::memory_map::{ParsedMapDisplay, parse_map};
-use common::address_types::VirtualAddress;
 use common::constants::IDT_OFFSET;
-use core::alloc::Layout;
+use core::arch::asm;
 use core::panic::PanicInfo;
-use core::{alloc::GlobalAlloc, arch::asm};
 use cpu_utils::structures::interrupt_descriptor_table::{
     IDT, Interrupt, InterruptDescriptorTable, InterruptHandlerFunction, InterruptHandlerType,
-    InterruptStackFrame,
 };
 use drivers::vga_display::color_code::Color;
 use memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
@@ -54,20 +51,16 @@ pub unsafe extern "C" fn _start() -> ! {
     }
 
     ok_msg!("Initialized interrupt descriptor table");
+
+    let func_address = (default_handler as InterruptHandlerFunction).as_virtual_address();
+    println!("address: {:?}", func_address);
     unsafe {
-        asm!("cli");
-        let e = IDT.assume_init_mut().set_default_interrupt_handler(
-            Interrupt::Timer,
-            timer_interrupt_handler as InterruptHandlerFunction,
-        );
-        println!("{:x?}", e);
-        println!(
-            "{:x?}",
-            (timer_interrupt_handler as InterruptHandlerFunction)
-                .as_virtual_address()
-                .as_usize()
-        );
-        asm!("sti")
+        let e = IDT
+            .assume_init_mut()
+            .set_default_interrupt_handler(Interrupt::DoubleFault, func_address);
+        println!("e: {:x?}", e);
+        asm!("sti");
+        println!("{:x?}", (default_handler as usize));
     }
     loop {
         unsafe {

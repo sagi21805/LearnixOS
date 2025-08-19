@@ -23,15 +23,15 @@ pub static mut IDT: MaybeUninit<&mut InterruptDescriptorTable> = MaybeUninit::un
 pub static TSS: TaskStateSegment = TaskStateSegment::new();
 
 pub trait InterruptHandlerType {
-    fn as_virtual_address(&self) -> VirtualAddress;
+    fn as_virtual_address(self) -> VirtualAddress;
 }
 
 macro_rules! impl_handler_type {
     ($t:ty) => {
         impl InterruptHandlerType for $t {
             #[inline]
-            fn as_virtual_address(&self) -> VirtualAddress {
-                unsafe { VirtualAddress::new_unchecked(self as *const _ as usize) }
+            fn as_virtual_address(self) -> VirtualAddress {
+                unsafe { VirtualAddress::new_unchecked(self as usize) }
             }
         }
     };
@@ -151,7 +151,7 @@ impl InterruptDescriptorTable {
 
         let tss = SystemSegmentDescriptor64::new(
             &TSS as *const _ as u64,
-            size_of::<TaskStateSegment>() as u32,
+            (size_of::<TaskStateSegment>() - 1) as u32,
             SystemSegmentType::TaskStateSegmentAvailable,
         );
 
@@ -165,7 +165,6 @@ impl InterruptDescriptorTable {
             );
             uninit.write(&mut *base_address);
             uninit.assume_init_ref().load();
-            asm!("sti")
         }
     }
 
@@ -173,7 +172,7 @@ impl InterruptDescriptorTable {
         let idt_register = {
             InterruptDescriptorTableRegister {
                 limit: (size_of::<Self>() - 1) as u16,
-                base: self as *const _ as usize,
+                base: self as *const _ as u64,
             }
         };
         unsafe {
@@ -186,10 +185,10 @@ impl InterruptDescriptorTable {
         }
     }
 
-    pub fn set_default_interrupt_handler<F: InterruptHandlerType>(
+    pub fn set_default_interrupt_handler(
         &mut self,
         routine: Interrupt,
-        handler_function: F,
+        handler_function: VirtualAddress,
     ) -> InterruptDescriptorTableEntry {
         let default_entry = InterruptDescriptorTableEntry::new(
             handler_function,
@@ -201,17 +200,17 @@ impl InterruptDescriptorTable {
             SegmentSelector::kernel_code(),
         );
         self.interrupts[routine as usize] = default_entry.clone();
-        default_entry.clone()
+        default_entry
     }
 }
 
 #[repr(C, packed)]
 pub struct InterruptDescriptorTableRegister {
     pub limit: u16,
-    pub base: usize,
+    pub base: u64,
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct InterruptStackFrame {
     instruction_pointer: VirtualAddress,
@@ -227,23 +226,22 @@ impl InterruptDescriptorTableEntry {
             handler_offset_low: 0,
             segment_selector: SegmentSelector::new(),
             ist: InterruptStackTable::None,
-            attributes: InterruptAttributes::new(),
+            attributes: InterruptAttributes::new().set_type(InterruptType::Fault),
             handler_offset_mid: 0,
             handler_offset_high: 0,
             zero: 0,
         }
     }
 
-    pub fn new<F: InterruptHandlerType>(
-        handler_function: F,
+    pub fn new(
+        handler_function: VirtualAddress,
         ist: InterruptStackTable,
         attributes: InterruptAttributes,
         segment_selector: SegmentSelector,
     ) -> Self {
-        // let function_address = handler_function.as_virtual_address().as_usize();
-        let handler_offset_low = 0xe1e8; //function_address as u16;
-        let handler_offset_mid = 0; //(function_address >> 16) as u16;
-        let handler_offset_high = 0; //(function_address >> 32) as u32;
+        let handler_offset_low = handler_function.as_usize() as u16;
+        let handler_offset_mid = (handler_function.as_usize() >> 16) as u16;
+        let handler_offset_high = (handler_function.as_usize() >> 32) as u32;
         Self {
             handler_offset_low,
             segment_selector,
