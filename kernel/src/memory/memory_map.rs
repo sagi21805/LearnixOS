@@ -64,6 +64,7 @@ pub struct MemoryRegionExtended {
     pub extended_attributes: u32,
 }
 
+#[repr(C)]
 #[derive(Debug)]
 pub struct MemoryRegion {
     pub base_address: u64,

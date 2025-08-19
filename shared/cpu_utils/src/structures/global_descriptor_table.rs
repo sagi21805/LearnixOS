@@ -67,7 +67,7 @@ impl LimitFlags {
     flag!(long, 5);
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 struct GlobalDescriptorTableEntry32 {
     limit_low: u16,
     base_low: u16,
@@ -167,7 +167,7 @@ impl SystemSegmentDescriptor64 {
     }
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 pub struct GlobalDescriptorTableProtected {
     null: GlobalDescriptorTableEntry32,
     code: GlobalDescriptorTableEntry32,

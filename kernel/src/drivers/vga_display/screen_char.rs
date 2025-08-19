@@ -1,6 +1,6 @@
 use super::ColorCode;
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Clone)]
 pub struct ScreenChar {
     char: u8,

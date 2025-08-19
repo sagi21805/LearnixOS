@@ -20,6 +20,7 @@ use derive_more::{
     AsMut,
     AsRef,
     From,
+    Copy,
 )]
 #[repr(C)]
 pub struct PhysicalAddress(usize);
@@ -41,6 +42,7 @@ impl_common_address_functions!(PhysicalAddress);
     AsMut,
     AsRef,
     From,
+    Copy,
 )]
 #[repr(C)]
 pub struct VirtualAddress(usize);
