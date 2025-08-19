@@ -1,4 +1,4 @@
-use common::{enums::ProtectionLevel, flag};
+use common::{address_types::VirtualAddress, enums::ProtectionLevel, flag};
 
 #[derive(Clone, Debug, Copy)]
 pub struct SegmentSelector(u16);
@@ -39,17 +39,10 @@ impl SegmentSelector {
 #[repr(C, packed)]
 pub struct TaskStateSegment {
     _reserved0: u32,
-    rsp0: u64,
-    rsp1: u64,
-    rsp2: u64,
+    /// Privileged stack pointers that can be used on interrupt from higher privilege
+    priv_stack_ptr: [VirtualAddress; 3],
     _reserved1: u64,
-    ist1: u64,
-    ist2: u64,
-    ist3: u64,
-    ist4: u64,
-    ist5: u64,
-    ist6: u64,
-    ist7: u64,
+    int_stack_table: [VirtualAddress; 7],
     _reserved2: u64,
     _reserved3: u16,
     /// An offset from the base address of this struct to the I/O map
@@ -64,20 +57,12 @@ impl TaskStateSegment {
     pub const fn new() -> Self {
         Self {
             _reserved0: 0,
-            rsp0: 0,
-            rsp1: 0,
-            rsp2: 0,
             _reserved1: 0,
-            ist1: 0,
-            ist2: 0,
-            ist3: 0,
-            ist4: 0,
-            ist5: 0,
-            ist6: 0,
-            ist7: 0,
             _reserved2: 0,
             _reserved3: 0,
-            io_map_offset: 0xffff,
+            priv_stack_ptr: [unsafe { VirtualAddress::new_unchecked(0) }; 3],
+            int_stack_table: [unsafe { VirtualAddress::new_unchecked(0) }; 7],
+            io_map_offset: size_of::<Self>() as u16,
         }
     }
 }
