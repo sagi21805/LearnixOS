@@ -1,10 +1,16 @@
 use common::{
     address_types::VirtualAddress,
-    enums::{ProtectionLevel, SystemSegmentType},
+    enums::{
+        ProtectionLevel, SystemSegmentType,
+        interrupts::{Interrupt, InterruptStackTable, InterruptType},
+    },
     flag,
 };
 use core::{arch::asm, panic};
 use core::{mem::MaybeUninit, ptr};
+
+pub static mut IDT: MaybeUninit<&mut InterruptDescriptorTable> = MaybeUninit::uninit();
+pub static TSS: TaskStateSegment = TaskStateSegment::new();
 
 use crate::structures::{
     global_descriptor_table::{
@@ -13,84 +19,9 @@ use crate::structures::{
     segments::{SegmentSelector, TaskStateSegment},
 };
 
-pub type InterruptHandlerFunction = extern "x86-interrupt" fn(InterruptStackFrame);
-pub type InterruptHandlerFunctionWithError =
-    extern "x86-interrupt" fn(InterruptStackFrame, error_code: u64);
-pub type PageFaultHandlerFunction =
-    extern "x86-interrupt" fn(InterruptStackFrame, error_code: PageFaultErrorCode);
-
-pub static mut IDT: MaybeUninit<&mut InterruptDescriptorTable> = MaybeUninit::uninit();
-pub static TSS: TaskStateSegment = TaskStateSegment::new();
-
-pub trait InterruptHandlerType {
-    fn as_virtual_address(self) -> VirtualAddress;
-}
-
-macro_rules! impl_handler_type {
-    ($t:ty) => {
-        impl InterruptHandlerType for $t {
-            #[inline]
-            fn as_virtual_address(self) -> VirtualAddress {
-                unsafe { VirtualAddress::new_unchecked(self as usize) }
-            }
-        }
-    };
-}
-
-impl_handler_type!(InterruptHandlerFunction);
-impl_handler_type!(InterruptHandlerFunctionWithError);
-impl_handler_type!(PageFaultHandlerFunction);
-
 /// Interrupt Table Indices
 ///
 /// These indices were taken directly from intel manual
-#[repr(u8)]
-pub enum Interrupt {
-    DivisionError = 0x0,
-    Debug = 0x1,
-    NonMaskableInterrupt = 0x2,
-    Breakpoint = 0x3,
-    Overflow = 0x4,
-    BoundRangeExceeded = 0x5,
-    InvalidOpcode = 0x6,
-    DeviceNotFound = 0x7,
-    DoubleFault = 0x8,
-    CoprocessorSegmentOverrun = 0x9,
-    InvalidTSS = 0xa,
-    SegmentNotPresent = 0xb,
-    StackSegmentFault = 0xc,
-    GeneralProtection = 0xd,
-    PageFault = 0xe,
-    IntelReserved = 0xf,
-    FloatingPointError = 0x10,
-    AlignmentCheck = 0x11,
-    MachineCheck = 0x12,
-    SIMD = 0x13,
-    Virtualization = 0x14,
-    ControlProtection = 0x15,
-    // Interrupts until 0x1f are reserved by Intel.
-    Timer = 0x20,
-}
-
-#[repr(u8)]
-#[derive(Clone, Debug, Copy)]
-pub enum InterruptStackTable {
-    None = 0,
-    IST1 = 1,
-    IST2 = 2,
-    IST3 = 3,
-    IST4 = 4,
-    IST5 = 5,
-    IST6 = 6,
-    IST7 = 7,
-}
-
-#[repr(u8)]
-pub enum InterruptType {
-    Fault = 0xe,
-    Trap = 0xf,
-}
-pub enum PageFaultErrorCode {}
 
 #[repr(C)]
 #[derive(Clone, Debug, Copy)]
@@ -189,7 +120,7 @@ impl InterruptDescriptorTable {
         &mut self,
         routine: Interrupt,
         handler_function: VirtualAddress,
-    ) -> InterruptDescriptorTableEntry {
+    ) {
         let default_entry = InterruptDescriptorTableEntry::new(
             handler_function,
             InterruptStackTable::None,
@@ -199,8 +130,26 @@ impl InterruptDescriptorTable {
                 .set_type(InterruptType::Fault),
             SegmentSelector::kernel_code(),
         );
-        self.interrupts[routine as usize] = default_entry.clone();
-        default_entry
+        self.interrupts[routine as usize] = default_entry;
+    }
+
+    pub fn set_interrupt_handler(
+        &mut self,
+        routine: Interrupt,
+        handler_function: VirtualAddress,
+        dpl: ProtectionLevel,
+        handler_type: InterruptType,
+    ) {
+        let entry = InterruptDescriptorTableEntry::new(
+            handler_function,
+            InterruptStackTable::None,
+            InterruptAttributes::new()
+                .present()
+                .set_dpl(dpl)
+                .set_type(handler_type),
+            SegmentSelector::kernel_code(),
+        );
+        self.interrupts[routine as usize] = entry;
     }
 }
 
@@ -210,14 +159,14 @@ pub struct InterruptDescriptorTableRegister {
     pub base: u64,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug)]
 pub struct InterruptStackFrame {
-    instruction_pointer: VirtualAddress,
-    code_segment: usize,
-    cpu_flags: usize,
-    stack_pointer: VirtualAddress,
-    stack_segment: usize,
+    pub instruction_pointer: VirtualAddress,
+    pub code_segment: usize,
+    pub cpu_flags: usize,
+    pub stack_pointer: VirtualAddress,
+    pub stack_segment: usize,
 }
 
 impl InterruptDescriptorTableEntry {
