@@ -71,7 +71,6 @@ impl PhysicalPageAllocator {
             };
             let start_position = Self::address_position(start_address.clone()).unwrap();
             let initialized = uninit.assume_init_mut();
-            println!("Initial Memory: {}", initialized.available_memory());
             // Allocate the addresses that are used for the code, and for other variables.
             let end_address = PhysicalAddress::new_unchecked(
                 PAGE_ALLOCATOR_OFFSET + (initialized.map().map.len() * size_of::<u64>()),
