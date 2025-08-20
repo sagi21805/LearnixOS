@@ -12,14 +12,15 @@
 #![feature(macro_metavar_expr_concat)]
 mod drivers;
 mod memory;
-use crate::drivers::timer::default_handler;
-use crate::memory::memory_map::{ParsedMapDisplay, parse_map};
-use common::constants::IDT_OFFSET;
-use core::arch::asm;
-use core::panic::PanicInfo;
-use cpu_utils::structures::interrupt_descriptor_table::{
-    IDT, Interrupt, InterruptDescriptorTable, InterruptHandlerFunction, InterruptHandlerType,
+use core::{arch::asm, panic::PanicInfo};
+
+use crate::{
+    drivers::interrupt_handlers::initialize_interrupts,
+    memory::memory_map::{ParsedMapDisplay, parse_map},
 };
+
+use common::constants::IDT_OFFSET;
+use cpu_utils::structures::interrupt_descriptor_table::{IDT, InterruptDescriptorTable};
 use drivers::vga_display::color_code::Color;
 use memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
 
@@ -34,34 +35,16 @@ pub unsafe extern "C" fn _start() -> ! {
     println!("{}", ParsedMapDisplay(parsed_memory_map!()));
     PhysicalPageAllocator::init(unsafe { &mut ALLOCATOR });
     ok_msg!("Allocator Initialized");
-    println!(
-        "Total Memory: {}",
-        ALLOCATOR.assume_init_ref().available_memory()
-    );
-
-    // let idt_address = unsafe {
-    //     ALLOCATOR
-    //         .assume_init_ref()
-    //         .alloc(Layout::new::<InterruptDescriptorTable>())
-    //         as *mut InterruptDescriptorTable
-    // };
-    println!("This is some text");
     unsafe {
         InterruptDescriptorTable::init(&mut IDT, IDT_OFFSET as *mut InterruptDescriptorTable);
-    }
+        initialize_interrupts(IDT.assume_init_mut());
 
+        // For now, disable pic interrupts and enable interrupts
+        asm!("mov al, 0xff", "out 0x21, al", "out 0xA1, al");
+        asm!("sti");
+    }
     ok_msg!("Initialized interrupt descriptor table");
 
-    let func_address = (default_handler as InterruptHandlerFunction).as_virtual_address();
-    println!("address: {:?}", func_address);
-    unsafe {
-        let e = IDT
-            .assume_init_mut()
-            .set_default_interrupt_handler(Interrupt::DoubleFault, func_address);
-        println!("e: {:x?}", e);
-        asm!("sti");
-        println!("{:x?}", (default_handler as usize));
-    }
     loop {
         unsafe {
             asm!("hlt");
