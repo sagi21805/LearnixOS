@@ -34,9 +34,7 @@ pub extern "x86-interrupt" fn overflow_handler(stack_frame: InterruptStackFrame)
 
 pub extern "x86-interrupt" fn bound_range_exceeded_handler(stack_frame: InterruptStackFrame) {
     println!("Interrupt: BoundRangeExceeded");
-    println!("Stack frame: {:#x?}", stack_frame);
-    let opcode = stack_frame.instruction_pointer.as_ptr::<u16>();
-    println!("Faulting instruction opcode: {:x}", *opcode);
+    println!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: InterruptStackFrame) {
