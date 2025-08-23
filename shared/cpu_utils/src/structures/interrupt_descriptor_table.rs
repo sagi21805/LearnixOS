@@ -13,7 +13,7 @@ use core::{mem::MaybeUninit, ptr};
 pub static mut IDT: MaybeUninit<&mut InterruptDescriptorTable> = MaybeUninit::uninit();
 
 /// Global TSS segment
-pub static TSS: TaskStateSegment = TaskStateSegment::new();
+pub static TSS: TaskStateSegment = TaskStateSegment::default();
 
 use crate::structures::{
     global_descriptor_table::{
