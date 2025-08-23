@@ -12,16 +12,22 @@
 #![feature(macro_metavar_expr_concat)]
 mod drivers;
 mod memory;
-use core::{arch::asm, panic::PanicInfo};
+use core::{
+    alloc::{GlobalAlloc, Layout},
+    arch::asm,
+    panic::PanicInfo,
+};
 
 use crate::{
     drivers::interrupt_handlers::initialize_interrupts,
     memory::memory_map::{ParsedMapDisplay, parse_map},
 };
 
-use common::constants::IDT_OFFSET;
+use common::{
+    address_types::PhysicalAddress, constants::IDT_OFFSET, enums::Disk, error, fail_msg, ok_msg,
+    println, vga_display::color_code::Color,
+};
 use cpu_utils::structures::interrupt_descriptor_table::{IDT, InterruptDescriptorTable};
-use drivers::vga_display::color_code::Color;
 use memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
 
 #[unsafe(no_mangle)]
@@ -36,14 +42,18 @@ pub unsafe extern "C" fn _start() -> ! {
     PhysicalPageAllocator::init(unsafe { &mut ALLOCATOR });
     ok_msg!("Allocator Initialized");
     unsafe {
-        InterruptDescriptorTable::init(&mut IDT, IDT_OFFSET as *mut InterruptDescriptorTable);
+        InterruptDescriptorTable::init(&mut IDT, IDT_OFFSET.into());
         initialize_interrupts(IDT.assume_init_mut());
 
         // For now, disable pic interrupts and enable interrupts
         asm!("mov al, 0xff", "out 0x21, al", "out 0xA1, al");
         asm!("sti");
+        ok_msg!("Initialized interrupt descriptor table");
+        asm!("int 7");
+        ALLOCATOR
+            .assume_init_ref()
+            .alloc(Layout::from_size_align_unchecked(4096, 4096));
     }
-    ok_msg!("Initialized interrupt descriptor table");
 
     loop {
         unsafe {
@@ -55,6 +65,7 @@ pub unsafe extern "C" fn _start() -> ! {
 /// This function is called on panic.
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {
+    unsafe { asm!("cli") }
     fail_msg!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
     loop {}
 }

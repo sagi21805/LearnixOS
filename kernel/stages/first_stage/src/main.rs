@@ -28,11 +28,12 @@ pub fn first_stage() -> ! {
 
     // Create a disk packet which will load 128 sectors (512 bytes each) from the disk to memory address 0x7e00
     let dap = DiskAddressPacket::new(
-        128, // Max 128
+        4, // Max 128
         0, 0x7e0, 1,
     );
     dap.load(disk_number);
-
+    let kernel_dap = DiskAddressPacket::new(128, 0, 0x1000, 66);
+    kernel_dap.load(disk_number);
     unsafe {
         // Enter VGA text mode
         asm!(
@@ -43,7 +44,7 @@ pub fn first_stage() -> ! {
             const VideoModes::VGA_TX_80X25_PB_9X16_PR_720X400 as u8,
             const BiosInterrupts::VIDEO as u8
         );
-
+        // loop {}
         // Obtain memory map
         obtain_memory_map();
 
@@ -57,12 +58,12 @@ pub fn first_stage() -> ! {
             "mov cr0, eax",
             options(readonly, nostack, preserves_flags)
         );
-
         // Jump to the next stage
         asm!(
-            "jmp ${section}, ${next_stage}",
+            "ljmp ${section}, ${next_stage}",
             section = const Sections::KernelCode as u8,
             next_stage = const SECOND_STAGE_OFFSET, // Change this to the correct address
+            options(att_syntax)
         );
     }
 
