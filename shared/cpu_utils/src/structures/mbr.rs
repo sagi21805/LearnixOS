@@ -1,4 +1,4 @@
-#[repr(C)]
+#[repr(C, packed)]
 pub struct PartitionTableEntry {
     /// Boot indicator bit flag: 0 = no, 0x80 = bootable (or "active").
     pub bootable: u8,

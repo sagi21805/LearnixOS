@@ -1,3 +1,6 @@
+#[cfg(target_arch = "x86_64")]
+use crate::constants::PHYSICAL_MEMORY_OFFSET;
+
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Div, DivAssign, From, Mul, MulAssign, Sub, SubAssign,
 };
@@ -17,8 +20,10 @@ use derive_more::{
     AsMut,
     AsRef,
     From,
+    Copy,
 )]
-pub struct PhysicalAddress(pub usize);
+#[repr(C)]
+pub struct PhysicalAddress(usize);
 
 impl_common_address_functions!(PhysicalAddress);
 
@@ -37,8 +42,10 @@ impl_common_address_functions!(PhysicalAddress);
     AsMut,
     AsRef,
     From,
+    Copy,
 )]
-pub struct VirtualAddress(pub usize);
+#[repr(C)]
+pub struct VirtualAddress(usize);
 
 impl_common_address_functions!(VirtualAddress);
 
@@ -96,10 +103,10 @@ impl VirtualAddress {
     // }
 }
 
-// impl PhysicalAddress {
-//     #[inline]
-//     #[cfg(target_arch = "x86_64")]
-//     pub const fn translate(&self) -> VirtualAddress {
-//         VirtualAddress(self.0 + PHYSICAL_MEMORY_OFFSET)
-//     }
-// }
+impl PhysicalAddress {
+    #[inline]
+    #[cfg(target_arch = "x86_64")]
+    pub const fn translate(&self) -> VirtualAddress {
+        VirtualAddress(self.0 + PHYSICAL_MEMORY_OFFSET)
+    }
+}

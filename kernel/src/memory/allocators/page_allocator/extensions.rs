@@ -13,7 +13,7 @@ pub impl PhysicalAddress {
     }
 
     fn translate(&self) -> VirtualAddress {
-        return unsafe { VirtualAddress::new_unchecked(PHYSICAL_MEMORY_OFFSET + self.0) };
+        return unsafe { VirtualAddress::new_unchecked(PHYSICAL_MEMORY_OFFSET + self.as_usize()) };
     }
 }
 
@@ -21,16 +21,18 @@ pub impl PhysicalAddress {
 pub impl PageTableEntry {
     /// This function will return a table mapped in this entry if there is one.
     ///
-    /// Else, it will override what is inside the entry and map a new table to it so valid table is guranteed to be returned.
+    /// Else, it will override what is inside the entry and map a new table to it so valid table is guaranteed to be returned.
     fn force_resolve_table_mut(&mut self) -> &mut PageTable {
         if let Ok(table) = self.mapped_table_mut() {
             return table;
         } else {
             let resolved_table = unsafe { ALLOCATOR.assume_init_ref().alloc_table() };
-            self.map_unchecked(
-                PhysicalAddress(resolved_table.address().as_usize()),
-                PageEntryFlags::table_flags(),
-            );
+            unsafe {
+                self.map_unchecked(
+                    PhysicalAddress::new_unchecked(resolved_table.address().as_usize()),
+                    PageEntryFlags::table_flags(),
+                );
+            }
             unsafe { &mut *self.mapped_unchecked().as_mut_ptr::<PageTable>() }
         }
     }
@@ -48,15 +50,17 @@ pub impl VirtualAddress {
     #[allow(static_mut_refs)]
     fn map(&self, address: PhysicalAddress, flags: PageEntryFlags, page_size: PageSize) {
         if address.is_aligned(page_size.alignment()) && self.is_aligned(page_size.alignment()) {
-            let mut table = PageTable::current_table_mut(); // must use pointers becase can't reassign mut ref in a loop.
+            let mut table = PageTable::current_table_mut();
             for table_number in 0..(3 - page_size.clone() as usize) {
                 let index = self.rev_nth_index_unchecked(table_number);
                 let entry = &mut table.entries[index];
                 let resolved_table = entry.force_resolve_table_mut();
                 table = resolved_table;
             }
-            table.entries[self.rev_nth_index_unchecked(3 - page_size as usize)]
-                .map_unchecked(address, flags);
+            unsafe {
+                table.entries[self.rev_nth_index_unchecked(3 - page_size as usize)]
+                    .map_unchecked(address, flags);
+            }
         } else {
             panic!("address alignment doesn't match page type alignment, todo! raise a page fault")
         }
@@ -85,7 +89,7 @@ pub impl PageTable {
             (((third_level_entries_count + PAGE_DIRECTORY_ENTRIES - 1) / PAGE_DIRECTORY_ENTRIES)
                 .max(1))
             .min(256);
-        let mut next_mapped = PhysicalAddress(0);
+        let mut next_mapped = unsafe { PhysicalAddress::new_unchecked(0) };
         for forth_entry in &mut self.entries[(PAGE_DIRECTORY_ENTRIES / 2)
             ..(forth_level_entries_count + (PAGE_DIRECTORY_ENTRIES / 2))]
         {
@@ -101,7 +105,10 @@ pub impl PageTable {
                     [0..second_level_entries_count.min(PAGE_DIRECTORY_ENTRIES)]
                 {
                     if !second_entry.is_present() {
-                        second_entry.map(next_mapped.clone(), PageEntryFlags::huge_page_flags());
+                        unsafe {
+                            second_entry
+                                .map(next_mapped.clone(), PageEntryFlags::huge_page_flags());
+                        }
                     }
                     next_mapped += BIG_PAGE_SIZE.into();
                     second_level_entries_count -= 1;
