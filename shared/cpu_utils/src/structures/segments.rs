@@ -4,10 +4,12 @@ use common::{address_types::VirtualAddress, enums::ProtectionLevel, flag};
 pub struct SegmentSelector(u16);
 
 impl SegmentSelector {
-    pub const fn new() -> Self {
+    /// Default NULL segment selector
+    pub const fn default() -> Self {
         Self(0)
     }
 
+    /// Set the requested privilege level of this selector
     pub const fn set_rpl(mut self, rpl: ProtectionLevel) -> Self {
         self.0 |= rpl as u16;
         self
@@ -24,18 +26,23 @@ impl SegmentSelector {
         self
     }
 
+    /// Return the underlying u16
     pub const fn as_u16(&self) -> u16 {
         self.0
     }
 
+    /// Default kernel code selector
     pub const fn kernel_code() -> Self {
         Self(0x8)
     }
+
+    /// Default user code selector
     pub const fn user_code() -> Self {
         Self(0x1b)
     }
 }
 
+/// Structure of the Task State Segment
 #[repr(C, packed)]
 pub struct TaskStateSegment {
     _reserved0: u32,
@@ -50,11 +57,13 @@ pub struct TaskStateSegment {
 }
 
 impl TaskStateSegment {
+    /// Return the I/O map base address
     pub const fn iomb(&self) -> u16 {
         self.io_map_offset
     }
 
-    pub const fn new() -> Self {
+    /// Construct a default TSS
+    pub const fn default() -> Self {
         Self {
             _reserved0: 0,
             _reserved1: 0,
