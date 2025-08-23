@@ -79,6 +79,7 @@ struct GlobalDescriptorTableEntry32 {
 }
 
 impl GlobalDescriptorTableEntry32 {
+    /// Construct and empty entry
     pub const fn empty() -> Self {
         Self {
             limit_flags: LimitFlags::new(),
@@ -90,6 +91,14 @@ impl GlobalDescriptorTableEntry32 {
         }
     }
 
+    /// Create a new entry
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address of the segment
+    /// - `limit`: The size of the segment
+    /// - `access_byte`: The type and access privileges of the entry
+    /// - `flags`: Configuration flags of the entry
     pub const fn new(base: u32, limit: u32, access_byte: AccessByte, flags: LimitFlags) -> Self {
         let base_low = (base & 0xffff) as u16;
         let base_mid = ((base >> 0x10) & 0xff) as u8;
@@ -108,12 +117,14 @@ impl GlobalDescriptorTableEntry32 {
     }
 }
 
+/// GDT register structure
 #[repr(C, packed)]
 pub struct GlobalDescriptorTableRegister {
     pub limit: u16,
     pub base: usize,
 }
 
+/// The structure of a system segment descriptor
 #[repr(C, packed)]
 pub struct SystemSegmentDescriptor64 {
     limit_low: u16,
@@ -127,6 +138,7 @@ pub struct SystemSegmentDescriptor64 {
 }
 
 impl SystemSegmentDescriptor64 {
+    /// Construct an empty system segment
     pub const fn empty() -> Self {
         SystemSegmentDescriptor64 {
             limit_low: 0,
@@ -141,6 +153,14 @@ impl SystemSegmentDescriptor64 {
     }
 
     #[cfg(target_arch = "x86_64")]
+    /// Construct a new system segment
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address of the segment
+    /// - `limit`: The limit value of the segment, for each segment this may mean
+    /// something different.
+    /// - `segment_type`: The type of the constructed segment
     pub const fn new(base: u64, limit: u32, segment_type: SystemSegmentType) -> Self {
         let base_low = (base & 0xffff) as u16;
         let base_mid = ((base >> 16) & 0xff) as u8;
@@ -167,6 +187,7 @@ impl SystemSegmentDescriptor64 {
     }
 }
 
+/// Initial temporary GDT
 #[repr(C, packed)]
 pub struct GlobalDescriptorTableProtected {
     null: GlobalDescriptorTableEntry32,
@@ -203,6 +224,7 @@ impl GlobalDescriptorTableProtected {
         }
     }
 
+    /// Load the GDT with the `lgdt` instruction
     pub unsafe fn load(&'static self) {
         let global_descriptor_table_register = {
             GlobalDescriptorTableRegister {
@@ -221,6 +243,7 @@ impl GlobalDescriptorTableProtected {
     }
 }
 
+/// kernel GDT
 #[repr(C, packed)]
 pub struct GlobalDescriptorTableLong {
     null: GlobalDescriptorTableEntry32,
@@ -282,9 +305,10 @@ impl GlobalDescriptorTableLong {
         }
     }
 
+    /// Load the TSS segment into the GDT
     pub fn load_tss(&mut self, tss: SystemSegmentDescriptor64) {
         self.tss = tss;
-        let tss_selector = SegmentSelector::new().set_table_index(5);
+        let tss_selector = SegmentSelector::default().set_table_index(5);
         unsafe {
             asm!(
                 "ltr {0:x}",
@@ -293,6 +317,7 @@ impl GlobalDescriptorTableLong {
         }
     }
 
+    /// Load the GDT with the `lgdt` instruction
     pub unsafe fn load(&'static self) {
         let global_descriptor_table_register = {
             GlobalDescriptorTableRegister {
