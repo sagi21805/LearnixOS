@@ -4,6 +4,8 @@
 .global start
 .code16
 start:
+    # Disable interrupts
+    cli
     # zero segment registers
     xor ax, ax
     mov ds, ax
