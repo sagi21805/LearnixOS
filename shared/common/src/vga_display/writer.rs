@@ -1,7 +1,9 @@
+use core::ptr;
+
 use super::color_code::ColorCode;
 use super::screen_char::ScreenChar;
 use super::{SCREEN_HEIGHT, SCREEN_WIDTH};
-use common::constants::addresses::VGA_BUFFER_PTR;
+use crate::constants::addresses::VGA_BUFFER_PTR;
 
 /// Writer implementation for the VGA driver.
 ///
@@ -15,15 +17,8 @@ pub struct Writer {
 impl Copy for ColorCode {}
 
 impl Writer {
-    /// Creates a new writer with the following parameters
-    /// ```rust
-    /// Self {
-    ///     col: 0,
-    ///     row: 0,
-    ///     color: ColorCode::default(),
-    /// }
-    /// ```
-    pub const fn new() -> Self {
+    /// Creates a default writer
+    pub const fn default() -> Self {
         Self {
             col: 0,
             row: 0,
@@ -43,29 +38,55 @@ impl Writer {
                     self.row += 1;
                     self.col = 0;
                 }
-                _ => {
+                32..128 => {
                     (VGA_BUFFER_PTR as *mut ScreenChar)
                         .add((self.col + self.row * SCREEN_WIDTH) as usize)
                         .write_volatile(ScreenChar::new(char, self.color));
                     self.col += 1;
                 }
+                _ => {}
             }
             if self.col >= SCREEN_WIDTH {
                 self.col = 0;
                 self.row += 1;
             }
             if self.row >= SCREEN_HEIGHT {
-                self.col = 0;
-                self.row = 0;
+                self.scroll_down(1);
             }
         }
+    }
+
+    /// Scroll `lines` down.
+    pub fn scroll_down(&mut self, lines: usize) {
+        let lines_index = SCREEN_WIDTH * (SCREEN_HEIGHT - lines);
+        unsafe {
+            // Copy the buffer to the left
+            ptr::copy(
+                (VGA_BUFFER_PTR as *mut ScreenChar).add(SCREEN_WIDTH),
+                VGA_BUFFER_PTR as *mut ScreenChar,
+                lines_index,
+            );
+            // Fill remaining place with empty characters
+            for i in 0..SCREEN_WIDTH {
+                ptr::write_volatile(
+                    (VGA_BUFFER_PTR as *mut ScreenChar).add(lines_index + i),
+                    ScreenChar::default(),
+                );
+            }
+        }
+        self.col = 0;
+        self.row -= 1;
     }
 
     /// Clears the screen by setting all of the buffer bytes to zero
     pub fn clear(&mut self) {
         unsafe {
-            (VGA_BUFFER_PTR as *mut ScreenChar)
-                .write_bytes(b'\0', (SCREEN_WIDTH * SCREEN_HEIGHT) as usize);
+            for i in 0..(SCREEN_WIDTH * SCREEN_HEIGHT) {
+                ptr::write_volatile(
+                    (VGA_BUFFER_PTR as *mut ScreenChar).add(i),
+                    ScreenChar::default(),
+                );
+            }
             self.row = 0;
             self.col = 0;
         }

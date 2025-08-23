@@ -9,7 +9,7 @@ pub struct ScreenChar {
 
 impl ScreenChar {
     /// Create a default Screen char with Space as char value, and with the default [`ColorCode`]
-    const fn default() -> Self {
+    pub const fn default() -> Self {
         Self {
             char: b' ',
             color_code: ColorCode::default(),

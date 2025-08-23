@@ -8,17 +8,11 @@ use color_code::ColorCode;
 use writer::Writer;
 
 #[allow(private_interfaces)]
-pub static mut WRITER: Writer = Writer::new();
-static SCREEN_WIDTH: usize = 80;
-static SCREEN_HEIGHT: usize = 25;
+pub static mut WRITER: Writer = Writer::default();
+pub const SCREEN_WIDTH: usize = 80;
+pub const SCREEN_HEIGHT: usize = 25;
 
 /// Prints formatted text to the VGA display without a newline.
-///
-/// # Examples
-/// ```
-/// print!("Hello, {}!", "world");
-/// print!("Error: {}", error; color = ColorCode::new(Color::Red, Color::Black));
-/// ```
 ///
 /// # Parameters
 /// - `$fmt`: The format string.
@@ -29,10 +23,11 @@ macro_rules! print {
     // Case 1: Standard print with optional arguments.
     ($fmt:expr $(, $arg:expr)* $(;)?) => {{
         use core::fmt::Write;
-        use $crate::drivers::vga_display::WRITER;
-        use $crate::drivers::vga_display::color_code::ColorCode;
+        use $crate::vga_display::WRITER;
+        use $crate::vga_display::color_code::ColorCode;
 
         #[allow(unused_unsafe)]
+        #[allow(static_mut_refs)]
         unsafe {
             write!(WRITER, $fmt $(, $arg)*).unwrap();
             WRITER.color = ColorCode::default();
@@ -42,8 +37,8 @@ macro_rules! print {
     // Case 2: Print with custom color.
     ($fmt:expr $(, $arg:expr)* ; color = $color:expr) => {{
         use core::fmt::Write;
-        use $crate::drivers::vga_display::WRITER;
-        use $crate::drivers::vga_display::color_code::ColorCode;
+        use $crate::vga_display::WRITER;
+        use $crate::vga_display::color_code::ColorCode;
 
         #[allow(unused_unsafe)]
         unsafe {
@@ -56,12 +51,6 @@ macro_rules! print {
 
 /// Prints formatted text followed by a newline to the VGA display.
 /// Same as the [`print!`] macro just with a `\n` attached to the end
-///
-/// # Examples
-/// ```
-/// println!("This will be printed to the screen!");
-/// println!("User: {}, ID: {}", user, id; color = ColorCode::new(Color::Blue, Color::Black));
-/// ```
 #[macro_export]
 macro_rules! println {
     // Case 1: Standard println with optional arguments.
@@ -75,12 +64,6 @@ macro_rules! println {
 }
 
 /// Prints a standardized failure message in red color with optional formatting and message color.
-///
-/// # Examples
-/// ```
-/// fail_msg!("Failed to load module '{}'", module_name);
-/// fail_msg!("Crash at address {:x}", addr; color = my_color);
-/// ```
 #[macro_export]
 macro_rules! fail_msg {
     // Case 1: Print "FAIL" with formatted message.
@@ -101,12 +84,6 @@ macro_rules! fail_msg {
 }
 
 /// Prints a standardized success message in green color with optional formatting and message color.
-///
-/// # Examples
-/// ```
-/// ok_msg!("Successfully initialized '{}'", service_name);
-/// ok_msg!("Everything looks good!" ; color = ColorCode);
-/// ```
 #[macro_export]
 macro_rules! ok_msg {
     // Case 1: Print "OK" with formatted message.
@@ -127,18 +104,12 @@ macro_rules! ok_msg {
 }
 
 /// Clears the VGA screen using the current writer instance.
-///
-/// # Example
-/// ```
-/// clear!();
-/// ```
 #[macro_export]
 macro_rules! clear {
     () => {{
         use core::fmt::Write;
         use $crate::screen::WRITER;
         use $crate::screen::color_code::ColorCode;
-
         WRITER.clear()
     }};
 }
