@@ -26,6 +26,7 @@ SECTIONS {
     /* Make sector bootable */
     .magic_number : { SHORT(0xaa55) }
 
-    . = 0x7c00 +512;
+    . = 0x7c00 + 512;
+  
   
 }

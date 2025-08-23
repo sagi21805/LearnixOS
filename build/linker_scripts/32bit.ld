@@ -17,8 +17,8 @@ SECTIONS {
     .eh_frame : { *(.eh_frame .eh_frame.*) }
     .eh_frame_hdr : { *(.eh_frame_hdr .eh_frame_hdr.*) }
 
-    .fill : {
+    .fill_32 : {
         FILL(0)
-        . = 0xa000;
+        . = 0x10000;
     }
 }
