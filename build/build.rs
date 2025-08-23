@@ -1,13 +1,14 @@
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
-use std::process::{Child, Command};
-use std::vec;
-fn build_stage(path: &str, target: &str, profile: &str) -> Child {
+use std::process::{Command, ExitStatus};
+
+fn build_stage(path: &str, target: &str, profile: &str) -> ExitStatus {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let artifact_dir = PathBuf::from("bin");
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    let child = Command::new(cargo)
+
+    let status = Command::new(cargo)
         .args([
             "build",
             &format!("--{}", profile),
@@ -20,32 +21,40 @@ fn build_stage(path: &str, target: &str, profile: &str) -> Child {
             "--out-dir",
             artifact_dir.as_os_str().to_str().unwrap(),
         ])
-        .spawn()
-        .expect("Failed to run cargo build");
+        .status() // wait immediately
+        .expect(&format!("Failed to run cargo build for {}", path));
 
     println!("cargo::rerun-if-changed={}/src", path);
-    child
+
+    if !status.success() {
+        panic!("Cargo build failed for {}", path);
+    }
+
+    status
 }
 
 fn main() {
+    // Force rerun every time
+    println!("cargo::rerun-if-changed=nonexistent.file");
+
     println!("cargo::rerun-if-changed=image.bin");
+
     let profile = std::env::var("PROFILE").unwrap();
-    let mut first_stage = build_stage(
+
+    // Run each stage and wait immediately
+    build_stage(
         "../kernel/stages/first_stage",
         "targets/16bit_target.json",
         "release",
     );
-    let mut second_stage = build_stage(
+    build_stage(
         "../kernel/stages/second_stage",
         "targets/32bit_target.json",
         "release",
     );
-    let mut kernel = build_stage("../kernel", "targets/64bit_target.json", &profile);
-    let builds = vec![&mut first_stage, &mut second_stage, &mut kernel];
-    for child in builds {
-        let _status = child.wait().expect("Failed to wait");
-    }
+    build_stage("../kernel", "targets/64bit_target.json", &profile);
 
+    // Combine binaries into one image
     let input_dir = PathBuf::from("bin");
     let input_files = [
         input_dir.join("first_stage"),
