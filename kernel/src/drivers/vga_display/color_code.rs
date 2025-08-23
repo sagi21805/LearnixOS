@@ -25,20 +25,12 @@ pub enum Color {
 pub struct ColorCode(u8);
 
 impl ColorCode {
-    /// Set the VGA char Background and Foreground per documentation
+    /// Set the VGA char Background and Foreground
     ///
     /// # Parameters
     ///
     /// - `foreground`: The color of the character itself
     /// - `background`: The background color of the character
-    ///
-    /// # Example
-    /// ```rust
-    /// let color = ColorCode::new(Color::Green, Color::Black)
-    /// ```
-    ///
-    ///
-    /// Colors are coded per VGA documentation in the [`Color`] enum
     pub const fn new(foreground: Color, background: Color) -> Self {
         Self((background as u8) << 4 | (foreground as u8))
     }

@@ -13,10 +13,11 @@ use core::{
     arch::{asm, global_asm, naked_asm},
     panic::PanicInfo,
 };
-use cpu_utils::structures::global_descriptor_table::GlobalDescriptorTable;
+use cpu_utils::structures::global_descriptor_table::GlobalDescriptorTableProtected;
 use disk::DiskAddressPacket;
 
-static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTable = GlobalDescriptorTable::protected_mode();
+static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTableProtected =
+    GlobalDescriptorTableProtected::default();
 
 global_asm!(include_str!("../asm/boot.s"));
 

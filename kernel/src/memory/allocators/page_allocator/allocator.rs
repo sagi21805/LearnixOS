@@ -7,6 +7,7 @@ use core::{
 
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
+    bitmap::{BitMap, ContiguousBlockLayout, Position},
     constants::{
         FIRST_STAGE_OFFSET, PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
@@ -14,13 +15,7 @@ use common::{
 };
 use cpu_utils::structures::paging::PageTable;
 
-use crate::{
-    memory::{
-        allocators::page_allocator::extensions::{PhysicalAddressExt, VirtualAddressExt},
-        bitmap::{BitMap, ContiguousBlockLayout, Position},
-    },
-    parsed_memory_map, println,
-};
+use crate::{parsed_memory_map, println};
 
 #[derive(Debug)]
 // TODO: This is not thread safe, probably should use Mutex in the future
@@ -60,14 +55,14 @@ impl PhysicalPageAllocator {
         unsafe { self.0.as_mut_unchecked() }
     }
 
-    pub fn init(uninit: &mut MaybeUninit<Self>) {
+    pub fn init(uninit: &'static mut MaybeUninit<Self>) {
         unsafe {
             let memory_size = parsed_memory_map!()
                 .iter()
                 .map(|x| x.length as usize)
                 .sum::<usize>();
             uninit.write(Self::new(
-                PhysicalAddress(PAGE_ALLOCATOR_OFFSET).translate(),
+                PhysicalAddress::new_unchecked(PAGE_ALLOCATOR_OFFSET).translate(),
                 memory_size,
             ));
             let start_address = const {
@@ -76,24 +71,24 @@ impl PhysicalPageAllocator {
             };
             let start_position = Self::address_position(start_address.clone()).unwrap();
             let initialized = uninit.assume_init_mut();
-            println!("Initial Memory: {}", initialized.available_memory());
             // Allocate the addresses that are used for the code, and for other variables.
-            let end_address = PhysicalAddress::new(
+            let end_address = PhysicalAddress::new_unchecked(
                 PAGE_ALLOCATOR_OFFSET + (initialized.map().map.len() * size_of::<u64>()),
             )
             .align_up(REGULAR_PAGE_ALIGNMENT);
-            let size_bits = ((end_address - start_address) / 0x1000).as_usize();
+            let size_bits = ((end_address - start_address) / REGULAR_PAGE_SIZE).as_usize();
             let block = ContiguousBlockLayout::from_start_size(&start_position, size_bits);
             initialized
                 .map_mut()
                 .set_contiguous_block(&start_position, &block);
             for region in parsed_memory_map!() {
                 if region.region_type != MemoryRegionType::Usable {
-                    let start_address_aligned = PhysicalAddress::new(
-                        region.base_address as usize & (u64::MAX ^ (0x1000 - 1)) as usize,
+                    let start_address_aligned = PhysicalAddress::new_unchecked(
+                        region.base_address as usize
+                            & (u64::MAX ^ (REGULAR_PAGE_SIZE as u64 - 1)) as usize,
                     );
                     let start_position = Self::address_position(start_address_aligned).unwrap();
-                    let size_bits = region.length as usize / 0x1000;
+                    let size_bits = region.length as usize / REGULAR_PAGE_SIZE;
                     let block = ContiguousBlockLayout::from_start_size(&start_position, size_bits);
                     initialized
                         .map_mut()
@@ -155,7 +150,7 @@ unsafe impl GlobalAlloc for PhysicalPageAllocator {
         }
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
         // let freed_address = VirtualAddress::new(ptr as usize).align_down(REGULAR_PAGE_ALIGNMENT);
         // let physical_page = freed_address.translate();
         // let position = Self::address_position(physical_page).unwrap_unchecked();

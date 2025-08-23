@@ -3,7 +3,7 @@ use core::ptr;
 use crate::{registers::cr3::cr3_read, structures::paging::PageTableEntry};
 use common::{
     address_types::VirtualAddress,
-    constants::PAGE_DIRECTORY_ENTRIES,
+    constants::{PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT},
     enums::{PageSize, PageTableLevel},
     error::{EntryError, TableError},
 };
@@ -17,30 +17,37 @@ pub struct PageTable {
 
 impl PageTable {
     #[inline]
-    pub const unsafe fn from_ptr(page_table_ptr: usize) -> &'static mut PageTable {
-        unsafe { &mut *(page_table_ptr as *mut PageTable) }
-    }
-
-    #[inline]
-    pub unsafe fn empty_from_ptr(page_table_ptr: usize) -> &'static mut PageTable {
-        unsafe {
-            ptr::write_volatile(page_table_ptr as *mut PageTable, PageTable::empty());
-            &mut *(page_table_ptr as *mut PageTable)
-        }
-    }
-
-    #[inline]
     pub const fn empty() -> Self {
         Self {
             entries: [const { PageTableEntry::empty() }; PAGE_DIRECTORY_ENTRIES],
         }
     }
+    #[inline]
+    pub unsafe fn empty_from_ptr(page_table_ptr: VirtualAddress) -> Option<&'static mut PageTable> {
+        if !page_table_ptr.is_aligned(REGULAR_PAGE_ALIGNMENT) {
+            return None;
+        }
+        unsafe {
+            ptr::write_volatile(page_table_ptr.as_mut_ptr::<PageTable>(), PageTable::empty());
+            return Some(&mut *page_table_ptr.as_mut_ptr::<PageTable>());
+        }
+    }
+
+    pub fn current_table() -> &'static PageTable {
+        unsafe { core::mem::transmute(cr3_read()) }
+    }
+
+    pub fn current_table_mut() -> &'static mut PageTable {
+        unsafe { core::mem::transmute(cr3_read()) }
+    }
 
     #[inline]
+    #[cfg(target_arch = "x86_64")]
     pub fn address(&self) -> VirtualAddress {
         unsafe { VirtualAddress::new_unchecked(self as *const Self as usize) }
     }
 
+    #[cfg(target_arch = "x86_64")]
     fn fetch_table_or_empty(
         &self,
         start_at: usize,
@@ -62,15 +69,8 @@ impl PageTable {
         (PAGE_DIRECTORY_ENTRIES, None)
     }
 
-    pub fn current_table() -> &'static PageTable {
-        unsafe { core::mem::transmute(cr3_read()) }
-    }
-
-    pub fn current_table_mut() -> &'static mut PageTable {
-        unsafe { core::mem::transmute(cr3_read()) }
-    }
-
     /// Find an avavilable page.
+    #[cfg(target_arch = "x86_64")]
     pub fn find_available_page(page_size: PageSize) -> Result<VirtualAddress, TableError> {
         const LEVELS: usize = 4;
         let mut level_indices = [0usize; LEVELS];

@@ -8,10 +8,10 @@
 #![feature(ptr_alignment_type)]
 use common::{constants::addresses::KERNEL_OFFSET, enums::Sections};
 use core::{arch::asm, panic::PanicInfo};
-use cpu_utils::structures::{global_descriptor_table::GlobalDescriptorTable, paging};
+use cpu_utils::structures::global_descriptor_table::GlobalDescriptorTableLong;
 
-static GLOBAL_DESCRIPTOR_TABLE_LONG_MODE: GlobalDescriptorTable =
-    GlobalDescriptorTable::long_mode();
+static GLOBAL_DESCRIPTOR_TABLE_LONG_MODE: GlobalDescriptorTableLong =
+    GlobalDescriptorTableLong::default();
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -22,12 +22,10 @@ pub unsafe extern "C" fn _start() -> ! {
 
     // Enable paging and load page tables with an identity mapping
     #[cfg(target_arch = "x86")]
-    paging::enable();
+    cpu_utils::structures::paging::enable();
     // Load the global descriptor table for long mode
     GLOBAL_DESCRIPTOR_TABLE_LONG_MODE.load();
-
     // Update global descriptor table to enable long mode and jump to kernel code
-    // loop {}
     asm!(
         "ljmp ${section}, ${next_stage}",
         section = const Sections::KernelCode as u8,

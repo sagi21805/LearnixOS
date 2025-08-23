@@ -3,7 +3,7 @@ use std::io;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::vec;
-fn build_stage(name: &str, path: &str, target: &str, profile: &str) -> Child {
+fn build_stage(path: &str, target: &str, profile: &str) -> Child {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let artifact_dir = PathBuf::from("bin");
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
@@ -31,24 +31,22 @@ fn main() {
     println!("cargo::rerun-if-changed=image.bin");
     let profile = std::env::var("PROFILE").unwrap();
     let mut first_stage = build_stage(
-        "first_stage",
         "../kernel/stages/first_stage",
         "targets/16bit_target.json",
         "release",
     );
     let mut second_stage = build_stage(
-        "second_stage",
         "../kernel/stages/second_stage",
         "targets/32bit_target.json",
         "release",
     );
-    let mut kernel = build_stage("kernel", "../kernel", "targets/64bit_target.json", &profile);
+    let mut kernel = build_stage("../kernel", "targets/64bit_target.json", &profile);
     let builds = vec![&mut first_stage, &mut second_stage, &mut kernel];
     for child in builds {
         let _status = child.wait().expect("Failed to wait");
     }
 
-    let input_dir = PathBuf::from("bin"); // Change to your folder path
+    let input_dir = PathBuf::from("bin");
     let input_files = [
         input_dir.join("first_stage"),
         input_dir.join("second_stage"),

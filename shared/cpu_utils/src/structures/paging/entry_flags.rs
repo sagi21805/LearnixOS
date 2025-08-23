@@ -36,30 +36,34 @@ macro_rules! table_entry_flags {
     };
 }
 
-// Just a wrapper for the flags for easier use
-#[repr(transparent)]
+/// A wrapper for `PageTableEntry` flags for easier use
 #[derive(Debug, Clone)]
 pub struct PageEntryFlags(u64);
 
 impl PageEntryFlags {
     table_entry_flags!();
 
+    /// Constructs new flags, with all flags turned off.
     pub const fn new() -> Self {
         Self(0)
     }
 
+    /// Default flags for entry that contains page table.
     pub const fn table_flags() -> Self {
         PageEntryFlags::new().present().writable().table()
     }
 
+    /// Default flags for entry that contains huge page.
     pub const fn huge_page_flags() -> Self {
         PageEntryFlags::new().present().writable().huge_page()
     }
 
+    /// Default flags for entry that contains regular page.
     pub const fn regular_page_flags() -> Self {
         PageEntryFlags::new().present().writable()
     }
 
+    /// Return the underlying flags as u64.
     pub const fn as_u64(&self) -> u64 {
         self.0
     }

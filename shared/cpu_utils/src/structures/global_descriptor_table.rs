@@ -1,5 +1,11 @@
-use common::flag;
+use common::{
+    enums::{ProtectionLevel, SystemSegmentType},
+    flag,
+};
 use core::arch::asm;
+
+use crate::structures::segments::SegmentSelector;
+
 struct AccessByte(u8);
 
 impl AccessByte {
@@ -15,10 +21,19 @@ impl AccessByte {
     /// Sets the privilege level while returning self.
     /// This is corresponding to the cpu ring of this segment
     /// 0 is commonly called kernel mode, 4 is commonly called user mode
-    pub const fn dpl(mut self, level: u8) -> Self {
-        self.0 |= (level & 0x3) << 5;
+    pub const fn dpl(mut self, level: ProtectionLevel) -> Self {
+        self.0 |= (level as u8) << 5;
         self
     }
+
+    /// Set the type for a system segment.
+    ///
+    /// **Note:** This function is relevant only for system segments
+    pub const fn set_system_type(mut self, system_type: SystemSegmentType) -> Self {
+        self.0 |= system_type as u8;
+        self
+    }
+
     // Is this a code / data segment or a system segment.
     flag!(code_or_data, 4);
     // Will this segment contains executable code?
@@ -52,7 +67,7 @@ impl LimitFlags {
     flag!(long, 5);
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 struct GlobalDescriptorTableEntry32 {
     limit_low: u16,
     base_low: u16,
@@ -64,6 +79,26 @@ struct GlobalDescriptorTableEntry32 {
 }
 
 impl GlobalDescriptorTableEntry32 {
+    /// Construct and empty entry
+    pub const fn empty() -> Self {
+        Self {
+            limit_flags: LimitFlags::new(),
+            access_byte: AccessByte::new(),
+            base_high: 0,
+            base_low: 0,
+            base_mid: 0,
+            limit_low: 0,
+        }
+    }
+
+    /// Create a new entry
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address of the segment
+    /// - `limit`: The size of the segment
+    /// - `access_byte`: The type and access privileges of the entry
+    /// - `flags`: Configuration flags of the entry
     pub const fn new(base: u32, limit: u32, access_byte: AccessByte, flags: LimitFlags) -> Self {
         let base_low = (base & 0xffff) as u16;
         let base_mid = ((base >> 0x10) & 0xff) as u8;
@@ -82,30 +117,95 @@ impl GlobalDescriptorTableEntry32 {
     }
 }
 
-#[repr(C, packed(2))]
-pub struct GlobalDescriptorTableRegister32 {
+/// GDT register structure
+#[repr(C, packed)]
+pub struct GlobalDescriptorTableRegister {
     pub limit: u16,
-    pub base: *const GlobalDescriptorTable,
+    pub base: usize,
 }
 
-#[allow(dead_code)]
-pub struct GlobalDescriptorTable {
+/// The structure of a system segment descriptor
+#[repr(C, packed)]
+pub struct SystemSegmentDescriptor64 {
+    limit_low: u16,
+    base_low: u16,
+    base_mid: u8,
+    access_byte: AccessByte,
+    limit_flags: LimitFlags,
+    base_high: u8,
+    base_extra: u32,
+    _reserved: u32,
+}
+
+impl SystemSegmentDescriptor64 {
+    /// Construct an empty system segment
+    pub const fn empty() -> Self {
+        SystemSegmentDescriptor64 {
+            limit_low: 0,
+            base_low: 0,
+            base_mid: 0,
+            access_byte: AccessByte::new(),
+            limit_flags: LimitFlags::new(),
+            base_high: 0,
+            base_extra: 0,
+            _reserved: 0,
+        }
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    /// Construct a new system segment
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address of the segment
+    /// - `limit`: The limit value of the segment, for each segment this may mean
+    /// something different.
+    /// - `segment_type`: The type of the constructed segment
+    pub const fn new(base: u64, limit: u32, segment_type: SystemSegmentType) -> Self {
+        let base_low = (base & 0xffff) as u16;
+        let base_mid = ((base >> 16) & 0xff) as u8;
+        let base_high = ((base >> 24) & 0xff) as u8;
+        let limit_low = (limit & 0xffff) as u16;
+        let limit_high = ((limit >> 16) & 0xf) as u8;
+        let base_extra = (base >> 32) as u32;
+
+        let access_byte = AccessByte::new()
+            .present()
+            .dpl(ProtectionLevel::Ring0)
+            .set_system_type(segment_type);
+
+        Self {
+            limit_low,
+            base_low,
+            base_mid,
+            access_byte,
+            limit_flags: LimitFlags(limit_high),
+            base_high,
+            base_extra,
+            _reserved: 0,
+        }
+    }
+}
+
+/// Initial temporary GDT
+#[repr(C, packed)]
+pub struct GlobalDescriptorTableProtected {
     null: GlobalDescriptorTableEntry32,
     code: GlobalDescriptorTableEntry32,
     data: GlobalDescriptorTableEntry32,
 }
 
-impl GlobalDescriptorTable {
+impl GlobalDescriptorTableProtected {
     /// Creates default global descriptor table for protected mode
-    pub const fn protected_mode() -> Self {
-        GlobalDescriptorTable {
-            null: GlobalDescriptorTableEntry32::new(0, 0, AccessByte::new(), LimitFlags::new()),
+    pub const fn default() -> Self {
+        Self {
+            null: GlobalDescriptorTableEntry32::empty(),
             code: GlobalDescriptorTableEntry32::new(
                 0,
                 0xfffff,
                 AccessByte::new()
                     .present()
-                    .dpl(0)
+                    .dpl(ProtectionLevel::Ring0)
                     .code_or_data()
                     .executable()
                     .readable(),
@@ -114,40 +214,22 @@ impl GlobalDescriptorTable {
             data: GlobalDescriptorTableEntry32::new(
                 0,
                 0xfffff,
-                AccessByte::new().present().dpl(0).code_or_data().writable(),
+                AccessByte::new()
+                    .present()
+                    .dpl(ProtectionLevel::Ring0)
+                    .code_or_data()
+                    .writable(),
                 LimitFlags::new().granularity().protected(),
             ),
         }
     }
 
-    /// Creates default global descriptor table for long mode
-    pub const fn long_mode() -> Self {
-        GlobalDescriptorTable {
-            null: GlobalDescriptorTableEntry32::new(0, 0, AccessByte::new(), LimitFlags::new()),
-            code: GlobalDescriptorTableEntry32::new(
-                0,
-                0,
-                AccessByte::new()
-                    .code_or_data()
-                    .present()
-                    .writable()
-                    .executable(),
-                LimitFlags::new().long(),
-            ),
-            data: GlobalDescriptorTableEntry32::new(
-                0,
-                0,
-                AccessByte::new().code_or_data().present().writable(),
-                LimitFlags::new(),
-            ),
-        }
-    }
-
+    /// Load the GDT with the `lgdt` instruction
     pub unsafe fn load(&'static self) {
-        let global_descriptor_table_register: GlobalDescriptorTableRegister32 = {
-            GlobalDescriptorTableRegister32 {
-                limit: (size_of::<GlobalDescriptorTable>() - 1) as u16,
-                base: self as *const GlobalDescriptorTable,
+        let global_descriptor_table_register = {
+            GlobalDescriptorTableRegister {
+                limit: (size_of::<Self>() - 1) as u16,
+                base: self as *const _ as usize,
             }
         };
         unsafe {
@@ -161,5 +243,97 @@ impl GlobalDescriptorTable {
     }
 }
 
-unsafe impl Send for GlobalDescriptorTableRegister32 {}
-unsafe impl Sync for GlobalDescriptorTableRegister32 {}
+/// kernel GDT
+#[repr(C, packed)]
+pub struct GlobalDescriptorTableLong {
+    null: GlobalDescriptorTableEntry32,
+    kernel_code: GlobalDescriptorTableEntry32,
+    kernel_data: GlobalDescriptorTableEntry32,
+    user_code: GlobalDescriptorTableEntry32,
+    user_data: GlobalDescriptorTableEntry32,
+    tss: SystemSegmentDescriptor64,
+}
+
+impl GlobalDescriptorTableLong {
+    /// Creates default global descriptor table for long mode
+    pub const fn default() -> Self {
+        Self {
+            null: GlobalDescriptorTableEntry32::empty(),
+            kernel_code: GlobalDescriptorTableEntry32::new(
+                0,
+                0,
+                AccessByte::new()
+                    .code_or_data()
+                    .present()
+                    .dpl(ProtectionLevel::Ring0)
+                    .writable()
+                    .executable(),
+                LimitFlags::new().long(),
+            ),
+            kernel_data: GlobalDescriptorTableEntry32::new(
+                0,
+                0,
+                AccessByte::new()
+                    .code_or_data()
+                    .present()
+                    .dpl(ProtectionLevel::Ring0)
+                    .writable(),
+                LimitFlags::new(),
+            ),
+            user_code: GlobalDescriptorTableEntry32::new(
+                0,
+                0,
+                AccessByte::new()
+                    .code_or_data()
+                    .present()
+                    .dpl(ProtectionLevel::Ring3)
+                    .writable()
+                    .executable(),
+                LimitFlags::new().long(),
+            ),
+            user_data: GlobalDescriptorTableEntry32::new(
+                0,
+                0,
+                AccessByte::new()
+                    .code_or_data()
+                    .present()
+                    .dpl(ProtectionLevel::Ring3)
+                    .writable(),
+                LimitFlags::new(),
+            ),
+            tss: SystemSegmentDescriptor64::empty(),
+        }
+    }
+
+    /// Load the TSS segment into the GDT
+    pub fn load_tss(&mut self, tss: SystemSegmentDescriptor64) {
+        self.tss = tss;
+        let tss_selector = SegmentSelector::default().set_table_index(5);
+        unsafe {
+            asm!(
+                "ltr {0:x}",
+                in(reg) tss_selector.as_u16()
+            )
+        }
+    }
+
+    /// Load the GDT with the `lgdt` instruction
+    pub unsafe fn load(&'static self) {
+        let global_descriptor_table_register = {
+            GlobalDescriptorTableRegister {
+                limit: (size_of::<Self>() - 1) as u16,
+                base: self as *const _ as usize,
+            }
+        };
+        unsafe {
+            asm!(
+                "cli",
+                "lgdt [{}]",
+                in(reg) &global_descriptor_table_register,
+                options(readonly, nostack, preserves_flags)
+            );
+        }
+    }
+}
+unsafe impl Send for GlobalDescriptorTableRegister {}
+unsafe impl Sync for GlobalDescriptorTableRegister {}

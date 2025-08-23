@@ -9,3 +9,5 @@ pub mod mbr;
 
 #[cfg(feature = "paging")]
 pub mod paging;
+
+pub mod segments;

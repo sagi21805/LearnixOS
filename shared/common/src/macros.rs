@@ -22,13 +22,11 @@ macro_rules! impl_common_address_functions {
                     Self(((address << 16) as isize >> 16) as usize);
                     todo!("Check this function and make const");
                 }
-
                 #[inline]
                 /// Return the underlying usize
                 pub const fn as_usize(&self) -> usize {
                     self.0
                 }
-
                 #[inline]
                 /// Return the underlying number as mutable pointer to data
                 ///
@@ -37,7 +35,6 @@ macro_rules! impl_common_address_functions {
                 pub const unsafe fn as_mut_ptr<T>(&self) -> *mut T {
                     self.0 as *mut T
                 }
-
                 #[inline]
                 /// Return the underlying number as immutable pointer to data
                 pub const fn as_ptr<T>(&self) -> *const T {
@@ -49,21 +46,20 @@ macro_rules! impl_common_address_functions {
                 pub const fn is_aligned(&self, alignment: Alignment) -> bool {
                     self.0 & (alignment.as_usize() - 1) == 0
                 }
-
+                /// Align the address to the alignment while rounding up
                 #[inline]
                 pub const fn align_up(mut self, alignment: Alignment) -> Self {
                     self.0 = (self.0 + (alignment.as_usize() - 1)) & !(alignment.as_usize() - 1);
                     self
                 }
-
+                /// Align the address to the alignment while rounding down
                 #[inline]
                 pub const fn align_down(mut self, alignment: Alignment) -> Self {
                     self.0 &= !(alignment.as_usize() - 1);
                     self
                 }
-
                 #[inline]
-                /// Get the alignment of an address
+                /// Get the alignment of the address
                 pub const fn alignment(&self) -> Alignment {
                     unsafe { Alignment::new_unchecked(1 << self.0.trailing_zeros()) }
                 }
@@ -121,6 +117,18 @@ macro_rules! flag {
         #[allow(unused_attributes)]
         pub const fn ${concat(is_, $flag_name)}(&self) -> bool {
             self.0 & (1 << $bit_number) != 0
+        }
+    };
+}
+
+macro_rules! page_flag {
+    ($bit_number:literal, $zero_name:ident, $one_name:ident) => {
+        pub const fn $zero_name(&self) -> bool {
+            self.0 & (1 << $bit_number) == 0
+        }
+
+        pub const fn $one_name(&self) -> bool {
+            self.0 & (1 << $bit_number) == 1
         }
     };
 }
