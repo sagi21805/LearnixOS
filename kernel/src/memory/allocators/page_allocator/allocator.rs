@@ -15,7 +15,7 @@ use common::{
 };
 use cpu_utils::structures::paging::PageTable;
 
-use crate::{parsed_memory_map, println};
+use crate::parsed_memory_map;
 
 #[derive(Debug)]
 // TODO: This is not thread safe, probably should use Mutex in the future
