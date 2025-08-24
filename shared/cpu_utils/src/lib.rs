@@ -5,5 +5,6 @@
 #![feature(unsafe_cell_access)]
 #![feature(abi_x86_interrupt)]
 
+pub mod instructions;
 pub mod registers;
 pub mod structures;
