@@ -1,6 +1,6 @@
 use core::ptr;
 
-use crate::{registers::cr3::cr3_read, structures::paging::PageTableEntry};
+use crate::{registers::cr3, structures::paging::PageTableEntry};
 use common::{
     address_types::VirtualAddress,
     constants::{PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT},
@@ -34,11 +34,11 @@ impl PageTable {
     }
 
     pub fn current_table() -> &'static PageTable {
-        unsafe { core::mem::transmute(cr3_read()) }
+        unsafe { core::mem::transmute(cr3::read()) }
     }
 
     pub fn current_table_mut() -> &'static mut PageTable {
-        unsafe { core::mem::transmute(cr3_read()) }
+        unsafe { core::mem::transmute(cr3::read()) }
     }
 
     #[inline]
