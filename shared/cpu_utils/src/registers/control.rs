@@ -1,3 +1,3 @@
-use crate::registers::impl_reg_read_write;
+use crate::registers::macros::impl_reg_read_write_u64;
 
-impl_reg_read_write!(cr3);
+impl_reg_read_write_u64!(cr3);
