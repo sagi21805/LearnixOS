@@ -1,6 +1,9 @@
 use core::arch::asm;
 
-use common::enums::CpuidQuery;
+use common::{
+    enums::{CpuFeatureEdx, CpuidQuery},
+    flag,
+};
 pub struct CpuidResult {
     /// EAX register.
     pub eax: u32,
@@ -59,4 +62,17 @@ pub fn get_vendor_string() -> [u8; 12] {
     vendor_string[4..8].copy_from_slice(&result.edx.to_le_bytes());
     vendor_string[8..12].copy_from_slice(&result.ecx.to_le_bytes());
     vendor_string
+}
+
+/// Bits 0-31 are ecx
+/// Bits 32-63 are edx
+pub struct CpuFeatures(pub u64);
+
+impl CpuFeatures {
+    pub fn new() -> Self {
+        let features = unsafe { cpuid(CpuidQuery::GetCpuFeatures, 0) };
+        Self(((features.edx as u64) << 32) | (features.ecx as u64))
+    }
+
+    flag!(has_apic, ((CpuFeatureEdx::APIC as u64) << 32) as u64);
 }
