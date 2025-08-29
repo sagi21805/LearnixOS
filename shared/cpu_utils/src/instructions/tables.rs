@@ -4,6 +4,7 @@ use core::arch::asm;
 use crate::structures::global_descriptor_table::GlobalDescriptorTableProtected;
 use crate::structures::{
     global_descriptor_table::{GlobalDescriptorTableLong, GlobalDescriptorTableRegister},
+    interrupt_descriptor_table::InterruptDescriptorTableRegister,
     segments::SegmentSelector,
 };
 use core::mem::MaybeUninit;
@@ -13,6 +14,16 @@ pub unsafe fn lgdt(gdtr: &GlobalDescriptorTableRegister) {
         asm!(
             "lgdt [{}]",
             in(reg) gdtr,
+            options(readonly, nostack, preserves_flags)
+        );
+    }
+}
+
+pub unsafe fn lidt(idtr: &InterruptDescriptorTableRegister) {
+    unsafe {
+        asm!(
+            "lidt [{}]",
+            in(reg) idtr,
             options(readonly, nostack, preserves_flags)
         );
     }
