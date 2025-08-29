@@ -1,6 +1,4 @@
-use core::marker::ConstParamTy;
-
-#[derive(PartialEq, Eq, ConstParamTy)]
+#[derive(PartialEq, Eq)]
 #[repr(u32)]
 pub enum MSR {
     EFER = 0xc0000080,
