@@ -7,5 +7,5 @@ pub enum Port {
     PrimaryPicData = 0x21,
     SecondaryPicCmd = 0xA0,
     SecondaryPicData = 0xA1,
-    None = 0x80,
+    IOWait = 0x80,
 }

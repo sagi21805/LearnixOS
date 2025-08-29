@@ -82,5 +82,5 @@ pub unsafe fn inl(port: Port) -> u32 {
 
 #[inline(always)]
 pub unsafe fn iowait() {
-    unsafe { outb(Port::None, 0) };
+    unsafe { outb(Port::IOWait, 0) };
 }
