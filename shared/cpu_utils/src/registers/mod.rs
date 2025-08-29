@@ -7,7 +7,4 @@ pub mod segment;
 
 pub use control::*;
 pub use general_purpose::*;
-use macros::*;
-pub use model_specific::*;
-pub use rflags::*;
 pub use segment::*;
