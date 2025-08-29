@@ -1,9 +1,6 @@
 use core::arch::asm;
 
-use common::{
-    enums::{CpuFeatureEdx, CpuidQuery},
-    println,
-};
+use common::enums::{CpuFeatureEdx, CpuidQuery};
 
 use crate::instructions::macros::cpu_feature;
 pub struct CpuidResult {
@@ -19,12 +16,16 @@ pub struct CpuidResult {
 
 /// Query the cpu about certain parameters
 ///
-/// **Code directly take from rust core library
-pub unsafe fn cpuid(leaf: CpuidQuery, sub_leaf: u32) -> CpuidResult {
+/// Adapted from Rust's core CPUID implementation (MIT/Apache-2.0).
+/// Upstream attribution retained; minor adjustment for our no_std layout
+/// See LICENSE-MIT and LICENSE-APACHE at the repository root.
+pub unsafe fn cpuid(query: CpuidQuery) -> CpuidResult {
     let eax;
     let ebx;
     let ecx;
     let edx;
+
+    let query_registers = query.registers();
 
     // LLVM sometimes reserves `ebx` for its internal use, we so we need to use
     // a scratch register for it instead.
@@ -32,12 +33,12 @@ pub unsafe fn cpuid(leaf: CpuidQuery, sub_leaf: u32) -> CpuidResult {
         #[cfg(target_arch = "x86")]
         {
             asm!(
-                "mov {0}, ebx",
+                "mov {0:e}, ebx",
                 "cpuid",
-                "xchg {0}, ebx",
+                "xchg {0:e}, ebx",
                 out(reg) ebx,
-                inout("eax") leaf => eax,
-                inout("ecx") sub_leaf => ecx,
+                inout("eax") query_registers.eax => eax,
+                inout("ecx") query_registers.ecx => ecx,
                 out("edx") edx,
                 options(nostack, preserves_flags),
             );
@@ -49,8 +50,8 @@ pub unsafe fn cpuid(leaf: CpuidQuery, sub_leaf: u32) -> CpuidResult {
                 "cpuid",
                 "xchg {0:r}, rbx",
                 out(reg) ebx,
-                inout("eax") leaf as u32 => eax,
-                inout("ecx") sub_leaf => ecx,
+                inout("eax") query_registers.eax => eax,
+                inout("ecx") query_registers.ecx => ecx,
                 out("edx") edx,
                 options(nostack, preserves_flags),
             );
@@ -60,7 +61,7 @@ pub unsafe fn cpuid(leaf: CpuidQuery, sub_leaf: u32) -> CpuidResult {
 }
 
 pub fn get_vendor_string() -> [u8; 12] {
-    let result = unsafe { cpuid(CpuidQuery::GetVendorString, 0) };
+    let result = unsafe { cpuid(CpuidQuery::GetVendorString) };
     let mut vendor_string = [0u8; 12];
     vendor_string[0..4].copy_from_slice(&result.ebx.to_le_bytes());
     vendor_string[4..8].copy_from_slice(&result.edx.to_le_bytes());
@@ -74,7 +75,7 @@ pub struct CpuFeatures(pub u64);
 
 impl CpuFeatures {
     pub fn new() -> Self {
-        let features = unsafe { cpuid(CpuidQuery::GetCpuFeatures, 0) };
+        let features = unsafe { cpuid(CpuidQuery::GetCpuFeatures) };
         Self(((features.edx as u64) << 32) | (features.ecx as u64))
     }
 
