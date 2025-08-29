@@ -1,4 +1,8 @@
-use common::{address_types::VirtualAddress, enums::ProtectionLevel, flag};
+use common::{
+    address_types::VirtualAddress,
+    enums::{ProtectionLevel, Sections},
+    flag,
+};
 
 #[derive(Clone, Debug, Copy)]
 pub struct SegmentSelector(u16);
@@ -33,12 +37,12 @@ impl SegmentSelector {
 
     /// Default kernel code selector
     pub const fn kernel_code() -> Self {
-        Self(0x8)
+        Self(Sections::KernelCode as u16)
     }
 
     /// Default user code selector
     pub const fn user_code() -> Self {
-        Self(0x1b)
+        Self(Sections::UserCode as u16 | ProtectionLevel::Ring3 as u16)
     }
 }
 
