@@ -72,32 +72,62 @@ pub struct MemoryRegion {
     pub region_type: MemoryRegionType,
 }
 
-pub struct ParsedMapDisplay(pub &'static [MemoryRegion]);
+pub trait MemoryRegionTrait {
+    fn base_address(&self) -> u64;
+    fn length(&self) -> u64;
+    fn region_type(&self) -> MemoryRegionType;
+}
 
-impl Display for ParsedMapDisplay {
+impl MemoryRegionTrait for MemoryRegion {
+    fn base_address(&self) -> u64 {
+        self.base_address
+    }
+    fn length(&self) -> u64 {
+        self.length
+    }
+    fn region_type(&self) -> MemoryRegionType {
+        self.region_type
+    }
+}
+
+impl MemoryRegionTrait for MemoryRegionExtended {
+    fn base_address(&self) -> u64 {
+        self.base_address
+    }
+    fn length(&self) -> u64 {
+        self.length
+    }
+    fn region_type(&self) -> MemoryRegionType {
+        self.region_type
+    }
+}
+
+pub struct ParsedMapDisplay<T: MemoryRegionTrait + 'static>(pub &'static [T]);
+
+impl<T: MemoryRegionTrait> Display for ParsedMapDisplay<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut usable = 0u64;
         let mut reserved = 0u64;
 
         for entry in self.0 {
-            let size_mib = entry.length / MiB as u64;
-            let size_kib = (entry.length - (size_mib * MiB as u64)) / KiB as u64;
+            let size_mib = entry.length() / MiB as u64;
+            let size_kib = (entry.length() - (size_mib * MiB as u64)) / KiB as u64;
 
             write!(
                 f,
                 "[0x{:0>9x} - 0x{:0>9x}]: type: {}",
-                entry.base_address,
-                entry.base_address + entry.length,
-                entry.region_type as u32
+                entry.base_address(),
+                entry.base_address() + entry.length(),
+                entry.region_type() as u32
             )?;
 
-            match entry.region_type {
+            match entry.region_type() {
                 MemoryRegionType::Usable => {
-                    usable += entry.length;
+                    usable += entry.length();
                     writeln!(f, " (Size: {:>4} MiB{:>4} KiB)", size_mib, size_kib)?;
                 }
                 MemoryRegionType::Reserved => {
-                    reserved += entry.length;
+                    reserved += entry.length();
                     writeln!(f, " (Size: {:>4} MiB{:>4} KiB)", size_mib, size_kib)?;
                 }
                 _ => writeln!(f)?,
