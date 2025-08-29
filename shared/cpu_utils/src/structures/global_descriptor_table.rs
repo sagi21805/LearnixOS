@@ -2,9 +2,8 @@ use common::{
     enums::{ProtectionLevel, SystemSegmentType},
     flag,
 };
-use core::arch::asm;
 
-use crate::structures::segments::SegmentSelector;
+use crate::{instructions, structures::segments::SegmentSelector};
 
 struct AccessByte(u8);
 
@@ -226,19 +225,14 @@ impl GlobalDescriptorTableProtected {
 
     /// Load the GDT with the `lgdt` instruction
     pub unsafe fn load(&'static self) {
-        let global_descriptor_table_register = {
+        let gdtr = {
             GlobalDescriptorTableRegister {
                 limit: (size_of::<Self>() - 1) as u16,
                 base: self as *const _ as usize,
             }
         };
         unsafe {
-            asm!(
-                "cli",
-                "lgdt [{}]",
-                in(reg) &global_descriptor_table_register,
-                options(readonly, nostack, preserves_flags)
-            );
+            instructions::lgdt(&gdtr);
         }
     }
 }
@@ -310,28 +304,20 @@ impl GlobalDescriptorTableLong {
         self.tss = tss;
         let tss_selector = SegmentSelector::default().set_table_index(5);
         unsafe {
-            asm!(
-                "ltr {0:x}",
-                in(reg) tss_selector.as_u16()
-            )
+            instructions::ltr(tss_selector);
         }
     }
 
     /// Load the GDT with the `lgdt` instruction
     pub unsafe fn load(&'static self) {
-        let global_descriptor_table_register = {
+        let gdtr = {
             GlobalDescriptorTableRegister {
                 limit: (size_of::<Self>() - 1) as u16,
                 base: self as *const _ as usize,
             }
         };
         unsafe {
-            asm!(
-                "cli",
-                "lgdt [{}]",
-                in(reg) &global_descriptor_table_register,
-                options(readonly, nostack, preserves_flags)
-            );
+            instructions::lgdt(&gdtr);
         }
     }
 }
