@@ -7,7 +7,6 @@ pub mod tlb;
 
 pub use cpuid::*;
 pub use interrupts::*;
-use macros::*;
 pub use port::*;
 pub use tables::*;
 pub use tlb::*;
