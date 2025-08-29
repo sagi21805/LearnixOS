@@ -2,8 +2,10 @@ use core::arch::asm;
 
 use common::{
     enums::{CpuFeatureEdx, CpuidQuery},
-    flag,
+    println,
 };
+
+use crate::instructions::macros::cpu_feature;
 pub struct CpuidResult {
     /// EAX register.
     pub eax: u32,
@@ -15,7 +17,9 @@ pub struct CpuidResult {
     pub edx: u32,
 }
 
-/// Code directly take from rust because I can't import core::arch::x86_64 yet;
+/// Query the cpu about certain parameters
+///
+/// **Code directly take from rust core library
 pub unsafe fn cpuid(leaf: CpuidQuery, sub_leaf: u32) -> CpuidResult {
     let eax;
     let ebx;
@@ -74,5 +78,8 @@ impl CpuFeatures {
         Self(((features.edx as u64) << 32) | (features.ecx as u64))
     }
 
-    flag!(has_apic, ((CpuFeatureEdx::APIC as u64) << 32) as u64);
+    cpu_feature!(
+        apic,
+        (((CpuFeatureEdx::APIC as u64) << 32) as u64).trailing_zeros()
+    );
 }
