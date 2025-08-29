@@ -15,11 +15,14 @@ pub static mut IDT: MaybeUninit<&mut InterruptDescriptorTable> = MaybeUninit::un
 /// Global TSS segment
 pub static TSS: TaskStateSegment = TaskStateSegment::default();
 
-use crate::structures::{
-    global_descriptor_table::{
-        GlobalDescriptorTableLong, GlobalDescriptorTableRegister, SystemSegmentDescriptor64,
+use crate::{
+    instructions,
+    structures::{
+        global_descriptor_table::{
+            GlobalDescriptorTableLong, GlobalDescriptorTableRegister, SystemSegmentDescriptor64,
+        },
+        segments::{SegmentSelector, TaskStateSegment},
     },
-    segments::{SegmentSelector, TaskStateSegment},
 };
 
 /// Attributes of an interrupts entry, includes type and privilege level
@@ -98,19 +101,14 @@ impl InterruptDescriptorTable {
 
     /// Load the IDT with the `lidt` instruction
     fn load(&'static self) {
-        let idt_register = {
+        let idtr = {
             InterruptDescriptorTableRegister {
                 limit: (size_of::<Self>() - 1) as u16,
                 base: self as *const _ as u64,
             }
         };
         unsafe {
-            asm!(
-                "cli",
-                "lidt [{}]",
-                in(reg) &idt_register,
-                options(readonly, nostack, preserves_flags)
-            );
+            instructions::lidt(&idtr);
         }
     }
 
