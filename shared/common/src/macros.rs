@@ -78,7 +78,7 @@ macro_rules! impl_common_address_functions {
 /// 3. `unset_<flag_name>:` unset the bit without returning self
 /// 4. `is_<flag_name>`: return true if the flag is set or false if not
 macro_rules! flag {
-    ($flag_name:ident, $bit_number:literal) => {
+    ($flag_name:ident, $bit_number:expr) => {
         #[inline]
         #[allow(dead_code)]
         #[allow(unused_attributes)]
