@@ -3,6 +3,8 @@ use core::arch::asm;
 use common::{enums::ProtectionLevel, flag};
 
 #[allow(non_camel_case_types)]
+#[derive(Debug)]
+#[repr(C)]
 pub struct rflags(u64);
 
 impl rflags {
