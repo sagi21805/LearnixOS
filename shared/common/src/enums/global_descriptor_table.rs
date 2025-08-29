@@ -3,6 +3,9 @@ pub enum Sections {
     Null = 0x0,
     KernelCode = 0x8,
     KernelData = 0x10,
+    UserCode = 0x18,
+    UserData = 0x20,
+    TaskStateSegment = 0x28,
 }
 
 // Directly taken from Intel Software developer manual volume 3.
