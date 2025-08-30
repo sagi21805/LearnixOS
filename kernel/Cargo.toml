@@ -4,12 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-common = { path = "../shared/common", features = ["kernel"] }
-cpu_utils = { path = "../shared/cpu_utils", features = [
-    "paging",
-    "global_descriptor_table",
-    "interrupt_descriptor_table",
-] }
+common = { path = "../shared/common" }
+cpu_utils = { path = "../shared/cpu_utils" }
 derive_more = { version = "2.0.1", default-features = false, features = [
     "full",
 ] }

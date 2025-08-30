@@ -5,7 +5,6 @@
 #![feature(unsafe_cell_access)]
 #![feature(abi_x86_interrupt)]
 
-#[cfg(target_arch = "x86_64")]
 pub mod instructions;
 pub mod registers;
 pub mod structures;
