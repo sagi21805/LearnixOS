@@ -3,13 +3,13 @@ use core::arch::asm;
 use extend::ext;
 
 #[ext]
-impl Port {
+pub impl Port {
     #[inline(always)]
-    unsafe fn outb(self, val: u8) {
+    unsafe fn outb(&mut self, val: u8) {
         unsafe {
             asm!(
                 "out dx, al",
-                in("dx") self as u16,
+                in("dx") *self as u16,
                 in("al") val,
                 options(nostack, preserves_flags),
             );
@@ -17,11 +17,11 @@ impl Port {
     }
 
     #[inline(always)]
-    unsafe fn outw(self, val: u16) {
+    unsafe fn outw(&mut self, val: u16) {
         unsafe {
             asm!(
                 "out dx, ax",
-                in("dx") self as u16,
+                in("dx") *self as u16,
                 in("ax") val,
                 options(nostack, preserves_flags),
             );
@@ -29,11 +29,11 @@ impl Port {
     }
 
     #[inline(always)]
-    unsafe fn outl(self, val: u32) {
+    unsafe fn outl(&mut self, val: u32) {
         unsafe {
             asm!(
                 "out dx, eax",
-                in("dx") self as u16,
+                in("dx") *self as u16,
                 in("eax") val,
                 options(nostack, preserves_flags),
             );
@@ -42,12 +42,12 @@ impl Port {
 
     /// IN instructions
     #[inline(always)]
-    unsafe fn inb(self) -> u8 {
+    unsafe fn inb(&self) -> u8 {
         let mut val: u8;
         unsafe {
             asm!(
                 "in al, dx",
-                in("dx") self as u16,
+                in("dx") *self as u16,
                 out("al") val,
                 options(nostack, preserves_flags),
             );
@@ -56,12 +56,12 @@ impl Port {
     }
 
     #[inline(always)]
-    unsafe fn inw(self) -> u16 {
+    unsafe fn inw(&self) -> u16 {
         let mut val: u16;
         unsafe {
             asm!(
                 "in ax, dx",
-                in("dx") self as u16,
+                in("dx") *self as u16,
                 out("ax") val,
                 options(nostack, preserves_flags),
             );
@@ -70,12 +70,12 @@ impl Port {
     }
 
     #[inline(always)]
-    unsafe fn inl(self) -> u32 {
+    unsafe fn inl(&self) -> u32 {
         let mut val: u32;
         unsafe {
             asm!(
                 "in eax, dx",
-                in("dx") self as u16,
+                in("dx") *self as u16,
                 out("eax") val,
                 options(nostack, preserves_flags),
             );
