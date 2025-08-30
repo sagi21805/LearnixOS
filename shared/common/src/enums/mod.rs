@@ -5,6 +5,7 @@ pub mod global_descriptor_table;
 pub mod interrupts;
 pub mod model_specific;
 pub mod paging;
+pub mod pic8259;
 pub mod ports;
 
 pub use bios_interrupts::*;
@@ -13,4 +14,5 @@ pub use general::*;
 pub use global_descriptor_table::*;
 pub use model_specific::*;
 pub use paging::*;
+pub use pic8259::*;
 pub use ports::*;
