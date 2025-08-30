@@ -4,8 +4,5 @@ name = "second_stage"
 version = "0.1.0"
 
 [dependencies]
-common = { path = "../../../shared/common", features = ["second_stage"] }
-cpu_utils = { path = "../../../shared/cpu_utils", features = [
-    "paging",
-    "global_descriptor_table",
-] }
+common = { path = "../../../shared/common" }
+cpu_utils = { path = "../../../shared/cpu_utils" }
