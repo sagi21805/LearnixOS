@@ -1,7 +1,11 @@
-use crate::println;
+use crate::{drivers::pic8259::PIC, println};
 use common::{
-    address_types::VirtualAddress, enums::ProtectionLevel, enums::interrupts::Interrupt,
-    enums::interrupts::InterruptType,
+    address_types::VirtualAddress,
+    enums::{
+        CascadedPicInterruptLine, ProtectionLevel,
+        interrupts::{Interrupt, InterruptType},
+    },
+    print,
 };
 use cpu_utils::structures::interrupt_descriptor_table::{
     InterruptDescriptorTable, InterruptStackFrame,
@@ -79,9 +83,11 @@ pub extern "x86-interrupt" fn virtualization_handler(stack_frame: InterruptStack
     println!("Stack frame: {:#?}", stack_frame);
 }
 
-pub extern "x86-interrupt" fn timer_handler(stack_frame: InterruptStackFrame) {
-    println!("Interrupt: Timer");
-    println!("Stack frame: {:#?}", stack_frame);
+pub extern "x86-interrupt" fn timer_handler(_stack_frame: InterruptStackFrame) {
+    print!(".");
+    unsafe {
+        PIC.end_of_interrupt(CascadedPicInterruptLine::Timer);
+    }
 }
 
 pub extern "x86-interrupt" fn double_fault_handler(
