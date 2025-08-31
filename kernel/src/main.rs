@@ -12,22 +12,31 @@
 #![feature(macro_metavar_expr_concat)]
 mod drivers;
 mod memory;
-use core::{
-    alloc::{GlobalAlloc, Layout},
-    arch::asm,
-    panic::PanicInfo,
-};
+use core::panic::PanicInfo;
 
 use crate::{
-    drivers::interrupt_handlers::initialize_interrupts,
+    drivers::{
+        interrupt_handlers,
+        keyboard::{self, KEYBOARD_BUFFER},
+        pic8259::{CascadedPIC, PIC},
+    },
     memory::memory_map::{ParsedMapDisplay, parse_map},
 };
 
 use common::{
-    address_types::PhysicalAddress, constants::IDT_OFFSET, enums::Disk, error, fail_msg, ok_msg,
-    println, vga_display::color_code::Color,
+    address_types::VirtualAddress,
+    constants::{IDT_OFFSET, KEYBOARD_BUFFER_OFFSET},
+    enums::PS2ScanCode,
+    fail_msg, ok_msg, print, println,
+    vga_display::color_code::Color,
 };
-use cpu_utils::structures::interrupt_descriptor_table::{IDT, InterruptDescriptorTable};
+use cpu_utils::{
+    instructions::{
+        cpuid::{self, CpuFeatures},
+        interrupts::{self, hlt},
+    },
+    structures::interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
+};
 use memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
 
 #[unsafe(no_mangle)]
@@ -43,21 +52,40 @@ pub unsafe extern "C" fn _start() -> ! {
     ok_msg!("Allocator Initialized");
     unsafe {
         InterruptDescriptorTable::init(&mut IDT, IDT_OFFSET.into());
-        initialize_interrupts(IDT.assume_init_mut());
-
-        // For now, disable pic interrupts and enable interrupts
-        asm!("mov al, 0xff", "out 0x21, al", "out 0xA1, al");
-        asm!("sti");
         ok_msg!("Initialized interrupt descriptor table");
-        asm!("int 7");
-        ALLOCATOR
-            .assume_init_ref()
-            .alloc(Layout::from_size_align_unchecked(4096, 4096));
+        interrupt_handlers::init(IDT.assume_init_mut());
+        ok_msg!("Initialized interrupts handlers");
+        CascadedPIC::init(&mut PIC);
+        ok_msg!("Initialized Programmable Interrupt Controller");
+        let val = cpuid::get_vendor_string();
+        let cpu_string = core::str::from_utf8(&val);
+        let features = CpuFeatures::new();
+        println!("{:?}", cpu_string);
+        println!("Has APIC: {}", features.has_apic());
+        keyboard::init(
+            &mut KEYBOARD_BUFFER,
+            VirtualAddress::new_unchecked(KEYBOARD_BUFFER_OFFSET),
+            0x1000,
+        );
+        ok_msg!("Initialized Keyboard");
+        interrupts::enable();
     }
 
     loop {
         unsafe {
-            asm!("hlt");
+            let key = KEYBOARD_BUFFER.assume_init_mut().read();
+            match key {
+                Some(scan_code) => {
+                    let code = PS2ScanCode::from_scancode(scan_code);
+                    match code {
+                        Some(c) => print!("{}", c),
+                        None => print!(" code: {:x}", scan_code),
+                    }
+                }
+                None => {
+                    hlt();
+                }
+            }
         }
     }
 }
@@ -65,7 +93,9 @@ pub unsafe extern "C" fn _start() -> ! {
 /// This function is called on panic.
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {
-    unsafe { asm!("cli") }
+    unsafe {
+        interrupts::disable();
+    }
     fail_msg!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
     loop {}
 }
