@@ -12,7 +12,7 @@
 #![feature(macro_metavar_expr_concat)]
 mod drivers;
 mod memory;
-use core::panic::PanicInfo;
+use core::{num::NonZero, panic::PanicInfo};
 
 use crate::{
     drivers::{
@@ -65,7 +65,7 @@ pub unsafe extern "C" fn _start() -> ! {
         keyboard::init(
             &mut KEYBOARD_BUFFER,
             VirtualAddress::new_unchecked(KEYBOARD_BUFFER_OFFSET),
-            0x1000,
+            NonZero::new(0x1000).unwrap(),
         );
         ok_msg!("Initialized Keyboard");
         interrupts::enable();

@@ -1,5 +1,5 @@
 use crate::address_types::VirtualAddress;
-use core::slice;
+use core::{num::NonZeroUsize, slice};
 
 pub struct RingBuffer<T: 'static + Clone + Copy> {
     read_idx: usize,
@@ -8,11 +8,13 @@ pub struct RingBuffer<T: 'static + Clone + Copy> {
 }
 
 impl<T: 'static + Clone + Copy> RingBuffer<T> {
-    pub fn new(buffer_address: VirtualAddress, length: usize) -> Self {
+    pub fn new(buffer_address: VirtualAddress, length: NonZeroUsize) -> Self {
         Self {
             read_idx: 0,
             write_idx: 0,
-            buffer: unsafe { slice::from_raw_parts_mut(buffer_address.as_mut_ptr::<T>(), length) },
+            buffer: unsafe {
+                slice::from_raw_parts_mut(buffer_address.as_mut_ptr::<T>(), length.get())
+            },
         }
     }
 
