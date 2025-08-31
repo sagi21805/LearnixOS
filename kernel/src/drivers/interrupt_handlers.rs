@@ -1,11 +1,13 @@
-use crate::{drivers::pic8259::PIC, println};
+use crate::{
+    drivers::{keyboard::keyboard_handler, timer::timer_handler},
+    println,
+};
 use common::{
     address_types::VirtualAddress,
     enums::{
-        CascadedPicInterruptLine, ProtectionLevel,
+        ProtectionLevel,
         interrupts::{Interrupt, InterruptType},
     },
-    print,
 };
 use cpu_utils::structures::interrupt_descriptor_table::{
     InterruptDescriptorTable, InterruptStackFrame,
@@ -81,13 +83,6 @@ pub extern "x86-interrupt" fn simd_handler(stack_frame: InterruptStackFrame) {
 pub extern "x86-interrupt" fn virtualization_handler(stack_frame: InterruptStackFrame) {
     println!("Interrupt: Virtualization");
     println!("Stack frame: {:#?}", stack_frame);
-}
-
-pub extern "x86-interrupt" fn timer_handler(_stack_frame: InterruptStackFrame) {
-    print!(".");
-    unsafe {
-        PIC.end_of_interrupt(CascadedPicInterruptLine::Timer);
-    }
 }
 
 pub extern "x86-interrupt" fn double_fault_handler(
@@ -315,6 +310,12 @@ pub fn initialize_interrupts(idt: &'static mut InterruptDescriptorTable) {
             Interrupt::Timer,
             VirtualAddress::new_unchecked(timer_handler as usize),
             ProtectionLevel::Ring0,
+            InterruptType::Trap,
+        );
+        idt.set_interrupt_handler(
+            Interrupt::Keyboard,
+            VirtualAddress::new_unchecked(keyboard_handler as usize),
+            ProtectionLevel::Ring3,
             InterruptType::Trap,
         );
     }
