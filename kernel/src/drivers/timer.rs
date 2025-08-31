@@ -6,6 +6,7 @@ use crate::drivers::pic8259::PIC;
 pub extern "x86-interrupt" fn timer_handler(_stack_frame: InterruptStackFrame) {
     // print!(".");
     unsafe {
-        PIC.end_of_interrupt(CascadedPicInterruptLine::Timer);
+        PIC.assume_init_mut()
+            .end_of_interrupt(CascadedPicInterruptLine::Timer);
     }
 }
