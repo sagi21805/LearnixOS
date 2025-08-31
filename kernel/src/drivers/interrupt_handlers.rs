@@ -315,7 +315,7 @@ pub fn init(idt: &'static mut InterruptDescriptorTable) {
         idt.set_interrupt_handler(
             Interrupt::Keyboard,
             VirtualAddress::new_unchecked(keyboard_handler as usize),
-            ProtectionLevel::Ring3,
+            ProtectionLevel::Ring0,
             InterruptType::Trap,
         );
     }

@@ -126,7 +126,7 @@ impl CascadedPIC {
     pub fn disable_irq(&mut self, irq: CascadedPicInterruptLine) {
         unsafe {
             if irq as u16 > PicInterruptLine::Irq7 as u16 {
-                let irq: PicInterruptLine = core::mem::transmute(((irq as u16) << u8::BITS) as u8);
+                let irq: PicInterruptLine = core::mem::transmute(((irq as u16) >> u8::BITS) as u8);
                 self.slave.disable_irq(irq);
             } else {
                 let irq: PicInterruptLine = core::mem::transmute(irq as u8);
@@ -137,7 +137,7 @@ impl CascadedPIC {
     pub fn enable_irq(&mut self, irq: CascadedPicInterruptLine) {
         unsafe {
             if irq as u16 >= CascadedPicInterruptLine::Irq8 as u16 {
-                let irq: PicInterruptLine = core::mem::transmute(((irq as u16) << u8::BITS) as u8);
+                let irq: PicInterruptLine = core::mem::transmute(((irq as u16) >> u8::BITS) as u8);
                 self.slave.enable_irq(irq);
             } else {
                 let irq: PicInterruptLine = core::mem::transmute(irq as u8);

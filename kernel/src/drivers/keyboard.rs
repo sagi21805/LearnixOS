@@ -1,4 +1,4 @@
-use core::mem::MaybeUninit;
+use core::{mem::MaybeUninit, num::NonZero};
 
 use crate::drivers::pic8259::PIC;
 use common::{
@@ -25,7 +25,7 @@ pub extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame
 pub fn init(
     uninit: &'static mut MaybeUninit<RingBuffer<u8>>,
     buffer: VirtualAddress,
-    length: usize,
+    length: NonZero<usize>,
 ) {
     uninit.write(RingBuffer::new(buffer, length));
 }
