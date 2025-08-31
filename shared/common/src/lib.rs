@@ -9,5 +9,6 @@ pub mod bitmap;
 pub mod constants;
 pub mod enums;
 pub mod error;
+pub mod ring_buffer;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod vga_display;
