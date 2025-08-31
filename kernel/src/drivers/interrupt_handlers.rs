@@ -157,7 +157,7 @@ pub extern "x86-interrupt" fn control_protection_handler(
     println!("Error code: {:#x}", error_code);
 }
 
-pub fn initialize_interrupts(idt: &'static mut InterruptDescriptorTable) {
+pub fn init(idt: &'static mut InterruptDescriptorTable) {
     unsafe {
         idt.set_interrupt_handler(
             Interrupt::DivisionError,
