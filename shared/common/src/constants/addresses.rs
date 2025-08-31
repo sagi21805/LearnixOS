@@ -16,7 +16,7 @@ pub const TOP_IDENTITY_PAGE_TABLE_L2_OFFSET: usize = 0x54000;
 
 // TODO REMOVE THIS CONST, AND ALLOCATE, HERE JUST FOR TEST
 pub const IDT_OFFSET: usize = 0x55000;
-
-pub const PAGE_ALLOCATOR_OFFSET: usize = 0x56000;
+pub const KEYBOARD_BUFFER_OFFSET: usize = 0x56000;
+pub const PAGE_ALLOCATOR_OFFSET: usize = 0x57000;
 #[cfg(target_arch = "x86_64")]
 pub const PHYSICAL_MEMORY_OFFSET: usize = 0xffff800000000000;
