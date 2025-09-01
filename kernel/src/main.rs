@@ -17,8 +17,9 @@ use core::{num::NonZero, panic::PanicInfo};
 use crate::{
     drivers::{
         interrupt_handlers,
-        keyboard::{self, KEYBOARD_BUFFER},
+        keyboard::{self, KEYBOARD, keyboard::Keyboard},
         pic8259::{CascadedPIC, PIC},
+        vga_display::color_code::Color,
     },
     memory::memory_map::{ParsedMapDisplay, parse_map},
 };
@@ -27,8 +28,6 @@ use common::{
     address_types::VirtualAddress,
     constants::{IDT_OFFSET, KEYBOARD_BUFFER_OFFSET},
     enums::PS2ScanCode,
-    fail_msg, ok_msg, print, println,
-    vga_display::color_code::Color,
 };
 use cpu_utils::{
     instructions::{
@@ -62,8 +61,8 @@ pub unsafe extern "C" fn _start() -> ! {
         let features = CpuFeatures::new();
         println!("{:?}", cpu_string);
         println!("Has APIC: {}", features.has_apic());
-        keyboard::init(
-            &mut KEYBOARD_BUFFER,
+        Keyboard::init(
+            &mut KEYBOARD,
             VirtualAddress::new_unchecked(KEYBOARD_BUFFER_OFFSET),
             NonZero::new(0x1000).unwrap(),
         );
@@ -73,18 +72,11 @@ pub unsafe extern "C" fn _start() -> ! {
 
     loop {
         unsafe {
-            let key = KEYBOARD_BUFFER.assume_init_mut().read();
-            match key {
-                Some(scan_code) => {
-                    let code = PS2ScanCode::from_scancode(scan_code);
-                    match code {
-                        Some(c) => print!("{}", c),
-                        None => print!(" code: {:x}", scan_code),
-                    }
-                }
-                None => {
-                    hlt();
-                }
+            let char = KEYBOARD.assume_init_mut().read_char();
+            if char != "" {
+                print!("{}", char);
+            } else {
+                hlt();
             }
         }
     }
