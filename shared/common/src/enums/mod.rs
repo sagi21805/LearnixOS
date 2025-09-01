@@ -8,6 +8,7 @@ pub mod model_specific;
 pub mod paging;
 pub mod pic8259;
 pub mod ports;
+pub mod vga;
 
 pub use bios_interrupts::*;
 pub use cpuid::*;
@@ -18,3 +19,4 @@ pub use model_specific::*;
 pub use paging::*;
 pub use pic8259::*;
 pub use ports::*;
+pub use vga::*;
