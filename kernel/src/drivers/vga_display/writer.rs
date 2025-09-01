@@ -3,7 +3,9 @@ use core::ptr;
 use super::color_code::ColorCode;
 use super::screen_char::ScreenChar;
 use super::{SCREEN_HEIGHT, SCREEN_WIDTH};
-use crate::constants::addresses::VGA_BUFFER_PTR;
+use common::constants::addresses::VGA_BUFFER_PTR;
+use common::enums::{Port, VgaCommand};
+use cpu_utils::instructions::port::PortExt;
 
 /// Writer implementation for the VGA driver.
 ///
@@ -53,6 +55,7 @@ impl Writer {
             if self.row >= SCREEN_HEIGHT {
                 self.scroll_down(1);
             }
+            self.change_cursor_position();
         }
     }
 
@@ -76,6 +79,16 @@ impl Writer {
         }
         self.col = 0;
         self.row -= 1;
+    }
+
+    pub fn change_cursor_position(&self) {
+        let vga_position = self.row * SCREEN_WIDTH + self.col;
+        unsafe {
+            Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
+            Port::VgaData.outb((vga_position & 0xff) as u8);
+            Port::VgaControl.outb(VgaCommand::CursorOffsetHigh as u8);
+            Port::VgaData.outb(((vga_position >> 8) & 0xff) as u8);
+        }
     }
 
     /// Clears the screen by setting all of the buffer bytes to zero
