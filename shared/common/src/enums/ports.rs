@@ -8,4 +8,6 @@ pub enum Port {
     SlavePicCmd = 0xA0,
     SlavePicData = 0xA1,
     IOWait = 0x80,
+    VgaControl = 0x3D4,
+    VgaData = 0x3D5,
 }
