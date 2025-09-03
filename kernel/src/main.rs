@@ -17,7 +17,7 @@ use core::{num::NonZero, panic::PanicInfo};
 use crate::{
     drivers::{
         interrupt_handlers,
-        keyboard::{self, KEYBOARD, keyboard::Keyboard},
+        keyboard::{KEYBOARD, keyboard::Keyboard},
         pic8259::{CascadedPIC, PIC},
         vga_display::color_code::Color,
     },
@@ -27,7 +27,6 @@ use crate::{
 use common::{
     address_types::VirtualAddress,
     constants::{IDT_OFFSET, KEYBOARD_BUFFER_OFFSET},
-    enums::PS2ScanCode,
 };
 use cpu_utils::{
     instructions::{

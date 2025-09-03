@@ -1,7 +1,5 @@
 use core::ptr;
 
-use crate::println;
-
 use super::color_code::ColorCode;
 use super::screen_char::ScreenChar;
 use super::{SCREEN_HEIGHT, SCREEN_WIDTH};
