@@ -1,5 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
-
 pub mod color_code;
 mod screen_char;
 mod writer;
@@ -23,8 +21,8 @@ macro_rules! print {
     // Case 1: Standard print with optional arguments.
     ($fmt:expr $(, $arg:expr)* $(;)?) => {{
         use core::fmt::Write;
-        use $crate::vga_display::WRITER;
-        use $crate::vga_display::color_code::ColorCode;
+        use $crate::drivers::vga_display::WRITER;
+        use $crate::drivers::vga_display::color_code::ColorCode;
 
         #[allow(unused_unsafe)]
         #[allow(static_mut_refs)]
@@ -37,8 +35,8 @@ macro_rules! print {
     // Case 2: Print with custom color.
     ($fmt:expr $(, $arg:expr)* ; color = $color:expr) => {{
         use core::fmt::Write;
-        use $crate::vga_display::WRITER;
-        use $crate::vga_display::color_code::ColorCode;
+        use $crate::drivers::vga_display::WRITER;
+        use $crate::drivers::vga_display::color_code::ColorCode;
 
         #[allow(unused_unsafe)]
         unsafe {
