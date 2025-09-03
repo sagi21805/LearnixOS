@@ -1,3 +1,5 @@
+use core::mem::MaybeUninit;
+
 /// The code in this module is inspired from osdev 8259_PIC guide.
 use common::enums::{
     CascadedPicInterruptLine, PicCommandCode, PicInterruptLine, PicInterruptVectorOffset, PicMode,
@@ -5,7 +7,7 @@ use common::enums::{
 };
 use cpu_utils::instructions::port::PortExt;
 
-pub static mut PIC: CascadedPIC = CascadedPIC::default();
+pub static mut PIC: MaybeUninit<CascadedPIC> = MaybeUninit::new(CascadedPIC::default());
 
 struct ProgrammableInterruptController {
     command: Port,
@@ -77,45 +79,54 @@ impl CascadedPIC {
         }
     }
 
-    pub fn initialize(&'static mut self) {
+    pub fn init(uninit: &'static mut MaybeUninit<Self>) {
         unsafe {
+            let uninitialized = uninit.assume_init_mut();
             // Send initialize command to master
-            self.master
+            uninitialized
+                .master
                 .command
                 .outb(PicCommandCode::Initialize as u8 | PicCommandCode::CascadeMode as u8);
             Port::iowait();
             // Send initialize command to slave
-            self.slave
+            uninitialized
+                .slave
                 .command
                 .outb(PicCommandCode::Initialize as u8 | PicCommandCode::CascadeMode as u8);
             Port::iowait();
             // Send IVT offset to master
-            self.master.data.outb(self.master.interrupt_offset as u8);
+            uninitialized
+                .master
+                .data
+                .outb(uninitialized.master.interrupt_offset as u8);
             Port::iowait();
             // Send IVT offset to slave
-            self.slave.data.outb(self.slave.interrupt_offset as u8);
+            uninitialized
+                .slave
+                .data
+                .outb(uninitialized.slave.interrupt_offset as u8);
             Port::iowait();
             // Tell master how it is connected to slave
-            self.master.data.outb(PicInterruptLine::Irq2 as u8);
+            uninitialized.master.data.outb(PicInterruptLine::Irq2 as u8);
             Port::iowait();
             // Tell slave how it is connected to master
-            self.slave.data.outb(PicInterruptLine::Irq1 as u8);
+            uninitialized.slave.data.outb(PicInterruptLine::Irq1 as u8);
             Port::iowait();
             // Set PIC mode of master
-            self.master.data.outb(PicMode::Mode8086 as u8);
+            uninitialized.master.data.outb(PicMode::Mode8086 as u8);
             Port::iowait();
             // Set PIC mode of slave
-            self.slave.data.outb(PicMode::Mode8086 as u8);
+            uninitialized.slave.data.outb(PicMode::Mode8086 as u8);
             Port::iowait();
-            self.master.enable();
-            self.slave.enable();
+            uninitialized.master.enable();
+            uninitialized.slave.enable();
         }
     }
 
     pub fn disable_irq(&mut self, irq: CascadedPicInterruptLine) {
         unsafe {
             if irq as u16 > PicInterruptLine::Irq7 as u16 {
-                let irq: PicInterruptLine = core::mem::transmute(((irq as u16) << u8::BITS) as u8);
+                let irq: PicInterruptLine = core::mem::transmute(((irq as u16) >> u8::BITS) as u8);
                 self.slave.disable_irq(irq);
             } else {
                 let irq: PicInterruptLine = core::mem::transmute(irq as u8);
@@ -126,7 +137,7 @@ impl CascadedPIC {
     pub fn enable_irq(&mut self, irq: CascadedPicInterruptLine) {
         unsafe {
             if irq as u16 >= CascadedPicInterruptLine::Irq8 as u16 {
-                let irq: PicInterruptLine = core::mem::transmute(((irq as u16) << u8::BITS) as u8);
+                let irq: PicInterruptLine = core::mem::transmute(((irq as u16) >> u8::BITS) as u8);
                 self.slave.enable_irq(irq);
             } else {
                 let irq: PicInterruptLine = core::mem::transmute(irq as u8);

@@ -3,14 +3,15 @@ use core::ptr;
 use super::color_code::ColorCode;
 use super::screen_char::ScreenChar;
 use super::{SCREEN_HEIGHT, SCREEN_WIDTH};
-use crate::constants::addresses::VGA_BUFFER_PTR;
+use common::constants::addresses::VGA_BUFFER_PTR;
+use common::enums::{Port, VgaCommand};
+use cpu_utils::instructions::port::PortExt;
 
 /// Writer implementation for the VGA driver.
 ///
 /// This implementation will help track the wanted position to write to the screen
 pub struct Writer {
-    pub col: usize,
-    pub row: usize,
+    pub cursor_position: usize,
     pub color: ColorCode,
 }
 
@@ -20,8 +21,7 @@ impl Writer {
     /// Creates a default writer
     pub const fn default() -> Self {
         Self {
-            col: 0,
-            row: 0,
+            cursor_position: 0,
             color: ColorCode::default(),
         }
     }
@@ -35,29 +35,29 @@ impl Writer {
         unsafe {
             match char {
                 b'\n' => {
-                    self.row += 1;
-                    self.col = 0;
+                    self.new_line();
+                }
+                b'\x08' => {
+                    self.backspace();
                 }
                 32..128 => {
                     (VGA_BUFFER_PTR as *mut ScreenChar)
-                        .add((self.col + self.row * SCREEN_WIDTH) as usize)
+                        .add(self.cursor_position)
                         .write_volatile(ScreenChar::new(char, self.color));
-                    self.col += 1;
+                    self.cursor_position += 1;
                 }
                 _ => {}
             }
-            if self.col >= SCREEN_WIDTH {
-                self.col = 0;
-                self.row += 1;
-            }
-            if self.row >= SCREEN_HEIGHT {
+
+            if self.cursor_position >= (SCREEN_WIDTH * SCREEN_HEIGHT) {
                 self.scroll_down(1);
             }
+            self.change_cursor_position_on_screen();
         }
     }
 
     /// Scroll `lines` down.
-    pub fn scroll_down(&mut self, lines: usize) {
+    fn scroll_down(&mut self, lines: usize) {
         let lines_index = SCREEN_WIDTH * (SCREEN_HEIGHT - lines);
         unsafe {
             // Copy the buffer to the left
@@ -74,12 +74,33 @@ impl Writer {
                 );
             }
         }
-        self.col = 0;
-        self.row -= 1;
+        self.cursor_position -= lines * SCREEN_WIDTH;
+    }
+
+    fn new_line(&mut self) {
+        self.cursor_position += SCREEN_WIDTH - (self.cursor_position % SCREEN_WIDTH)
+    }
+
+    fn backspace(&mut self) {
+        self.cursor_position -= 1;
+        unsafe {
+            (VGA_BUFFER_PTR as *mut ScreenChar)
+                .add(self.cursor_position)
+                .write_volatile(ScreenChar::new(b' ', self.color));
+        }
+    }
+
+    fn change_cursor_position_on_screen(&self) {
+        unsafe {
+            Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
+            Port::VgaData.outb((self.cursor_position & 0xff) as u8);
+            Port::VgaControl.outb(VgaCommand::CursorOffsetHigh as u8);
+            Port::VgaData.outb(((self.cursor_position >> 8) & 0xff) as u8);
+        }
     }
 
     /// Clears the screen by setting all of the buffer bytes to zero
-    pub fn clear(&mut self) {
+    fn clear(&mut self) {
         unsafe {
             for i in 0..(SCREEN_WIDTH * SCREEN_HEIGHT) {
                 ptr::write_volatile(
@@ -87,8 +108,7 @@ impl Writer {
                     ScreenChar::default(),
                 );
             }
-            self.row = 0;
-            self.col = 0;
+            self.cursor_position = 0;
         }
     }
 }
