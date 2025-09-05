@@ -1,8 +1,8 @@
 use crate::address_types::VirtualAddress;
-use core::{slice, u64};
+use core::{panic, slice, u64};
 use derive_more::Constructor;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Copy)]
 pub struct Position {
     pub map_index: usize,
     pub bit_index: usize,
@@ -13,8 +13,8 @@ impl Position {
     /// This function will return None if the `bit_index` >= 64
     /// because its indices exceeds array with length  [`u64::BITS`]  
     pub fn new(map_index: usize, bit_index: usize) -> Option<Self> {
-        if bit_index < 64 {
-            Some(Position {
+        if bit_index < u64::BITS as usize {
+            return Some(Position {
                 map_index,
                 bit_index,
             });
@@ -40,7 +40,7 @@ impl Position {
     }
 }
 
-#[derive(Debug, Clone, Default, Constructor)]
+#[derive(Debug, Clone, Default, Constructor, Copy)]
 pub struct ContiguousBlockLayout {
     pub low_mask: u64,
     pub index_count: usize,
@@ -48,12 +48,11 @@ pub struct ContiguousBlockLayout {
 }
 
 impl ContiguousBlockLayout {
-    pub(self) fn initial_from_bits(size_bits: usize) -> (Self, Position) {
-        let remain_after_low = size_bits.saturating_sub(u64::BITS as usize);
-        let low_bit_count = size_bits - remain_after_low;
-        let remain_after_high = remain_after_low.saturating_sub(u64::BITS as usize);
-        let high_bit_count = remain_after_low - remain_after_high;
-        let index_count = remain_after_high / u64::BITS as usize;
+    fn initial_from_bits(bit_count: usize) -> (Self, Position) {
+        let remain_after_low = bit_count.saturating_sub(u64::BITS as usize);
+        let low_bit_count = bit_count - remain_after_low;
+        let index_count = remain_after_low / u64::BITS as usize;
+        let high_bit_count = remain_after_low % u64::BITS as usize;
         (
             Self::new(
                 u64::MAX.unbounded_shr(u64::BITS - low_bit_count as u32),
@@ -62,7 +61,7 @@ impl ContiguousBlockLayout {
             ),
             unsafe {
                 Position::new_unchecked(
-                    index_count + (low_bit_count / u64::MAX as usize),
+                    index_count + (low_bit_count / u64::BITS as usize) + 2,
                     high_bit_count,
                 )
             },
@@ -93,17 +92,17 @@ impl ContiguousBlockLayout {
     ///
     /// This method expects that self.low_mask is 0!
     fn reset_unchecked(&mut self) {
-        let is_zero = self.index_count == 0;
-        self.index_count -= is_zero as usize;
-        self.low_mask = self.high_mask | (u64::MAX + !is_zero as u64);
-        self.high_mask &= u64::MAX + !is_zero as u64;
+        let idx_not_zero = self.index_count != 0;
+        self.index_count -= idx_not_zero as usize;
+        self.low_mask = self.high_mask | (u64::MAX + !idx_not_zero as u64);
+        self.high_mask &= u64::MAX + !idx_not_zero as u64;
     }
 
     pub(self) fn shift(&mut self) -> u64 {
-        let (new_low_mask, overlowed) = self.low_mask.overflowing_shl(1);
-        self.low_mask = new_low_mask;
-        self.high_mask += overlowed as u64;
-        self.high_mask <<= 1;
+        let overflowed = (self.low_mask & 1u64 << 63) > 0;
+        self.low_mask <<= 1;
+        self.high_mask <<= overflowed as u64;
+        self.high_mask += overflowed as u64;
         let val = self.high_mask.saturating_sub(u64::MAX - 1) as u64;
         self.high_mask += val;
         self.index_count += val as usize;
@@ -154,7 +153,7 @@ impl BitMap {
         }
     }
 
-    /// Initlize the bitmap by filling all of it in zeros
+    /// Initialize the bitmap by filling all of it in zeros
     pub fn init(&mut self) {
         self.map.fill(0);
     }
@@ -230,7 +229,11 @@ impl BitMap {
             start_position.bit_index += 1;
             start_position.bit_index &= u64::BITS as usize - 1;
             start_position.map_index += (start_position.bit_index == 0) as usize;
-            end_position.map_index += val as usize;
+            if bit_count > (u64::BITS + 2) as usize {
+                end_position.map_index += val as usize;
+            } else {
+                end_position.map_index += (start_position.bit_index == 0) as usize;
+            }
         }
 
         None
