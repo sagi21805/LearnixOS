@@ -12,7 +12,11 @@
 #![feature(macro_metavar_expr_concat)]
 mod drivers;
 mod memory;
-use core::{num::NonZero, panic::PanicInfo};
+use core::{
+    alloc::{GlobalAlloc, Layout},
+    num::NonZero,
+    panic::PanicInfo,
+};
 
 use crate::{
     drivers::{
@@ -24,15 +28,9 @@ use crate::{
     memory::memory_map::{ParsedMapDisplay, parse_map},
 };
 
-use common::{
-    address_types::VirtualAddress,
-    constants::{IDT_OFFSET, KEYBOARD_BUFFER_OFFSET},
-};
+use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
 use cpu_utils::{
-    instructions::{
-        cpuid::{self, CpuFeatures},
-        interrupts::{self, hlt},
-    },
+    instructions::interrupts::{self, hlt},
     structures::interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
 };
 use memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
@@ -49,26 +47,33 @@ pub unsafe extern "C" fn _start() -> ! {
     PhysicalPageAllocator::init(unsafe { &mut ALLOCATOR });
     ok_msg!("Allocator Initialized");
     unsafe {
-        InterruptDescriptorTable::init(&mut IDT, IDT_OFFSET.into());
+        let idt_address = ALLOCATOR
+            .assume_init_ref()
+            .alloc(Layout::from_size_align_unchecked(
+                REGULAR_PAGE_SIZE,
+                REGULAR_PAGE_ALIGNMENT.as_usize(),
+            )) as usize;
+        InterruptDescriptorTable::init(&mut IDT, idt_address.into());
         ok_msg!("Initialized interrupt descriptor table");
         interrupt_handlers::init(IDT.assume_init_mut());
         ok_msg!("Initialized interrupts handlers");
         CascadedPIC::init(&mut PIC);
         ok_msg!("Initialized Programmable Interrupt Controller");
-        let val = cpuid::get_vendor_string();
-        let cpu_string = core::str::from_utf8(&val);
-        let features = CpuFeatures::new();
-        println!("{:?}", cpu_string);
-        println!("Has APIC: {}", features.has_apic());
+        let keyboard_buffer_address =
+            ALLOCATOR
+                .assume_init_ref()
+                .alloc(Layout::from_size_align_unchecked(
+                    REGULAR_PAGE_SIZE,
+                    REGULAR_PAGE_ALIGNMENT.as_usize(),
+                )) as usize;
         Keyboard::init(
             &mut KEYBOARD,
-            VirtualAddress::new_unchecked(KEYBOARD_BUFFER_OFFSET),
-            NonZero::new(0x1000).unwrap(),
+            keyboard_buffer_address.into(),
+            NonZero::new(REGULAR_PAGE_SIZE).unwrap(),
         );
         ok_msg!("Initialized Keyboard");
         interrupts::enable();
     }
-
     loop {
         unsafe {
             let char = KEYBOARD.assume_init_mut().read_char();
