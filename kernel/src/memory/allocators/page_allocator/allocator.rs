@@ -65,12 +65,18 @@ impl PhysicalPageAllocator {
                 PhysicalAddress::new_unchecked(PAGE_ALLOCATOR_OFFSET).translate(),
                 memory_size,
             ));
+            let initialized = uninit.assume_init_mut();
+
+            // Set the null page
+            initialized
+                .map_mut()
+                .set_bit(&Position::new_unchecked(0, 0));
+
             let start_address = const {
                 PhysicalAddress::new_unchecked(FIRST_STAGE_OFFSET as usize)
                     .align_down(REGULAR_PAGE_ALIGNMENT)
             };
             let start_position = Self::address_position(start_address.clone()).unwrap();
-            let initialized = uninit.assume_init_mut();
             // Allocate the addresses that are used for the code, and for other variables.
             let end_address = PhysicalAddress::new_unchecked(
                 PAGE_ALLOCATOR_OFFSET + (initialized.map().map.len() * size_of::<u64>()),
@@ -100,9 +106,11 @@ impl PhysicalPageAllocator {
 
     /// Resolves `map_index` and `bit_index` into actual physical address
     pub fn resolve_position(&self, p: &Position) -> PhysicalAddress {
-        return PhysicalAddress::new(
-            ((p.map_index * (u64::BITS as usize)) + p.bit_index as usize) * REGULAR_PAGE_SIZE,
-        );
+        unsafe {
+            PhysicalAddress::new_unchecked(
+                ((p.map_index * (u64::BITS as usize)) + p.bit_index as usize) * REGULAR_PAGE_SIZE,
+            )
+        }
     }
 
     pub fn available_memory(&self) -> usize {
