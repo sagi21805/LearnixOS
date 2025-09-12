@@ -35,12 +35,12 @@ pub fn vga_print(color: Option<ColorCode>, args: fmt::Arguments<'_>) {
 macro_rules! print {
     // Case 1: Standard print with optional arguments.
     ($fmt:expr $(, $arg:expr)* $(;)?) => {{
-        $crate::drivers::vga_display::vga_print(None, format_args!($fmt, $($arg)*))
+        $crate::drivers::vga_display::vga_print(None, format_args!($fmt, $($arg,)*))
     }};
 
     // Case 2: Print with custom color.
     ($fmt:expr $(, $arg:expr)* ; color = $color:expr) => {{
-        $crate::drivers::vga_display::vga_print(Some($color), format_args!($fmt, $($arg)*))
+        $crate::drivers::vga_display::vga_print(Some($color), format_args!($fmt, $($arg,)*))
     }};
 }
 
