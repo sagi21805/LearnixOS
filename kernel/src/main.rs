@@ -73,6 +73,23 @@ pub unsafe extern "C" fn _start() -> ! {
         );
         ok_msg!("Initialized Keyboard");
         interrupts::enable();
+        for _ in 0..10 {
+            let a = ALLOCATOR
+                .assume_init_mut()
+                .alloc(Layout::from_size_align_unchecked(0x100000, 0x100000));
+            println!(
+                "A: {:?}, Mem Available: {}Mib",
+                a,
+                ALLOCATOR.assume_init_mut().available_memory() / (1024 * 1024)
+            );
+            ALLOCATOR
+                .assume_init_mut()
+                .dealloc(a, Layout::from_size_align_unchecked(0x100000, 0x100000));
+            println!(
+                "Available Memory: {}Mib",
+                ALLOCATOR.assume_init_mut().available_memory() / (1024 * 1024)
+            );
+        }
     }
     loop {
         unsafe {
