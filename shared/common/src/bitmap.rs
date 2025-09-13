@@ -193,6 +193,17 @@ impl BitMap {
         self.map[p.map_index + block.index_count + 1] |= block.high_mask;
     }
 
+    pub fn unset_contiguous_block(&mut self, p: &Position, block: &ContiguousBlockLayout) {
+        if (p.map_index + block.index_count + 1) > self.map.len() {
+            panic!("The block passes the bound of this map!")
+        }
+        self.map[p.map_index] &= !block.low_mask;
+        for i in 1..=block.index_count {
+            self.map[p.map_index + i] = 0;
+        }
+        self.map[p.map_index + block.index_count + 1] &= !block.high_mask;
+    }
+
     pub fn count_ones(&self) -> usize {
         self.map
             .iter()
