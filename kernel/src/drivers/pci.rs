@@ -77,8 +77,26 @@ impl PciConfigurationCycle {
 #[derive(Debug)]
 struct StatusRegister(u16);
 
+impl StatusRegister {
+    flag!(detected_parity_error, 15);
+    flag!(signaled_system_error, 14);
+    flag!(received_master_abort, 13);
+    flag!(received_target_abort, 12);
+    flag!(signaled_target_abort, 11);
+    // bits 9-10 devsel
+    flag!(master_data_parity_error, 8);
+    flag!(fast_backup_capable, 7);
+    flag!(capable_66mhz, 5);
+    flag!(capabilities_list, 4);
+    flag!(interrupt_status, 3);
+}
+
 #[derive(Debug)]
 struct CommandRegister(u16);
+
+struct HeaderType(u8);
+
+struct BISTRegister(u8);
 
 #[derive(Debug)]
 pub struct PciCommonHeader {
