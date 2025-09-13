@@ -22,13 +22,17 @@ use crate::{
     drivers::{
         interrupt_handlers,
         keyboard::{KEYBOARD, keyboard::Keyboard},
+        pci::PciConfigurationCycle,
         pic8259::{CascadedPIC, PIC},
         vga_display::color_code::Color,
     },
     memory::memory_map::{ParsedMapDisplay, parse_map},
 };
 
-use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
+use common::{
+    constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
+    error::PciConfigurationError,
+};
 use cpu_utils::{
     instructions::interrupts::{self, hlt},
     structures::interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
@@ -73,24 +77,23 @@ pub unsafe extern "C" fn _start() -> ! {
         );
         ok_msg!("Initialized Keyboard");
         interrupts::enable();
-        for _ in 0..10 {
-            let a = ALLOCATOR
-                .assume_init_mut()
-                .alloc(Layout::from_size_align_unchecked(0x100000, 0x100000));
-            println!(
-                "A: {:?}, Mem Available: {}Mib",
-                a,
-                ALLOCATOR.assume_init_mut().available_memory() / (1024 * 1024)
-            );
-            ALLOCATOR
-                .assume_init_mut()
-                .dealloc(a, Layout::from_size_align_unchecked(0x100000, 0x100000));
-            println!(
-                "Available Memory: {}Mib",
-                ALLOCATOR.assume_init_mut().available_memory() / (1024 * 1024)
-            );
+    }
+    for bus in 0..=255 {
+        for device in 0..32 {
+            let header = match PciConfigurationCycle::read_common_header(bus, device) {
+                Ok(h) => h,
+                Err(PciConfigurationError::NonExistentDevice(_, _)) => {
+                    continue;
+                }
+                Err(e) => {
+                    println!("Error! {:?}", e);
+                    continue;
+                }
+            };
+            println!("{:?}", header)
         }
     }
+
     loop {
         unsafe {
             let char = KEYBOARD.assume_init_mut().read_char();
