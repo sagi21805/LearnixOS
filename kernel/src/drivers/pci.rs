@@ -5,6 +5,8 @@ use common::{
 };
 use cpu_utils::instructions::port::PortExt;
 
+use crate::println;
+
 pub struct PciConfigurationCycle(u32);
 
 impl PciConfigurationCycle {
@@ -43,6 +45,7 @@ impl PciConfigurationCycle {
         if vendor == VendorID::NonExistent {
             return Err(PciConfigurationError::NonExistentDevice(bus, device));
         }
+        println!("vendor: {:?}", vendor);
         let device_id = DeviceID::from_vendor_dev_id(vendor, (vendor_config >> 16) as u16)?;
         Ok((vendor, device_id))
     }
@@ -165,6 +168,10 @@ impl CommandRegister {
 #[derive(Debug)]
 pub struct BISTRegister(u8);
 
+impl BISTRegister {
+    flag!(bist_capable, 7);
+}
+
 #[derive(Debug)]
 pub struct PciCommonHeader {
     vendor: VendorID,
@@ -179,4 +186,44 @@ pub struct PciCommonHeader {
     latency_timer: u8,
     header_type: HeaderType,
     bist: BISTRegister,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MemoryBaseAddressRegister(u32);
+
+#[derive(Debug, Clone, Copy)]
+pub struct IOBaseAddressRegister(u32);
+
+pub union BaseAddressRegister {
+    memory: MemoryBaseAddressRegister,
+    io: IOBaseAddressRegister,
+}
+
+impl core::fmt::Debug for BaseAddressRegister {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        writeln!(f, "Memory: {:?}", unsafe { self.memory })?;
+        writeln!(f, "I/O: {:?}", unsafe { self.io })
+    }
+}
+
+#[derive(Debug)]
+pub struct GeneralDeviceHeader {
+    bar0: BaseAddressRegister,
+    bar1: BaseAddressRegister,
+    bar2: BaseAddressRegister,
+    bar3: BaseAddressRegister,
+    bar4: BaseAddressRegister,
+    bar5: BaseAddressRegister,
+    cardbus_cis_ptr: u32,
+    subsystem_vendor_id: u16,
+    subsystem_id: u16,
+    expansion_rom_base: u32,
+    capabilities_ptr: u8,
+    _reserved0: u8,
+    _reserved1: u16,
+    _reserved2: u32,
+    interrupt_line: u8,
+    interrupt_pin: u8,
+    min_grant: u8,
+    max_latency: u8,
 }
