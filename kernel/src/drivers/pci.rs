@@ -1,5 +1,5 @@
 use common::{
-    enums::{ClassCode, DeviceID, Port, ProgrammingInterface, SubClass, VendorID},
+    enums::{ClassCode, DeviceID, HeaderType, Port, ProgrammingInterface, SubClass, VendorID},
     error::PciConfigurationError,
     flag,
 };
@@ -74,7 +74,7 @@ impl PciConfigurationCycle {
         let value = unsafe { config_address.read() };
         let cache_size = (value & 0xff) as u8;
         let latency = ((value >> 8) & 0xff) as u8;
-        let header_type = HeaderType(((value >> 16) & 0xff) as u8);
+        let header_type: HeaderType = unsafe { core::mem::transmute(((value >> 16) & 0xff) as u8) };
         let bist = BISTRegister(((value >> 24) & 0xff) as u8);
         (cache_size, latency, header_type, bist)
     }
@@ -108,24 +108,59 @@ impl PciConfigurationCycle {
 pub struct StatusRegister(u16);
 
 impl StatusRegister {
+    // Device detected a parity error
     flag!(detected_parity_error, 15);
+    // Device asserted SERR
     flag!(signaled_system_error, 14);
+    //Master  Device transaction was terminated by master abort
     flag!(received_master_abort, 13);
+    // Master Device transaction was terminated by target abort
     flag!(received_target_abort, 12);
+    // Target device terminated by target abort
     flag!(signaled_target_abort, 11);
+
+    // ReadOnly bits which represent the slowest time device will assert DEVSEL
+    // 00 -> fast 01 -> medium 02 -> slow
     // bits 9-10 devsel
+
+    // Parity error detected and handled
     flag!(master_data_parity_error, 8);
-    flag!(fast_backup_capable, 7);
+    // Device is capable for fast back transaction not from the same agent
+    flag!(fast_back2back_capable, 7);
+    // Device is able to run at 66mhz
     flag!(capable_66mhz, 5);
+    // Implements pointer for the capabilities list
     flag!(capabilities_list, 4);
+    // Represents if interrupt is fired or not.
     flag!(interrupt_status, 3);
 }
 
 #[derive(Debug)]
 pub struct CommandRegister(u16);
 
-#[derive(Debug)]
-pub struct HeaderType(u8);
+impl CommandRegister {
+    // Disable interrupts for this device
+    flag!(interrupt_disable, 10);
+    // Allow device to generate back to back transactions
+    flag!(fast_back2back_enable, 9);
+    // SERR driver is enabled
+    flag!(serr_enable, 8);
+    // If enabled device will take its normal action on parity error
+    // otherwise it will set bit 15 on status register, and will continue operation as normal
+    flag!(parity_error_response, 6);
+    // Allow device to listen to vga palette writes, and copy them for it own use (Legacy)
+    flag!(vga_palette_snoop, 5);
+    // Allow device to generate memory writes and invalidate commands. Otherwise memory write command must be used.
+    flag!(memory_write_inval_enable, 4);
+    // Allow device to monitor special cycle, otherwise ignore them
+    flag!(special_cycles, 3);
+    // Allow device to behave as bus master.
+    flag!(bus_master, 2);
+    // Allow device to response to memory space access
+    flag!(memory_space, 1);
+    // Allow device to response to I/O space access
+    flag!(io_space, 0);
+}
 
 #[derive(Debug)]
 pub struct BISTRegister(u8);
