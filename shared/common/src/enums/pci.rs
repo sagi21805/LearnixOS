@@ -59,7 +59,8 @@ pub enum DeviceID {
     // Intel Q35 qemu chipset
     IntelExpressDramController,
     IntelNetworkController,
-    LPCInterfaceController,
+    LPCInterfaceController82801IB,
+    SataControllerAHCI,
 
     // USB Controllers
     USB2EhciController,
@@ -99,7 +100,8 @@ impl DeviceID {
                 0x29C0 => Ok(Self::IntelExpressDramController),
                 0x100E => Ok(Self::IntelEthernetController),
                 0x10D3 => Ok(Self::IntelNetworkController),
-                0x2918 => Ok(Self::LPCInterfaceController),
+                0x2918 => Ok(Self::LPCInterfaceController82801IB),
+                0x2922 => Ok(Self::SataControllerAHCI),
                 0x24CD => Ok(Self::USB2EhciController),
                 _ => Err(PciConfigurationError::UnknownDevice(device as u16)),
             },
@@ -149,7 +151,8 @@ impl DeviceID {
             Self::IntelEthernetController => 0x100E,
             Self::IntelExpressDramController => 0x29C0,
             Self::IntelNetworkController => 0x10D3,
-            Self::LPCInterfaceController => 0x2918,
+            Self::LPCInterfaceController82801IB => 0x2918,
+            Self::SataControllerAHCI => 0x2922,
             Self::USB2EhciController => 0x24CD,
 
             // VirtIO devices
@@ -1166,4 +1169,10 @@ pub enum HeaderType {
     GeneralDeviceMultiFunction = 0x80,
     PciToPciBridgeMultiFunction = 0x81,
     PciToCardBusBridgeMultiFunction = 0x82,
+}
+
+impl HeaderType {
+    pub fn is_multifunction(self) -> bool {
+        (self as u8) & 0x80 != 0
+    }
 }
