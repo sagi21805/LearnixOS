@@ -1156,3 +1156,14 @@ impl ProgrammingInterface {
         }
     }
 }
+
+#[derive(Debug)]
+#[repr(u8)]
+pub enum HeaderType {
+    GeneralDevice = 0x00,
+    PciToPciBridge = 0x01,
+    PciToCardBusBridge = 0x02,
+    GeneralDeviceMultiFunction = 0x80,
+    PciToPciBridgeMultiFunction = 0x81,
+    PciToCardBusBridgeMultiFunction = 0x82,
+}
