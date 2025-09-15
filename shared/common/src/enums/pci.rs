@@ -1160,8 +1160,8 @@ impl ProgrammingInterface {
     }
 }
 
-#[derive(Debug)]
 #[repr(u8)]
+#[derive(Debug, Clone, Copy)]
 pub enum HeaderType {
     GeneralDevice = 0x00,
     PciToPciBridge = 0x01,
