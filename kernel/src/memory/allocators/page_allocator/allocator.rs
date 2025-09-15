@@ -1,8 +1,8 @@
 use core::{
-    alloc::{GlobalAlloc, Layout},
+    alloc::{AllocError, Allocator, Layout},
     cell::UnsafeCell,
     mem::MaybeUninit,
-    ptr::{self, null},
+    ptr::{self, NonNull},
 };
 
 use common::{
@@ -22,6 +22,15 @@ use crate::parsed_memory_map;
 // TODO: This is not thread safe, probably should use Mutex in the future
 /// Physical page allocator implemented with a bitmap, every bit corresponds to a physical page
 pub struct PhysicalPageAllocator(UnsafeCell<BitMap>);
+
+impl Clone for PhysicalPageAllocator {
+    fn clone(&self) -> Self {
+        unsafe {
+            let bitmap = self.map_mut();
+            Self(UnsafeCell::new(bitmap.clone()))
+        }
+    }
+}
 
 impl PhysicalPageAllocator {
     /// Creates a new allocator from the `bitmap_address` and the `memory_size`.
@@ -147,28 +156,35 @@ impl PhysicalPageAllocator {
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
-unsafe impl GlobalAlloc for PhysicalPageAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        match layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize()) {
-            Ok(layout) => match self
-                .map()
-                .find_free_block(layout.size() / REGULAR_PAGE_SIZE)
-            {
-                Some((p, block)) => {
-                    self.map_mut().set_contiguous_block(&p, &block);
-                    Self::resolve_position(&p).translate().as_mut_ptr::<u8>()
-                }
-                None => null::<u8>() as *mut u8,
-            },
-            Err(_) => null::<u8>() as *mut u8,
+unsafe impl Allocator for PhysicalPageAllocator {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        unsafe {
+            match layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize()) {
+                Ok(layout) => match self
+                    .map()
+                    .find_free_block(layout.size() / REGULAR_PAGE_SIZE)
+                {
+                    Some((p, block)) => {
+                        self.map_mut().set_contiguous_block(&p, &block);
+                        Ok(NonNull::slice_from_raw_parts(
+                            NonNull::new_unchecked(
+                                Self::resolve_position(&p).translate().as_mut_ptr::<u8>(),
+                            ),
+                            layout.size(),
+                        ))
+                    }
+                    None => Err(AllocError),
+                },
+                Err(_) => Err(AllocError),
+            }
         }
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         match layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize()) {
             Ok(layout) => {
                 let start_position = Self::resolve_address(PhysicalAddress::new_unchecked(
-                    ptr as usize - PHYSICAL_MEMORY_OFFSET,
+                    ptr.as_ptr() as usize - PHYSICAL_MEMORY_OFFSET,
                 ));
                 let block = ContiguousBlockLayout::from_start_size(
                     &start_position,
