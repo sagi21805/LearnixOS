@@ -1,11 +1,16 @@
+extern crate alloc;
+
+use crate::{
+    memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator},
+    println,
+};
+use alloc::vec::Vec;
 use common::{
     enums::{ClassCode, DeviceID, HeaderType, Port, ProgrammingInterface, SubClass, VendorID},
     error::PciConfigurationError,
     flag,
 };
-use cpu_utils::instructions::port::PortExt;
-
-use crate::println;
+use cpu_utils::instructions::{interrupts::hlt, port::PortExt};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PciConfigurationCycle(u32);
@@ -46,7 +51,6 @@ impl PciConfigurationCycle {
         if vendor == VendorID::NonExistent {
             return Err(PciConfigurationError::NonExistentDevice(bus, device));
         }
-        println!("vendor: {:?}", vendor);
         let device_id = DeviceID::from_vendor_dev_id(vendor, (vendor_config >> 16) as u16)?;
         Ok((vendor, device_id))
     }
@@ -92,7 +96,6 @@ impl PciConfigurationCycle {
         let (revision, class_code, subclass, prog_if) = Self::read_revision_type(bus, device)?;
         let (cache_size, latency, header_type, bist) = Self::read_header_meta(bus, device);
         return Ok(PciCommonHeader {
-            location: Self::new_unchecked(bus, device, 0, 0),
             vendor,
             device: device_id,
             command,
@@ -106,6 +109,24 @@ impl PciConfigurationCycle {
             header_type,
             bist,
         });
+    }
+
+    pub fn read_general_device_header(
+        bus: u8,
+        device: u8,
+        common: PciCommonHeader,
+    ) -> GeneralDeviceHeader {
+        let mut empty = GeneralDeviceHeader::empty_from_common(common);
+        let start_offset = size_of::<PciCommonHeader>();
+        let end_offset = size_of::<GeneralDeviceHeader>();
+        let empty_ptr = &mut empty as *mut GeneralDeviceHeader as usize as *mut u32;
+        for offset in (start_offset..end_offset).step_by(size_of::<u32>()) {
+            unsafe {
+                let header_data = Self::new_unchecked(bus, device, 0, offset as u8).read();
+                empty_ptr.byte_add(offset).write_volatile(header_data);
+            }
+        }
+        empty
     }
 }
 
@@ -174,9 +195,9 @@ impl BISTRegister {
     flag!(bist_capable, 7);
 }
 
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct PciCommonHeader {
-    location: PciConfigurationCycle,
     vendor: VendorID,
     device: DeviceID,
     command: CommandRegister,
@@ -230,6 +251,7 @@ impl core::fmt::Debug for BaseAddressRegister {
     }
 }
 
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct GeneralDeviceHeader {
     common: PciCommonHeader,
@@ -253,6 +275,33 @@ pub struct GeneralDeviceHeader {
     max_latency: u8,
 }
 
+impl GeneralDeviceHeader {
+    pub fn empty_from_common(common: PciCommonHeader) -> Self {
+        Self {
+            common,
+            bar0: unsafe { core::mem::transmute(0) },
+            bar1: unsafe { core::mem::transmute(0) },
+            bar2: unsafe { core::mem::transmute(0) },
+            bar3: unsafe { core::mem::transmute(0) },
+            bar4: unsafe { core::mem::transmute(0) },
+            bar5: unsafe { core::mem::transmute(0) },
+            cardbus_cis_ptr: 0,
+            subsystem_vendor_id: 0,
+            subsystem_id: 0,
+            expansion_rom_base: 0,
+            capabilities_ptr: 0,
+            _reserved0: 0,
+            _reserved1: 0,
+            _reserved2: 0,
+            interrupt_line: 0,
+            interrupt_pin: 0,
+            min_grant: 0,
+            max_latency: 0,
+        }
+    }
+}
+
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct Pci2PciBridge {
     common: PciCommonHeader,
@@ -280,45 +329,42 @@ pub struct Pci2PciBridge {
     bridge_control: u8,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Pci2CardBusBridge {
-    common: PciCommonHeader,
-    cardbus_socket_base: u32,
-    capabilities_offset: u8,
-    reserved: u8,
-    secondary_status: u16,
-    pci_bus_number: u8,
-    cardbus_bus_number: u8,
-    subordinate_bus_number: u8,
-    cardbus_latency_timer: u8,
-    memory_base0: u32,
-    memory_limit0: u32,
-    memory_base1: u32,
-    memory_limit1: u32,
-    io_base0: u32,
-    io_limit0: u32,
-    io_base1: u32,
-    io_limit1: u32,
-    interrupt_line: u8,
-    interrupt_pin: u8,
-    bridge_control: u16,
-    subsystem_device_id: u16,
-    subsystem_vendor_id: u16,
-    legacy_base_address: u32,
-}
 pub union PciDevice {
-    general_device: GeneralDeviceHeader,
-    pci2pci_bridge: Pci2PciBridge,
-    pci2cardbus_bridge: Pci2CardBusBridge,
+    pub common: PciCommonHeader,
+    pub general_device: GeneralDeviceHeader,
+    pub pci2pci_bridge: Pci2PciBridge,
 }
 
 impl PciDevice {
     pub fn identify(&self) -> HeaderType {
         // Doesn't matter which one we choose, common is the same for all of them in the same offset.
-        unsafe { self.general_device.common.header_type }
+        unsafe { self.common.header_type }
+    }
+
+    pub fn common(&self) -> &PciCommonHeader {
+        unsafe { &self.common }
     }
 }
 
-pub fn scan_pci(g: GeneralDeviceHeader) -> &'static mut [PciDevice] {
-    todo!()
+pub fn scan_pci() -> Result<Vec<PciDevice, PhysicalPageAllocator>, PciConfigurationError> {
+    let mut v: Vec<PciDevice, PhysicalPageAllocator> =
+        Vec::with_capacity_in(64, unsafe { ALLOCATOR.assume_init_ref().clone() });
+    for bus in 0..=255 {
+        for device in 0..32 {
+            let common = match PciConfigurationCycle::read_common_header(bus, device) {
+                Ok(h) => h,
+                Err(PciConfigurationError::NonExistentDevice(_, _)) => return Ok(v),
+                Err(e) => return Err(e),
+            };
+            match common.header_type {
+                HeaderType::GeneralDevice => v.push(PciDevice {
+                    general_device: PciConfigurationCycle::read_general_device_header(
+                        bus, device, common,
+                    ),
+                }),
+                _ => v.push(PciDevice { common }),
+            }
+        }
+    }
+    Ok(v)
 }
