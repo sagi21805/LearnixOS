@@ -1,16 +1,12 @@
 extern crate alloc;
-
-use crate::{
-    memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator},
-    println,
-};
+use crate::memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
 use alloc::vec::Vec;
 use common::{
     enums::{ClassCode, DeviceID, HeaderType, Port, ProgrammingInterface, SubClass, VendorID},
     error::PciConfigurationError,
     flag,
 };
-use cpu_utils::instructions::{interrupts::hlt, port::PortExt};
+use cpu_utils::instructions::port::PortExt;
 
 #[derive(Debug, Clone, Copy)]
 pub struct PciConfigurationCycle(u32);
@@ -357,12 +353,18 @@ pub fn scan_pci() -> Result<Vec<PciDevice, PhysicalPageAllocator>, PciConfigurat
                 Err(e) => return Err(e),
             };
             match common.header_type {
-                HeaderType::GeneralDevice => v.push(PciDevice {
-                    general_device: PciConfigurationCycle::read_general_device_header(
-                        bus, device, common,
-                    ),
-                }),
-                _ => v.push(PciDevice { common }),
+                HeaderType::GeneralDevice => {
+                    v.push_within_capacity(PciDevice {
+                        general_device: PciConfigurationCycle::read_general_device_header(
+                            bus, device, common,
+                        ),
+                    })
+                    .unwrap_or_else(|_| panic!("PCI Vec cannot push any more items"));
+                }
+                _ => {
+                    v.push_within_capacity(PciDevice { common })
+                        .unwrap_or_else(|_| panic!("PCI Vec cannot push any more items"));
+                }
             }
         }
     }
