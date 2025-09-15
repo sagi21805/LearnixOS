@@ -7,6 +7,7 @@ use cpu_utils::instructions::port::PortExt;
 
 use crate::println;
 
+#[derive(Debug, Clone, Copy)]
 pub struct PciConfigurationCycle(u32);
 
 impl PciConfigurationCycle {
@@ -91,6 +92,7 @@ impl PciConfigurationCycle {
         let (revision, class_code, subclass, prog_if) = Self::read_revision_type(bus, device)?;
         let (cache_size, latency, header_type, bist) = Self::read_header_meta(bus, device);
         return Ok(PciCommonHeader {
+            location: Self::new_unchecked(bus, device, 0, 0),
             vendor,
             device: device_id,
             command,
@@ -107,7 +109,7 @@ impl PciConfigurationCycle {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct StatusRegister(u16);
 
 impl StatusRegister {
@@ -138,7 +140,7 @@ impl StatusRegister {
     flag!(interrupt_status, 3);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct CommandRegister(u16);
 
 impl CommandRegister {
@@ -165,15 +167,16 @@ impl CommandRegister {
     flag!(io_space, 0);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct BISTRegister(u8);
 
 impl BISTRegister {
     flag!(bist_capable, 7);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PciCommonHeader {
+    location: PciConfigurationCycle,
     vendor: VendorID,
     device: DeviceID,
     command: CommandRegister,
@@ -188,15 +191,36 @@ pub struct PciCommonHeader {
     bist: BISTRegister,
 }
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryBaseAddressRegister(u32);
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct IOBaseAddressRegister(u32);
 
+#[derive(Clone, Copy)]
 pub union BaseAddressRegister {
     memory: MemoryBaseAddressRegister,
     io: IOBaseAddressRegister,
+}
+
+pub enum BaseAddressRegisterType {
+    Memory,
+    IO,
+}
+
+impl BaseAddressRegister {
+    pub fn identify(&self) -> BaseAddressRegisterType {
+        // Doesn't matter which variant we take, they are both u32.
+        unsafe {
+            if self.memory.0 & 1 == 0 {
+                return BaseAddressRegisterType::Memory;
+            } else {
+                return BaseAddressRegisterType::IO;
+            }
+        }
+    }
 }
 
 impl core::fmt::Debug for BaseAddressRegister {
@@ -206,8 +230,9 @@ impl core::fmt::Debug for BaseAddressRegister {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct GeneralDeviceHeader {
+    common: PciCommonHeader,
     bar0: BaseAddressRegister,
     bar1: BaseAddressRegister,
     bar2: BaseAddressRegister,
@@ -226,4 +251,74 @@ pub struct GeneralDeviceHeader {
     interrupt_pin: u8,
     min_grant: u8,
     max_latency: u8,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Pci2PciBridge {
+    common: PciCommonHeader,
+    bar0: BaseAddressRegister,
+    bar1: BaseAddressRegister,
+    primary_bus_number: u8,
+    secondary_bus_number: u8,
+    subordinate_bus_number: u8,
+    secondary_latency_timer: u8,
+    io_base: u8,
+    io_limit: u8,
+    secondary_status: u16,
+    memory_base: u16,
+    memory_limit: u16,
+    prefetchable_memory_base: u16,
+    prefetchable_memory_limit: u16,
+    prefetchable_base_upper: u32,
+    prefetchable_limit_upper: u32,
+    io_base_upper: u16,
+    io_limit_upper: u16,
+    capabilities_ptr: u8,
+    expansion_rom_base: u32,
+    interrupt_line: u8,
+    interrupt_pin: u8,
+    bridge_control: u8,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Pci2CardBusBridge {
+    common: PciCommonHeader,
+    cardbus_socket_base: u32,
+    capabilities_offset: u8,
+    reserved: u8,
+    secondary_status: u16,
+    pci_bus_number: u8,
+    cardbus_bus_number: u8,
+    subordinate_bus_number: u8,
+    cardbus_latency_timer: u8,
+    memory_base0: u32,
+    memory_limit0: u32,
+    memory_base1: u32,
+    memory_limit1: u32,
+    io_base0: u32,
+    io_limit0: u32,
+    io_base1: u32,
+    io_limit1: u32,
+    interrupt_line: u8,
+    interrupt_pin: u8,
+    bridge_control: u16,
+    subsystem_device_id: u16,
+    subsystem_vendor_id: u16,
+    legacy_base_address: u32,
+}
+pub union PciDevice {
+    general_device: GeneralDeviceHeader,
+    pci2pci_bridge: Pci2PciBridge,
+    pci2cardbus_bridge: Pci2CardBusBridge,
+}
+
+impl PciDevice {
+    pub fn identify(&self) -> HeaderType {
+        // Doesn't matter which one we choose, common is the same for all of them in the same offset.
+        unsafe { self.general_device.common.header_type }
+    }
+}
+
+pub fn scan_pci(g: GeneralDeviceHeader) -> &'static mut [PciDevice] {
+    todo!()
 }
