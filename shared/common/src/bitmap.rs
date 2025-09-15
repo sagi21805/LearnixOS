@@ -119,6 +119,17 @@ pub struct BitMap {
     pub map: &'static mut [u64],
 }
 
+impl Clone for BitMap {
+    fn clone(&self) -> Self {
+        let map_ptr = self.map.as_ptr() as usize as *mut u64;
+        unsafe {
+            BitMap {
+                map: slice::from_raw_parts_mut(map_ptr, self.map.len()),
+            }
+        }
+    }
+}
+
 impl core::ops::Index<usize> for BitMap {
     type Output = u64;
 
