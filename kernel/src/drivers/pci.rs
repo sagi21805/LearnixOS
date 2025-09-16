@@ -37,92 +37,30 @@ impl PciConfigurationCycle {
         }
     }
 
-    pub fn read_vendor_device(
-        bus: u8,
-        device: u8,
-    ) -> Result<(VendorID, DeviceID), PciConfigurationError> {
-        let config_address = Self::new_unchecked(bus, device, 0, 0);
-        let vendor_config = unsafe { config_address.read() };
-        let vendor = VendorID::from_u16((vendor_config & 0xffff) as u16)?;
-        if vendor == VendorID::NonExistent {
-            return Err(PciConfigurationError::NonExistentDevice(bus, device));
-        }
-        let device_id = DeviceID::from_vendor_dev_id(vendor, (vendor_config >> 16) as u16)?;
-        Ok((vendor, device_id))
-    }
-
-    pub fn read_command_status(bus: u8, device: u8) -> (CommandRegister, StatusRegister) {
-        let config_address = Self::new_unchecked(bus, device, 0, 4);
-        let status_command = unsafe { config_address.read() };
-        let command = CommandRegister((status_command & 0xffff) as u16);
-        let status = StatusRegister((status_command >> 16) as u16);
-        (command, status)
-    }
-
-    pub fn read_revision_type(
-        bus: u8,
-        device: u8,
-    ) -> Result<(u8, ClassCode, SubClass, ProgrammingInterface), PciConfigurationError> {
-        let config_address = Self::new_unchecked(bus, device, 0, 8);
-        let value = unsafe { config_address.read() };
-        let revision = (value & 0xff) as u8;
-        let class_code = ClassCode::from_u8(((value >> 24) & 0xff) as u8)?;
-        let subclass = SubClass::from_class_sub(class_code, ((value >> 16) & 0xff) as u8)?;
-        let prog_if =
-            ProgrammingInterface::from_subclass_u8(subclass, ((value >> 8) & 0xff) as u8)?;
-        Ok((revision, class_code, subclass, prog_if))
-    }
-
-    pub fn read_header_meta(bus: u8, device: u8) -> (u8, u8, HeaderType, BISTRegister) {
-        let config_address = Self::new_unchecked(bus, device, 0, 12);
-        let value = unsafe { config_address.read() };
-        let cache_size = (value & 0xff) as u8;
-        let latency = ((value >> 8) & 0xff) as u8;
-        let header_type: HeaderType = unsafe { core::mem::transmute(((value >> 16) & 0xff) as u8) };
-        let bist = BISTRegister(((value >> 24) & 0xff) as u8);
-        (cache_size, latency, header_type, bist)
-    }
-
-    pub fn read_common_header(
-        bus: u8,
-        device: u8,
-    ) -> Result<PciCommonHeader, PciConfigurationError> {
-        let (vendor, device_id) = Self::read_vendor_device(bus, device)?;
-        let (command, status) = Self::read_command_status(bus, device);
-        let (revision, class_code, subclass, prog_if) = Self::read_revision_type(bus, device)?;
-        let (cache_size, latency, header_type, bist) = Self::read_header_meta(bus, device);
-        return Ok(PciCommonHeader {
-            vendor,
-            device: device_id,
-            command,
-            status,
-            revision,
-            prog_if,
-            subclass,
-            class_code,
-            cache_size,
-            latency_timer: latency,
-            header_type,
-            bist,
-        });
-    }
-
-    pub fn read_general_device_header(
-        bus: u8,
-        device: u8,
-        common: PciCommonHeader,
-    ) -> GeneralDeviceHeader {
-        let mut empty = GeneralDeviceHeader::empty_from_common(common);
-        let start_offset = size_of::<PciCommonHeader>();
-        let end_offset = size_of::<GeneralDeviceHeader>();
-        let empty_ptr = &mut empty as *mut GeneralDeviceHeader as usize as *mut u32;
-        for offset in (start_offset..end_offset).step_by(size_of::<u32>()) {
+    pub fn read_common_header(bus: u8, device: u8) -> PciCommonHeader {
+        let mut uninit = PciCommonHeader::empty();
+        let uninit_ptr = &mut uninit as *mut PciCommonHeader as usize as *mut u32;
+        for offset in (0..size_of::<PciCommonHeader>()).step_by(size_of::<u32>()) {
             unsafe {
                 let header_data = Self::new_unchecked(bus, device, 0, offset as u8).read();
-                empty_ptr.byte_add(offset).write_volatile(header_data);
+                uninit_ptr.byte_add(offset).write_volatile(header_data);
             }
         }
-        empty
+        uninit
+    }
+
+    pub fn read_pci_device_header(bus: u8, device: u8, common: PciCommonHeader) -> PciDevice {
+        let mut uninit = PciDevice { common };
+        let uninit_ptr = &mut uninit as *mut PciDevice as usize as *mut u32;
+        for offset in
+            (size_of::<PciCommonHeader>()..size_of::<PciDevice>()).step_by(size_of::<u32>())
+        {
+            unsafe {
+                let header_data = Self::new_unchecked(bus, device, 0, offset as u8).read();
+                uninit_ptr.byte_add(offset).write_volatile(header_data);
+            }
+        }
+        uninit
     }
 }
 
@@ -206,6 +144,25 @@ pub struct PciCommonHeader {
     latency_timer: u8,
     header_type: HeaderType,
     bist: BISTRegister,
+}
+
+impl PciCommonHeader {
+    pub fn empty() -> Self {
+        PciCommonHeader {
+            vendor: VendorID::NonExistent,
+            device: DeviceID { none: () },
+            command: CommandRegister(0),
+            status: StatusRegister(0),
+            revision: 0,
+            prog_if: ProgrammingInterface { none: () },
+            subclass: SubClass { none: () },
+            class_code: ClassCode::Unclassified,
+            cache_size: 0,
+            latency_timer: 0,
+            header_type: HeaderType::GeneralDevice,
+            bist: BISTRegister(0),
+        }
+    }
 }
 
 #[repr(transparent)]
@@ -347,25 +304,14 @@ pub fn scan_pci() -> Result<Vec<PciDevice, PhysicalPageAllocator>, PciConfigurat
         Vec::with_capacity_in(64, unsafe { ALLOCATOR.assume_init_ref().clone() });
     for bus in 0..=255 {
         for device in 0..32 {
-            let common = match PciConfigurationCycle::read_common_header(bus, device) {
-                Ok(h) => h,
-                Err(PciConfigurationError::NonExistentDevice(_, _)) => return Ok(v),
-                Err(e) => return Err(e),
-            };
-            match common.header_type {
-                HeaderType::GeneralDevice => {
-                    v.push_within_capacity(PciDevice {
-                        general_device: PciConfigurationCycle::read_general_device_header(
-                            bus, device, common,
-                        ),
-                    })
-                    .unwrap_or_else(|_| panic!("PCI Vec cannot push any more items"));
-                }
-                _ => {
-                    v.push_within_capacity(PciDevice { common })
-                        .unwrap_or_else(|_| panic!("PCI Vec cannot push any more items"));
-                }
+            let common = PciConfigurationCycle::read_common_header(bus, device);
+            if common.vendor == VendorID::NonExistent {
+                return Ok(v);
             }
+            v.push_within_capacity(PciConfigurationCycle::read_pci_device_header(
+                bus, device, common,
+            ))
+            .unwrap_or_else(|_| panic!("PCI Vec cannot push any more items"));
         }
     }
     Ok(v)
