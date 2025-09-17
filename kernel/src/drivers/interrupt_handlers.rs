@@ -9,8 +9,9 @@ use common::{
         interrupts::{Interrupt, InterruptType},
     },
 };
-use cpu_utils::structures::interrupt_descriptor_table::{
-    InterruptDescriptorTable, InterruptStackFrame,
+use cpu_utils::{
+    registers::cr2,
+    structures::interrupt_descriptor_table::{InterruptDescriptorTable, InterruptStackFrame},
 };
 
 pub extern "x86-interrupt" fn division_error_handler(stack_frame: InterruptStackFrame) {
@@ -137,6 +138,7 @@ pub extern "x86-interrupt" fn page_fault_handler(
     println!("Interrupt: PageFault");
     println!("Stack frame: {:#?}", stack_frame);
     println!("Error code: {:#x}", error_code);
+    println!("Faulting address: {:x}", cr2::read());
 }
 
 pub extern "x86-interrupt" fn alignment_check_handler(
