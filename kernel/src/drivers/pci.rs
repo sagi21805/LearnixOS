@@ -6,7 +6,6 @@ use common::{
         ClassCode, DeviceID, HeaderType, PciDeviceType, Port, ProgrammingInterface, SubClass,
         VendorDevice, VendorID,
     },
-    error::PciConfigurationError,
     flag,
 };
 use cpu_utils::instructions::port::PortExt;
@@ -303,14 +302,14 @@ impl PciDevice {
     }
 }
 
-pub fn scan_pci() -> Result<Vec<PciDevice, PhysicalPageAllocator>, PciConfigurationError> {
+pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
     let mut v: Vec<PciDevice, PhysicalPageAllocator> =
         Vec::with_capacity_in(64, unsafe { ALLOCATOR.assume_init_ref().clone() });
     for bus in 0..=255 {
         for device in 0..32 {
             let common = PciConfigurationCycle::read_common_header(bus, device);
             if common.vendor_device.vendor == VendorID::NonExistent {
-                return Ok(v);
+                return v;
             }
             v.push_within_capacity(PciConfigurationCycle::read_pci_device_header(
                 bus, device, common,
@@ -318,5 +317,5 @@ pub fn scan_pci() -> Result<Vec<PciDevice, PhysicalPageAllocator>, PciConfigurat
             .unwrap_or_else(|_| panic!("PCI Vec cannot push any more items"));
         }
     }
-    Ok(v)
+    return v;
 }

@@ -86,7 +86,7 @@ pub unsafe extern "C" fn _start() -> Result<!, AllocError> {
         ok_msg!("Initialized Keyboard");
         interrupts::enable();
     }
-    let pci_devices = pci::scan_pci().expect("Pci devices are not initialized: ");
+    let pci_devices = pci::scan_pci();
     println!("Press ENTER to enumerate PCI devices!");
     let a = pci_devices.as_ptr() as usize;
     println!("pci_devices address: {:x}", a);
@@ -100,7 +100,7 @@ pub unsafe extern "C" fn _start() -> Result<!, AllocError> {
             }
         }
         match device.identify() {
-            HeaderType::GeneralDevice => println!("{:#?}", unsafe { device.common } ),
+            HeaderType::GeneralDevice => println!("{:#?}", unsafe { device.common }),
             _ => println!("{:#?}", unsafe { device.common }),
         }
     }
