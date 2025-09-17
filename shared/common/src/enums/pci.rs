@@ -1,5 +1,3 @@
-use core::clone;
-
 #[repr(u16)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum VendorID {
@@ -78,7 +76,7 @@ pub struct VendorDevice {
 impl core::fmt::Debug for VendorDevice {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Vendor: {:?} ", self.vendor)?;
-        write!(f,"Device: 0x{:x?}", unsafe { self.device.num })
+        write!(f, "Device: 0x{:x?}", unsafe { self.device.num })
     }
 }
 
@@ -522,7 +520,7 @@ pub union ProgrammingInterface {
     pub timer: TimerPI,
     pub rtc: RTCPI,
     pub game_port: GameportControllerPI,
-    pub firewall: FireWirePI,
+    pub firewire: FireWirePI,
     pub usb: USBPI,
     pub ipmi: IPMIPI,
     pub num: u8,
@@ -549,46 +547,162 @@ impl core::fmt::Debug for PciDeviceType {
         match self.class {
             ClassCode::Unclassified => write!(f, "{:?}", unsafe { self.subclass.unclassified }),
             ClassCode::MassStorageController => {
-                write!(f, "{:?}", unsafe { self.subclass.storage })
+                write!(f, "{:?}", unsafe { self.subclass.storage })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.storage } {
+                    MassStorageSubClass::IDE => {
+                        write!(f, "{:?}", unsafe { self.prog_if.ide })
+                    }
+                    MassStorageSubClass::ATA => {
+                        write!(f, "{:?}", unsafe { self.prog_if.ata })
+                    }
+                    MassStorageSubClass::SATA => {
+                        write!(f, "{:?}", unsafe { self.prog_if.sata })
+                    }
+                    MassStorageSubClass::SCSI => {
+                        write!(f, "{:?}", unsafe { self.prog_if.scsi })
+                    }
+                    MassStorageSubClass::NVM => {
+                        write!(f, "{:?}", unsafe { self.prog_if.nvm })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
             }
-            ClassCode::NetworkController => write!(f, "{:?}", unsafe { self.subclass.network }),
-            ClassCode::DisplayController => write!(f, "{:?}", unsafe { self.subclass.display }),
+            ClassCode::NetworkController => {
+                write!(f, "{:?}", unsafe { self.subclass.network })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::DisplayController => {
+                write!(f, "{:?}", unsafe { self.subclass.display })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.display } {
+                    DisplaySubClass::VGA => {
+                        write!(f, "{:?}", unsafe { self.prog_if.vga })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
+            }
             ClassCode::MultimediaController => {
-                write!(f, "{:?}", unsafe { self.subclass.multimedia })
+                write!(f, "{:?}", unsafe { self.subclass.multimedia })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
             }
             ClassCode::MemoryController => write!(f, "{:?}", unsafe { self.subclass.memory }),
-            ClassCode::Bridge => write!(f, "{:?}", unsafe { self.subclass.bridge }),
+            ClassCode::Bridge => {
+                write!(f, "{:?}", unsafe { self.subclass.bridge })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.bridge } {
+                    BridgeSubClass::PCItoPCI => {
+                        write!(f, "{:?}", unsafe { self.prog_if.pci2pci })
+                    }
+                    BridgeSubClass::PCItoPCISemi => {
+                        write!(f, "{:?}", unsafe { self.prog_if.pci2pci })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
+            }
             ClassCode::SimpleCommunicationController => {
-                write!(f, "{:?}", unsafe { self.subclass.simple_comm })
+                write!(f, "{:?}", unsafe { self.subclass.simple_comm })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.simple_comm } {
+                    SimpleCommSubClass::Serial => {
+                        write!(f, "{:?}", unsafe { self.prog_if.serial })
+                    }
+                    SimpleCommSubClass::Parallel => {
+                        write!(f, "{:?}", unsafe { self.prog_if.parallel })
+                    }
+                    SimpleCommSubClass::Modem => {
+                        write!(f, "{:?}", unsafe { self.prog_if.modem })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
             }
             ClassCode::BaseSystemPeripheral => {
-                write!(f, "{:?}", unsafe { self.subclass.base_system })
+                write!(f, "{:?}", unsafe { self.subclass.base_system })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.base_system } {
+                    BaseSystemSubClass::PIC => {
+                        write!(f, "{:?}", unsafe { self.prog_if.pic })
+                    }
+                    BaseSystemSubClass::DMAController => {
+                        write!(f, "{:?}", unsafe { self.prog_if.dma })
+                    }
+                    BaseSystemSubClass::Timer => {
+                        write!(f, "{:?}", unsafe { self.prog_if.timer })
+                    }
+                    BaseSystemSubClass::RTC => {
+                        write!(f, "{:?}", unsafe { self.prog_if.rtc })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
             }
-            ClassCode::InputDeviceController => write!(f, "{:?}", unsafe { self.subclass.input }),
-            ClassCode::DockingStation => write!(f, "{:?}", unsafe { self.subclass.docking }),
-            ClassCode::Processor => write!(f, "{:?}", unsafe { self.subclass.processor }),
+            ClassCode::InputDeviceController => {
+                write!(f, "{:?} ", unsafe { self.subclass.input })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.input } {
+                    InputSubClass::Gameport => {
+                        write!(f, "{:?}", unsafe { self.subclass.input })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
+            }
+            ClassCode::DockingStation => {
+                write!(f, "{:?} ", unsafe { self.subclass.docking })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::Processor => {
+                write!(f, "{:?} ", unsafe { self.subclass.processor })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
             ClassCode::SerialBusController => {
-                write!(f, "{:?}", unsafe { self.subclass.serial_bus })
+                write!(f, "{:?} ", unsafe { self.subclass.serial_bus })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.serial_bus } {
+                    SerialBusSubClass::FireWire => {
+                        write!(f, "{:?}", unsafe { self.prog_if.firewire })
+                    }
+                    SerialBusSubClass::USB => {
+                        write!(f, "{:?}", unsafe { self.prog_if.usb })
+                    }
+                    SerialBusSubClass::IPMI => {
+                        write!(f, "{:?}", unsafe { self.prog_if.ipmi })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
             }
             ClassCode::WirelessController => write!(f, "{:?}", unsafe { self.subclass.wireless }),
             ClassCode::IntelligentController => {
-                write!(f, "{:?}", unsafe { self.subclass.intelligent })
+                write!(f, "{:?} ", unsafe { self.subclass.intelligent })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
             }
             ClassCode::SatelliteCommunicationController => {
-                write!(f, "{:?}", unsafe { self.subclass.satellite })
+                write!(f, "{:?} ", unsafe { self.subclass.satellite })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
             }
             ClassCode::EncryptionController => {
-                write!(f, "{:?}", unsafe { self.subclass.encryption })
+                write!(f, "{:?} ", unsafe { self.subclass.encryption })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
             }
             ClassCode::SignalProcessingController => {
-                write!(f, "{:?}", unsafe { self.subclass.signal_processing })
+                write!(f, "{:?} ", unsafe { self.subclass.signal_processing })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
             }
-            ClassCode::ProcessingAccel => write!(f, "{:?}", unsafe { self.subclass.none }),
+            ClassCode::ProcessingAccel => {
+                write!(f, "{:?} ", unsafe { self.subclass.none })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+
             ClassCode::NonEssentialInstrumentation => {
-                write!(f, "{:?}", unsafe { self.subclass.none })
+                write!(f, "{:?} ", unsafe { self.subclass.none })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
             }
-            ClassCode::Coprocessor => write!(f, "{:?}", unsafe { self.subclass.none }),
-            ClassCode::Unassigned => write!(f, "{:?}", unsafe { self.subclass.none }),
+            ClassCode::Coprocessor => {
+                write!(f, "{:?} ", unsafe { self.subclass.none })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::Unassigned => {
+                write!(f, "{:?} ", unsafe { self.subclass.none })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
         }
     }
 }
