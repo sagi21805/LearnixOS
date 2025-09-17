@@ -39,26 +39,31 @@ impl PciConfigurationCycle {
         }
     }
 
-    pub fn read_common_header(bus: u8, device: u8) -> PciCommonHeader {
+    pub fn read_common_header(bus: u8, device: u8, function: u8) -> PciCommonHeader {
         let mut uninit = PciCommonHeader::empty();
         let uninit_ptr = &mut uninit as *mut PciCommonHeader as usize as *mut u32;
         for offset in (0..size_of::<PciCommonHeader>()).step_by(size_of::<u32>()) {
             unsafe {
-                let header_data = Self::new_unchecked(bus, device, 0, offset as u8).read();
+                let header_data = Self::new_unchecked(bus, device, function, offset as u8).read();
                 uninit_ptr.byte_add(offset).write_volatile(header_data);
             }
         }
         uninit
     }
 
-    pub fn read_pci_device_header(bus: u8, device: u8, common: PciCommonHeader) -> PciDevice {
+    pub fn read_pci_device_header(
+        bus: u8,
+        device: u8,
+        function: u8,
+        common: PciCommonHeader,
+    ) -> PciDevice {
         let mut uninit = PciDevice { common };
         let uninit_ptr = &mut uninit as *mut PciDevice as usize as *mut u32;
         for offset in
             (size_of::<PciCommonHeader>()..size_of::<PciDevice>()).step_by(size_of::<u32>())
         {
             unsafe {
-                let header_data = Self::new_unchecked(bus, device, 0, offset as u8).read();
+                let header_data = Self::new_unchecked(bus, device, function, offset as u8).read();
                 uninit_ptr.byte_add(offset).write_volatile(header_data);
             }
         }
@@ -307,14 +312,27 @@ pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
         Vec::with_capacity_in(64, unsafe { ALLOCATOR.assume_init_ref().clone() });
     for bus in 0..=255 {
         for device in 0..32 {
-            let common = PciConfigurationCycle::read_common_header(bus, device);
+            let common = PciConfigurationCycle::read_common_header(bus, device, 0);
             if common.vendor_device.vendor == VendorID::NonExistent {
                 return v;
             }
             v.push_within_capacity(PciConfigurationCycle::read_pci_device_header(
-                bus, device, common,
+                bus, device, 0, common,
             ))
             .unwrap_or_else(|_| panic!("PCI Vec cannot push any more items"));
+            if !common.header_type.is_multifunction() {
+                continue;
+            }
+            for function in 1..8 {
+                let common = PciConfigurationCycle::read_common_header(bus, device, function);
+                if common.vendor_device.vendor == VendorID::NonExistent {
+                    break;
+                }
+                v.push_within_capacity(PciConfigurationCycle::read_pci_device_header(
+                    bus, device, function, common,
+                ))
+                .unwrap_or_else(|_| panic!("PCI Vec cannot push any more items"));
+            }
         }
     }
     return v;
