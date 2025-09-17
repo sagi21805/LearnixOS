@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io;
+use std::io::{self, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
 
@@ -33,7 +33,7 @@ fn build_stage(path: &str, target: &str, profile: &str) -> ExitStatus {
     status
 }
 
-fn main() {
+fn main() -> io::Result<()> {
     // Force rerun every time
     println!("cargo::rerun-if-changed=nonexistent.file");
 
@@ -66,6 +66,14 @@ fn main() {
         let mut input = File::open(file_name).unwrap();
         io::copy(&mut input, &mut output).unwrap();
     }
-
+    const MIN_SIZE: u64 = 515_585;
+    let current_size = output.metadata()?.len();
+    if current_size < MIN_SIZE {
+        // Seek to the target size - 1
+        output.seek(SeekFrom::Start(MIN_SIZE - 1))?;
+        // Write a single zero byte at the end
+        output.write_all(&[0])?;
+    }
     println!("finished building the kernel");
+    Ok(())
 }
