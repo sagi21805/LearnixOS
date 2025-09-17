@@ -1,3 +1,5 @@
+use core::clone;
+
 #[repr(u16)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum VendorID {
@@ -67,9 +69,22 @@ pub union DeviceID {
     pub none: (),
 }
 
+#[derive(Clone, Copy)]
+pub struct VendorDevice {
+    pub vendor: VendorID,
+    pub device: DeviceID,
+}
+
+impl core::fmt::Debug for VendorDevice {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Vendor: {:?} ", self.vendor)?;
+        write!(f,"Device: 0x{:x?}", unsafe { self.device.num })
+    }
+}
+
 impl core::fmt::Debug for DeviceID {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "{:x}", unsafe { self.num })
+        write!(f, "Device: 0x{:x?}", unsafe { self.num })
     }
 }
 
@@ -292,6 +307,7 @@ pub enum SignalProcessingSubClass {
 
 #[derive(Clone, Copy)]
 pub union SubClass {
+    pub unclassified: UnclassifiedSubClass,
     pub storage: MassStorageSubClass,
     pub network: NetworkSubClass,
     pub display: DisplaySubClass,
@@ -315,7 +331,7 @@ pub union SubClass {
 
 impl core::fmt::Debug for SubClass {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "{:x}", unsafe { self.num })
+        write!(f, "{:x}", unsafe { self.num })
     }
 }
 
@@ -515,7 +531,65 @@ pub union ProgrammingInterface {
 
 impl core::fmt::Debug for ProgrammingInterface {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "{:x}", unsafe { self.num })
+        write!(f, "{:x}", unsafe { self.num })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct PciDeviceType {
+    pub prog_if: ProgrammingInterface,
+    pub subclass: SubClass,
+    pub class: ClassCode,
+}
+
+impl core::fmt::Debug for PciDeviceType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Class: {:?} ", self.class)?;
+        write!(f, "SubClass: ")?;
+        match self.class {
+            ClassCode::Unclassified => write!(f, "{:?}", unsafe { self.subclass.unclassified }),
+            ClassCode::MassStorageController => {
+                write!(f, "{:?}", unsafe { self.subclass.storage })
+            }
+            ClassCode::NetworkController => write!(f, "{:?}", unsafe { self.subclass.network }),
+            ClassCode::DisplayController => write!(f, "{:?}", unsafe { self.subclass.display }),
+            ClassCode::MultimediaController => {
+                write!(f, "{:?}", unsafe { self.subclass.multimedia })
+            }
+            ClassCode::MemoryController => write!(f, "{:?}", unsafe { self.subclass.memory }),
+            ClassCode::Bridge => write!(f, "{:?}", unsafe { self.subclass.bridge }),
+            ClassCode::SimpleCommunicationController => {
+                write!(f, "{:?}", unsafe { self.subclass.simple_comm })
+            }
+            ClassCode::BaseSystemPeripheral => {
+                write!(f, "{:?}", unsafe { self.subclass.base_system })
+            }
+            ClassCode::InputDeviceController => write!(f, "{:?}", unsafe { self.subclass.input }),
+            ClassCode::DockingStation => write!(f, "{:?}", unsafe { self.subclass.docking }),
+            ClassCode::Processor => write!(f, "{:?}", unsafe { self.subclass.processor }),
+            ClassCode::SerialBusController => {
+                write!(f, "{:?}", unsafe { self.subclass.serial_bus })
+            }
+            ClassCode::WirelessController => write!(f, "{:?}", unsafe { self.subclass.wireless }),
+            ClassCode::IntelligentController => {
+                write!(f, "{:?}", unsafe { self.subclass.intelligent })
+            }
+            ClassCode::SatelliteCommunicationController => {
+                write!(f, "{:?}", unsafe { self.subclass.satellite })
+            }
+            ClassCode::EncryptionController => {
+                write!(f, "{:?}", unsafe { self.subclass.encryption })
+            }
+            ClassCode::SignalProcessingController => {
+                write!(f, "{:?}", unsafe { self.subclass.signal_processing })
+            }
+            ClassCode::ProcessingAccel => write!(f, "{:?}", unsafe { self.subclass.none }),
+            ClassCode::NonEssentialInstrumentation => {
+                write!(f, "{:?}", unsafe { self.subclass.none })
+            }
+            ClassCode::Coprocessor => write!(f, "{:?}", unsafe { self.subclass.none }),
+            ClassCode::Unassigned => write!(f, "{:?}", unsafe { self.subclass.none }),
+        }
     }
 }
 
