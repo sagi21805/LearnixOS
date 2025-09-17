@@ -100,7 +100,7 @@ pub unsafe extern "C" fn _start() -> Result<!, AllocError> {
             }
         }
         match device.identify() {
-            HeaderType::GeneralDevice => println!("{:?}", unsafe { device.general_device }),
+            HeaderType::GeneralDevice => println!("{:#?}", unsafe { device.common } ),
             _ => println!("{:#?}", unsafe { device.common }),
         }
     }

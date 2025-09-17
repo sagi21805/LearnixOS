@@ -2,7 +2,10 @@ extern crate alloc;
 use crate::memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
 use alloc::vec::Vec;
 use common::{
-    enums::{ClassCode, DeviceID, HeaderType, Port, ProgrammingInterface, SubClass, VendorID},
+    enums::{
+        ClassCode, DeviceID, HeaderType, PciDeviceType, Port, ProgrammingInterface, SubClass,
+        VendorDevice, VendorID,
+    },
     error::PciConfigurationError,
     flag,
 };
@@ -132,14 +135,11 @@ impl BISTRegister {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct PciCommonHeader {
-    vendor: VendorID,
-    device: DeviceID,
+    vendor_device: VendorDevice,
     command: CommandRegister,
     status: StatusRegister,
     revision: u8,
-    prog_if: ProgrammingInterface,
-    subclass: SubClass,
-    class_code: ClassCode,
+    device_type: PciDeviceType,
     cache_size: u8,
     latency_timer: u8,
     header_type: HeaderType,
@@ -149,14 +149,18 @@ pub struct PciCommonHeader {
 impl PciCommonHeader {
     pub fn empty() -> Self {
         PciCommonHeader {
-            vendor: VendorID::NonExistent,
-            device: DeviceID { none: () },
+            vendor_device: VendorDevice {
+                vendor: VendorID::NonExistent,
+                device: DeviceID { none: () },
+            },
             command: CommandRegister(0),
             status: StatusRegister(0),
             revision: 0,
-            prog_if: ProgrammingInterface { none: () },
-            subclass: SubClass { none: () },
-            class_code: ClassCode::Unclassified,
+            device_type: PciDeviceType {
+                prog_if: ProgrammingInterface { none: () },
+                subclass: SubClass { none: () },
+                class: ClassCode::Unassigned,
+            },
             cache_size: 0,
             latency_timer: 0,
             header_type: HeaderType::GeneralDevice,
@@ -305,7 +309,7 @@ pub fn scan_pci() -> Result<Vec<PciDevice, PhysicalPageAllocator>, PciConfigurat
     for bus in 0..=255 {
         for device in 0..32 {
             let common = PciConfigurationCycle::read_common_header(bus, device);
-            if common.vendor == VendorID::NonExistent {
+            if common.vendor_device.vendor == VendorID::NonExistent {
                 return Ok(v);
             }
             v.push_within_capacity(PciConfigurationCycle::read_pci_device_header(
