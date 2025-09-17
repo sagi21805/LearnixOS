@@ -1,9 +1,6 @@
 [unstable]
-build-std = ["core"]
+build-std = ["core", "alloc"]
 build-std-features = ["compiler-builtins-mem"]
 unstable-options = true
 [build]
 rustflags = ["-Zpolonius"]
-
-[target.'cfg(all())']
-runner = "qemu-system-x86_64 -drive format=raw,file=build/image.bin #"

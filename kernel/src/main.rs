@@ -10,10 +10,13 @@
 #![feature(stmt_expr_attributes)]
 #![feature(abi_x86_interrupt)]
 #![feature(macro_metavar_expr_concat)]
+#![feature(allocator_api)]
+#![feature(never_type)]
+#![feature(vec_push_within_capacity)]
 mod drivers;
 mod memory;
 use core::{
-    alloc::{GlobalAlloc, Layout},
+    alloc::{AllocError, Allocator, Layout},
     num::NonZero,
     panic::PanicInfo,
 };
@@ -22,22 +25,26 @@ use crate::{
     drivers::{
         interrupt_handlers,
         keyboard::{KEYBOARD, keyboard::Keyboard},
+        pci::{self},
         pic8259::{CascadedPIC, PIC},
         vga_display::color_code::Color,
     },
     memory::memory_map::{ParsedMapDisplay, parse_map},
 };
 
-use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
+use common::{
+    constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
+    enums::HeaderType,
+};
 use cpu_utils::{
-    instructions::interrupts::{self, hlt},
+    instructions::interrupts::{self},
     structures::interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
 };
 use memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
-pub unsafe extern "C" fn _start() -> ! {
+pub unsafe extern "C" fn _start() -> Result<!, AllocError> {
     ok_msg!("Entered Protected Mode");
     ok_msg!("Enabled Paging");
     ok_msg!("Entered Long Mode");
@@ -49,56 +56,57 @@ pub unsafe extern "C" fn _start() -> ! {
     unsafe {
         let idt_address = ALLOCATOR
             .assume_init_ref()
-            .alloc(Layout::from_size_align_unchecked(
+            .allocate(Layout::from_size_align_unchecked(
                 REGULAR_PAGE_SIZE,
                 REGULAR_PAGE_ALIGNMENT.as_usize(),
-            )) as usize;
-        InterruptDescriptorTable::init(&mut IDT, idt_address.into());
+            ))?
+            .addr()
+            .get()
+            .into();
+        InterruptDescriptorTable::init(&mut IDT, idt_address);
         ok_msg!("Initialized interrupt descriptor table");
         interrupt_handlers::init(IDT.assume_init_mut());
         ok_msg!("Initialized interrupts handlers");
         CascadedPIC::init(&mut PIC);
         ok_msg!("Initialized Programmable Interrupt Controller");
-        let keyboard_buffer_address =
-            ALLOCATOR
-                .assume_init_ref()
-                .alloc(Layout::from_size_align_unchecked(
-                    REGULAR_PAGE_SIZE,
-                    REGULAR_PAGE_ALIGNMENT.as_usize(),
-                )) as usize;
+        let keyboard_buffer_address = ALLOCATOR
+            .assume_init_ref()
+            .allocate(Layout::from_size_align_unchecked(
+                REGULAR_PAGE_SIZE,
+                REGULAR_PAGE_ALIGNMENT.as_usize(),
+            ))?
+            .addr()
+            .get()
+            .into();
         Keyboard::init(
             &mut KEYBOARD,
-            keyboard_buffer_address.into(),
+            keyboard_buffer_address,
             NonZero::new(REGULAR_PAGE_SIZE).unwrap(),
         );
         ok_msg!("Initialized Keyboard");
         interrupts::enable();
-        for _ in 0..10 {
-            let a = ALLOCATOR
-                .assume_init_mut()
-                .alloc(Layout::from_size_align_unchecked(0x100000, 0x100000));
-            println!(
-                "A: {:?}, Mem Available: {}Mib",
-                a,
-                ALLOCATOR.assume_init_mut().available_memory() / (1024 * 1024)
-            );
-            ALLOCATOR
-                .assume_init_mut()
-                .dealloc(a, Layout::from_size_align_unchecked(0x100000, 0x100000));
-            println!(
-                "Available Memory: {}Mib",
-                ALLOCATOR.assume_init_mut().available_memory() / (1024 * 1024)
-            );
+    }
+    let pci_devices = pci::scan_pci();
+    println!("Press ENTER to enumerate PCI devices!");
+    let a = pci_devices.as_ptr() as usize;
+    println!("pci_devices address: {:x}", a);
+    for device in pci_devices.iter() {
+        loop {
+            unsafe {
+                let c = KEYBOARD.assume_init_mut().read_char();
+                if c == "\n" {
+                    break;
+                }
+            }
+        }
+        match device.identify() {
+            HeaderType::GeneralDevice => println!("{:#?}", unsafe { device.common }),
+            _ => println!("{:#?}", unsafe { device.common }),
         }
     }
     loop {
         unsafe {
-            let char = KEYBOARD.assume_init_mut().read_char();
-            if char != "" {
-                print!("{}", char);
-            } else {
-                hlt();
-            }
+            print!("{}", KEYBOARD.assume_init_mut().read_char());
         }
     }
 }
