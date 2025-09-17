@@ -287,7 +287,7 @@ pub struct Pci2PciBridge {
     expansion_rom_base: u32,
     interrupt_line: u8,
     interrupt_pin: u8,
-    bridge_control: u8,
+    bridge_control: u16,
 }
 
 pub union PciDevice {
