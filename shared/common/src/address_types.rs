@@ -1,6 +1,8 @@
 #[cfg(target_arch = "x86_64")]
 use crate::constants::PHYSICAL_MEMORY_OFFSET;
 
+use learnix_macros::CommonAddressFunctions;
+
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Div, DivAssign, From, Mul, MulAssign, Sub, SubAssign,
 };
@@ -21,11 +23,10 @@ use derive_more::{
     AsRef,
     From,
     Copy,
+    CommonAddressFunctions,
 )]
 #[repr(C)]
 pub struct PhysicalAddress(usize);
-
-impl_common_address_functions!(PhysicalAddress);
 
 #[derive(
     Clone,
@@ -43,11 +44,10 @@ impl_common_address_functions!(PhysicalAddress);
     AsRef,
     From,
     Copy,
+    CommonAddressFunctions,
 )]
 #[repr(C)]
 pub struct VirtualAddress(usize);
-
-impl_common_address_functions!(VirtualAddress);
 
 impl VirtualAddress {
     #[allow(arithmetic_overflow)]
