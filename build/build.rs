@@ -18,7 +18,7 @@ fn build_stage(path: &str, target: &str, profile: &str) -> ExitStatus {
             &format!("{}/Cargo.toml", path),
             "--target-dir",
             out_dir.as_os_str().to_str().unwrap(),
-            "--out-dir",
+            "--artifact-dir",
             artifact_dir.as_os_str().to_str().unwrap(),
         ])
         .status() // wait immediately
