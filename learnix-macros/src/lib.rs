@@ -32,7 +32,7 @@ pub fn common_address_functions(input: TokenStream) -> TokenStream {
                 self
             }
             pub const fn alignment(&self) -> core::ptr::Alignment {
-                unsafe { core::ptr:Alignment::new_unchecked(1 << self.0.trailing_zeros()) }
+                unsafe { core::ptr::Alignment::new_unchecked(1 << self.0.trailing_zeros()) }
             }
         }
     };
