@@ -1,3 +1,4 @@
+# ANCHOR: segment-zeroing
 # This will define a boot section for this asm code,
 # which we can put at the start of our binary.
 .section .boot, "awx"
@@ -13,6 +14,7 @@ start:
     mov ss, ax
     mov fs, ax
     mov gs, ax
+# ANCHOR_END: segment-zeroing
 
     # clear the direction flag (e.g. go forward in memory when using
     # instructions like lodsb)
@@ -31,7 +33,7 @@ enable_a20:
 
     # If so, skip the enabling code
     jnz enable_a20_after
-    
+
     # Else, enable the a20 line
     or al, 2
     and al, 0xFE
@@ -50,5 +52,5 @@ check_int13h_extensions:
 .int13_pass:
 
 # push disk number into the stack will be at 0x7bfe and call the first_stage function
-push dx    
+push dx
 call first_stage
