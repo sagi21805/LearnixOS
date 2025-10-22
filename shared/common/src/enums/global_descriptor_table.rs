@@ -8,7 +8,8 @@ pub enum Sections {
     TaskStateSegment = 0x28,
 }
 
-// Directly taken from Intel Software developer manual volume 3.
+// Directly taken from Intel Software developer manual
+// volume 3.
 pub enum SystemSegmentType {
     TaskStateSegmentAvailable = 0b1001,
     CallGate = 0b1100,

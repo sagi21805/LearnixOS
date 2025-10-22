@@ -2,8 +2,8 @@ use core::{alloc::Layout, ptr::Alignment};
 
 use crate::{
     constants::{
-        BIG_PAGE_ALIGNMENT, BIG_PAGE_SIZE, HUGE_PAGE_ALIGNMENT, HUGE_PAGE_SIZE,
-        REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+        BIG_PAGE_ALIGNMENT, BIG_PAGE_SIZE, HUGE_PAGE_ALIGNMENT,
+        HUGE_PAGE_SIZE, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
     error::TableError,
 };
@@ -62,16 +62,24 @@ impl PageSize {
         return (3 - self.clone() as usize) <= table_level.as_usize();
     }
 
-    /// Determines the appropriate `PageSizeAlignment` for a given memory layout.
+    /// Determines the appropriate `PageSizeAlignment` for a
+    /// given memory layout.
     ///
     /// # Parameters
     ///
-    /// - `layout`: A [`Layout`] struct containing the memory size and alignment.
+    /// - `layout`: A [`Layout`] struct containing the memory size and
+    ///   alignment.
     pub const fn from_layout(layout: Layout) -> Option<Self> {
         match layout.align() {
-            val if val == REGULAR_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Regular),
-            val if val == BIG_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Big),
-            val if val == HUGE_PAGE_ALIGNMENT.as_usize() => Some(PageSize::Huge),
+            val if val == REGULAR_PAGE_ALIGNMENT.as_usize() => {
+                Some(PageSize::Regular)
+            }
+            val if val == BIG_PAGE_ALIGNMENT.as_usize() => {
+                Some(PageSize::Big)
+            }
+            val if val == HUGE_PAGE_ALIGNMENT.as_usize() => {
+                Some(PageSize::Huge)
+            }
 
             _ => None,
         }
@@ -105,9 +113,10 @@ impl Into<Layout> for PageSize {
                     REGULAR_PAGE_SIZE,
                     REGULAR_PAGE_ALIGNMENT.as_usize(),
                 ),
-                Self::Big => {
-                    Layout::from_size_align_unchecked(BIG_PAGE_SIZE, BIG_PAGE_ALIGNMENT.as_usize())
-                }
+                Self::Big => Layout::from_size_align_unchecked(
+                    BIG_PAGE_SIZE,
+                    BIG_PAGE_ALIGNMENT.as_usize(),
+                ),
                 Self::Huge => Layout::from_size_align_unchecked(
                     HUGE_PAGE_SIZE,
                     HUGE_PAGE_ALIGNMENT.as_usize(),

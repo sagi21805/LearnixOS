@@ -1,7 +1,9 @@
 #[macro_export]
-/// This macro will obtain `flag_name` and the corresponding `bit_number`
+/// This macro will obtain `flag_name` and the corresponding
+/// `bit_number`
 ///
-/// With this information it will automatically generate three methods
+/// With this information it will automatically generate
+/// three methods
 ///
 /// 1. `set_<flag_name>`: set the bit without returning self
 /// 2. `<flag_name>`: set the bit and will return self

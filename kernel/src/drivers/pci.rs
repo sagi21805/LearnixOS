@@ -1,10 +1,12 @@
 extern crate alloc;
-use crate::memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
+use crate::memory::allocators::page_allocator::{
+    ALLOCATOR, allocator::PhysicalPageAllocator,
+};
 use alloc::vec::Vec;
 use common::{
     enums::{
-        ClassCode, DeviceID, HeaderType, PciDeviceType, Port, ProgrammingInterface, SubClass,
-        VendorDevice, VendorID,
+        ClassCode, DeviceID, HeaderType, PciDeviceType, Port,
+        ProgrammingInterface, SubClass, VendorDevice, VendorID,
     },
     flag,
 };
@@ -16,8 +18,14 @@ pub struct PciConfigurationCycle(u32);
 impl PciConfigurationCycle {
     flag!(enable, 31);
 
-    /// Not checking device max numb er, function max number and offset alignment
-    pub const fn new_unchecked(bus: u8, device: u8, function: u8, offset: u8) -> Self {
+    /// Not checking device max numb er, function max number
+    /// and offset alignment
+    pub const fn new_unchecked(
+        bus: u8,
+        device: u8,
+        function: u8,
+        offset: u8,
+    ) -> Self {
         let config_address: u32 = ((bus as u32) << 16)
             | ((device as u32) << 11)
             | ((function as u32) << 8)
@@ -39,12 +47,25 @@ impl PciConfigurationCycle {
         }
     }
 
-    pub fn read_common_header(bus: u8, device: u8, function: u8) -> PciCommonHeader {
+    pub fn read_common_header(
+        bus: u8,
+        device: u8,
+        function: u8,
+    ) -> PciCommonHeader {
         let mut uninit = PciCommonHeader::empty();
-        let uninit_ptr = &mut uninit as *mut PciCommonHeader as usize as *mut u32;
-        for offset in (0..size_of::<PciCommonHeader>()).step_by(size_of::<u32>()) {
+        let uninit_ptr =
+            &mut uninit as *mut PciCommonHeader as usize as *mut u32;
+        for offset in
+            (0..size_of::<PciCommonHeader>()).step_by(size_of::<u32>())
+        {
             unsafe {
-                let header_data = Self::new_unchecked(bus, device, function, offset as u8).read();
+                let header_data = Self::new_unchecked(
+                    bus,
+                    device,
+                    function,
+                    offset as u8,
+                )
+                .read();
                 uninit_ptr.byte_add(offset).write_volatile(header_data);
             }
         }
@@ -58,12 +79,20 @@ impl PciConfigurationCycle {
         common: PciCommonHeader,
     ) -> PciDevice {
         let mut uninit = PciDevice { common };
-        let uninit_ptr = &mut uninit as *mut PciDevice as usize as *mut u32;
-        for offset in
-            (size_of::<PciCommonHeader>()..size_of::<PciDevice>()).step_by(size_of::<u32>())
+        let uninit_ptr =
+            &mut uninit as *mut PciDevice as usize as *mut u32;
+        for offset in (size_of::<PciCommonHeader>()
+            ..size_of::<PciDevice>())
+            .step_by(size_of::<u32>())
         {
             unsafe {
-                let header_data = Self::new_unchecked(bus, device, function, offset as u8).read();
+                let header_data = Self::new_unchecked(
+                    bus,
+                    device,
+                    function,
+                    offset as u8,
+                )
+                .read();
                 uninit_ptr.byte_add(offset).write_volatile(header_data);
             }
         }
@@ -79,20 +108,23 @@ impl StatusRegister {
     flag!(detected_parity_error, 15);
     // Device asserted SERR
     flag!(signaled_system_error, 14);
-    //Master  Device transaction was terminated by master abort
+    //Master  Device transaction was terminated by master
+    // abort
     flag!(received_master_abort, 13);
-    // Master Device transaction was terminated by target abort
+    // Master Device transaction was terminated by target
+    // abort
     flag!(received_target_abort, 12);
     // Target device terminated by target abort
     flag!(signaled_target_abort, 11);
 
-    // ReadOnly bits which represent the slowest time device will assert DEVSEL
-    // 00 -> fast 01 -> medium 02 -> slow
-    // bits 9-10 devsel
+    // ReadOnly bits which represent the slowest time device
+    // will assert DEVSEL 00 -> fast 01 -> medium 02 ->
+    // slow bits 9-10 devsel
 
     // Parity error detected and handled
     flag!(master_data_parity_error, 8);
-    // Device is capable for fast back transaction not from the same agent
+    // Device is capable for fast back transaction not from
+    // the same agent
     flag!(fast_back2back_capable, 7);
     // Device is able to run at 66mhz
     flag!(capable_66mhz, 5);
@@ -112,14 +144,20 @@ impl CommandRegister {
     flag!(fast_back2back_enable, 9);
     // SERR driver is enabled
     flag!(serr_enable, 8);
-    // If enabled device will take its normal action on parity error
-    // otherwise it will set bit 15 on status register, and will continue operation as normal
+    // If enabled device will take its normal action on
+    // parity error otherwise it will set bit 15 on
+    // status register, and will continue operation as
+    // normal
     flag!(parity_error_response, 6);
-    // Allow device to listen to vga palette writes, and copy them for it own use (Legacy)
+    // Allow device to listen to vga palette writes, and
+    // copy them for it own use (Legacy)
     flag!(vga_palette_snoop, 5);
-    // Allow device to generate memory writes and invalidate commands. Otherwise memory write command must be used.
+    // Allow device to generate memory writes and invalidate
+    // commands. Otherwise memory write command must be
+    // used.
     flag!(memory_write_inval_enable, 4);
-    // Allow device to monitor special cycle, otherwise ignore them
+    // Allow device to monitor special cycle, otherwise
+    // ignore them
     flag!(special_cycles, 3);
     // Allow device to behave as bus master.
     flag!(bus_master, 2);
@@ -194,7 +232,8 @@ pub enum BaseAddressRegisterType {
 
 impl BaseAddressRegister {
     pub fn identify(&self) -> BaseAddressRegisterType {
-        // Doesn't matter which variant we take, they are both u32.
+        // Doesn't matter which variant we take, they are
+        // both u32.
         unsafe {
             if self.memory.0 & 1 == 0 {
                 return BaseAddressRegisterType::Memory;
@@ -298,7 +337,8 @@ pub union PciDevice {
 
 impl PciDevice {
     pub fn identify(&self) -> HeaderType {
-        // Doesn't matter which one we choose, common is the same for all of them in the same offset.
+        // Doesn't matter which one we choose, common is the
+        // same for all of them in the same offset.
         unsafe { self.common.header_type }
     }
 
@@ -309,29 +349,42 @@ impl PciDevice {
 
 pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
     let mut v: Vec<PciDevice, PhysicalPageAllocator> =
-        Vec::with_capacity_in(64, unsafe { ALLOCATOR.assume_init_ref().clone() });
+        Vec::with_capacity_in(64, unsafe {
+            ALLOCATOR.assume_init_ref().clone()
+        });
     for bus in 0..=255 {
         for device in 0..32 {
-            let common = PciConfigurationCycle::read_common_header(bus, device, 0);
+            let common =
+                PciConfigurationCycle::read_common_header(bus, device, 0);
             if common.vendor_device.vendor == VendorID::NonExistent {
                 return v;
             }
-            v.push_within_capacity(PciConfigurationCycle::read_pci_device_header(
-                bus, device, 0, common,
-            ))
-            .unwrap_or_else(|_| panic!("PCI Vec cannot push any more items"));
+            v.push_within_capacity(
+                PciConfigurationCycle::read_pci_device_header(
+                    bus, device, 0, common,
+                ),
+            )
+            .unwrap_or_else(|_| {
+                panic!("PCI Vec cannot push any more items")
+            });
             if !common.header_type.is_multifunction() {
                 continue;
             }
             for function in 1..8 {
-                let common = PciConfigurationCycle::read_common_header(bus, device, function);
+                let common = PciConfigurationCycle::read_common_header(
+                    bus, device, function,
+                );
                 if common.vendor_device.vendor == VendorID::NonExistent {
                     break;
                 }
-                v.push_within_capacity(PciConfigurationCycle::read_pci_device_header(
-                    bus, device, function, common,
-                ))
-                .unwrap_or_else(|_| panic!("PCI Vec cannot push any more items"));
+                v.push_within_capacity(
+                    PciConfigurationCycle::read_pci_device_header(
+                        bus, device, function, common,
+                    ),
+                )
+                .unwrap_or_else(|_| {
+                    panic!("PCI Vec cannot push any more items")
+                });
             }
         }
     }

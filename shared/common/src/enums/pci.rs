@@ -545,7 +545,9 @@ impl core::fmt::Debug for PciDeviceType {
         write!(f, "Class: {:?} ", self.class)?;
         write!(f, "SubClass: ")?;
         match self.class {
-            ClassCode::Unclassified => write!(f, "{:?}", unsafe { self.subclass.unclassified }),
+            ClassCode::Unclassified => {
+                write!(f, "{:?}", unsafe { self.subclass.unclassified })
+            }
             ClassCode::MassStorageController => {
                 write!(f, "{:?}", unsafe { self.subclass.storage })?;
                 write!(f, " ProgIf: ")?;
@@ -586,7 +588,9 @@ impl core::fmt::Debug for PciDeviceType {
                 write!(f, "{:?}", unsafe { self.subclass.multimedia })?;
                 write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
             }
-            ClassCode::MemoryController => write!(f, "{:?}", unsafe { self.subclass.memory }),
+            ClassCode::MemoryController => {
+                write!(f, "{:?}", unsafe { self.subclass.memory })
+            }
             ClassCode::Bridge => {
                 write!(f, "{:?}", unsafe { self.subclass.bridge })?;
                 write!(f, " ProgIf: ")?;
@@ -669,7 +673,9 @@ impl core::fmt::Debug for PciDeviceType {
                     _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
                 }
             }
-            ClassCode::WirelessController => write!(f, "{:?}", unsafe { self.subclass.wireless }),
+            ClassCode::WirelessController => {
+                write!(f, "{:?}", unsafe { self.subclass.wireless })
+            }
             ClassCode::IntelligentController => {
                 write!(f, "{:?} ", unsafe { self.subclass.intelligent })?;
                 write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
@@ -683,7 +689,9 @@ impl core::fmt::Debug for PciDeviceType {
                 write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
             }
             ClassCode::SignalProcessingController => {
-                write!(f, "{:?} ", unsafe { self.subclass.signal_processing })?;
+                write!(f, "{:?} ", unsafe {
+                    self.subclass.signal_processing
+                })?;
                 write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
             }
             ClassCode::ProcessingAccel => {

@@ -10,7 +10,8 @@ use core::{arch::asm, panic};
 use core::{mem::MaybeUninit, ptr};
 
 /// Global reference into the interrupt table
-pub static mut IDT: MaybeUninit<&mut InterruptDescriptorTable> = MaybeUninit::uninit();
+pub static mut IDT: MaybeUninit<&mut InterruptDescriptorTable> =
+    MaybeUninit::uninit();
 
 /// Global TSS segment
 pub static TSS: TaskStateSegment = TaskStateSegment::default();
@@ -20,13 +21,15 @@ use crate::{
     registers::rflags::rflags,
     structures::{
         global_descriptor_table::{
-            GlobalDescriptorTableLong, GlobalDescriptorTableRegister, SystemSegmentDescriptor64,
+            GlobalDescriptorTableLong, GlobalDescriptorTableRegister,
+            SystemSegmentDescriptor64,
         },
         segments::{SegmentSelector, TaskStateSegment},
     },
 };
 
-/// Attributes of an interrupts entry, includes type and privilege level
+/// Attributes of an interrupts entry, includes type and
+/// privilege level
 #[repr(C)]
 #[derive(Clone, Debug, Copy)]
 pub struct InterruptAttributes(u8);
@@ -39,12 +42,16 @@ impl InterruptAttributes {
     flag!(present, 7);
 
     /// Set the type of the interrupt.
-    pub const fn set_type(mut self, interrupt_type: InterruptType) -> Self {
+    pub const fn set_type(
+        mut self,
+        interrupt_type: InterruptType,
+    ) -> Self {
         self.0 |= interrupt_type as u8;
         self
     }
 
-    /// Set the privilege level from where this interrupt can be called.
+    /// Set the privilege level from where this interrupt
+    /// can be called.
     pub const fn set_dpl(mut self, dpl: ProtectionLevel) -> Self {
         self.0 |= (dpl as u8) << 5;
         self
@@ -58,14 +65,19 @@ pub struct InterruptDescriptorTable {
 }
 
 impl InterruptDescriptorTable {
-    /// Initialize the IDT by loading the TSS into the gdt and writing default values to all the entries
+    /// Initialize the IDT by loading the TSS into the gdt
+    /// and writing default values to all the entries
     ///
     /// # Parameters
     ///
     /// - `uninit`: An uninitialized IDT.
     /// - `base_address`: A virtual address that the IDT will be placed on.
-    pub fn init(uninit: &'static mut MaybeUninit<&mut Self>, base_address: VirtualAddress) {
-        let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> = MaybeUninit::uninit();
+    pub fn init(
+        uninit: &'static mut MaybeUninit<&mut Self>,
+        base_address: VirtualAddress,
+    ) {
+        let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
+            MaybeUninit::uninit();
         let gdt = unsafe {
             asm!(
                 "sgdt [{}]",
@@ -74,11 +86,15 @@ impl InterruptDescriptorTable {
             );
 
             // Get gdt from it's register.
-            &mut *(gdt_register.assume_init().base as *mut GlobalDescriptorTableLong)
+            &mut *(gdt_register.assume_init().base
+                as *mut GlobalDescriptorTableLong)
         };
 
         if TSS.iomb() < size_of::<TaskStateSegment>() as u16 {
-            panic!("I/O maps are not supported, change TSS IOMB into number larger then 0x68")
+            panic!(
+                "I/O maps are not supported, change TSS IOMB into number \
+                 larger then 0x68"
+            )
         }
 
         let tss = SystemSegmentDescriptor64::new(
@@ -92,7 +108,9 @@ impl InterruptDescriptorTable {
             ptr::write_volatile(
                 base_address.as_mut_ptr::<Self>(),
                 InterruptDescriptorTable {
-                    interrupts: [const { InterruptDescriptorTableEntry::missing() }; 256],
+                    interrupts: [const {
+                        InterruptDescriptorTableEntry::missing()
+                    }; 256],
                 },
             );
             uninit.write(&mut *base_address.as_mut_ptr::<Self>());
@@ -113,7 +131,8 @@ impl InterruptDescriptorTable {
         }
     }
 
-    /// Set an interrupt handler for a given interrupt without IST
+    /// Set an interrupt handler for a given interrupt
+    /// without IST
     ///
     /// # Parameters
     ///
@@ -155,13 +174,15 @@ pub struct InterruptDescriptorTableEntry {
 }
 
 impl InterruptDescriptorTableEntry {
-    /// Default values for an entry to be counted missing and valid
+    /// Default values for an entry to be counted missing
+    /// and valid
     pub const fn missing() -> Self {
         Self {
             handler_offset_low: 0,
             segment_selector: SegmentSelector::default(),
             ist: InterruptStackTable::None,
-            attributes: InterruptAttributes::default().set_type(InterruptType::Fault),
+            attributes: InterruptAttributes::default()
+                .set_type(InterruptType::Fault),
             handler_offset_mid: 0,
             handler_offset_high: 0,
             zero: 0,
@@ -175,7 +196,8 @@ impl InterruptDescriptorTableEntry {
     /// - `handler_address`: The virtual address of the handler function
     /// - `ist`: The InterruptStackTable index for this entry
     /// - `attributes`: The attributes of the entry
-    /// - `segment_selector`: The segment selector that will be loaded to CS
+    /// - `segment_selector`: The segment selector that will be loaded to
+    ///   CS
     pub fn new(
         handler_address: VirtualAddress,
         ist: InterruptStackTable,
@@ -184,7 +206,8 @@ impl InterruptDescriptorTableEntry {
     ) -> Self {
         let handler_offset_low = handler_address.as_usize() as u16;
         let handler_offset_mid = (handler_address.as_usize() >> 16) as u16;
-        let handler_offset_high = (handler_address.as_usize() >> 32) as u32;
+        let handler_offset_high =
+            (handler_address.as_usize() >> 32) as u32;
         Self {
             handler_offset_low,
             segment_selector,
@@ -204,7 +227,8 @@ pub struct InterruptDescriptorTableRegister {
     pub base: u64,
 }
 
-/// The interrupt stack frame structure that will be given to each interrupt on the stack
+/// The interrupt stack frame structure that will be given
+/// to each interrupt on the stack
 #[repr(C)]
 #[derive(Debug)]
 pub struct InterruptStackFrame {

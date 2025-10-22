@@ -2,10 +2,12 @@ use common::enums::{BiosInterrupts, Disk};
 use core::arch::asm;
 
 // ANCHOR: dap
-// The `repr(C)` means that the layout in memory will be as specified (like in C)
-// because rust ABI doesn't state that this is promised.
+// The `repr(C)` means that the layout in memory will be as
+// specified (like in C) because rust ABI doesn't state that
+// this is promised.
 //
-// The `repr(packed) states that there will no padding due to alignment
+// The `repr(packed) states that there will no padding due
+// to alignment
 #[repr(C, packed)]
 pub struct DiskAddressPacket {
     /// The size of the packet
@@ -29,15 +31,22 @@ pub struct DiskAddressPacket {
 // ANCHOR_END: dap
 
 impl DiskAddressPacket {
+    // ANCHOR: new
     /// Create a new Disk Packet
     ///
     /// # Parameters
     ///
     /// - `num_of_sectors`: The number of sectors to load (Max 128)
-    /// - `memory_address`: The starting memory address of the segment to load the sectors to
+    /// - `memory_address`: The starting memory address of the segment to
+    ///   load the sectors to
     /// - `segment`: The memory segment start address
     /// - `abs_block_num`: The starting sector Logical Block Address (LBA)
-    pub fn new(num_of_sectors: u16, memory_address: u16, segment: u16, abs_block_num: u64) -> Self {
+    pub fn new(
+        num_of_sectors: u16,
+        memory_address: u16,
+        segment: u16,
+        abs_block_num: u64,
+    ) -> Self {
         Self {
             packet_size: size_of::<Self>() as u8,
             zero: 0,
@@ -47,9 +56,11 @@ impl DiskAddressPacket {
             abs_block_num,
         }
     }
+    // ANCHOR_END: new
 
     // ANCHOR: load
-    /// Load the sectors specified in the disk packet to the given memory segment
+    /// Load the sectors specified in the disk packet to the
+    /// given memory segment
     ///
     /// # Parameters
     ///
@@ -67,7 +78,7 @@ impl DiskAddressPacket {
                 in(reg) self as *const Self as u16,
                 const Disk::ExtendedRead as u8,
                 in(reg_byte) disk_number,
-                const BiosInterrupts::DISK as u8,
+                const BiosInterrupts::Disk as u8,
             )
         }
     }

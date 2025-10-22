@@ -1,13 +1,15 @@
 use core::mem::MaybeUninit;
 
-/// The code in this module is inspired from osdev 8259_PIC guide.
+/// The code in this module is inspired from osdev
+/// 8259_PIC guide.
 use common::enums::{
-    CascadedPicInterruptLine, PicCommandCode, PicInterruptLine, PicInterruptVectorOffset, PicMode,
-    Port,
+    CascadedPicInterruptLine, PicCommandCode, PicInterruptLine,
+    PicInterruptVectorOffset, PicMode, Port,
 };
 use cpu_utils::instructions::port::PortExt;
 
-pub static mut PIC: MaybeUninit<CascadedPIC> = MaybeUninit::new(CascadedPIC::default());
+pub static mut PIC: MaybeUninit<CascadedPIC> =
+    MaybeUninit::new(CascadedPIC::default());
 
 struct ProgrammableInterruptController {
     command: Port,
@@ -83,16 +85,16 @@ impl CascadedPIC {
         unsafe {
             let uninitialized = uninit.assume_init_mut();
             // Send initialize command to master
-            uninitialized
-                .master
-                .command
-                .outb(PicCommandCode::Initialize as u8 | PicCommandCode::CascadeMode as u8);
+            uninitialized.master.command.outb(
+                PicCommandCode::Initialize as u8
+                    | PicCommandCode::CascadeMode as u8,
+            );
             Port::iowait();
             // Send initialize command to slave
-            uninitialized
-                .slave
-                .command
-                .outb(PicCommandCode::Initialize as u8 | PicCommandCode::CascadeMode as u8);
+            uninitialized.slave.command.outb(
+                PicCommandCode::Initialize as u8
+                    | PicCommandCode::CascadeMode as u8,
+            );
             Port::iowait();
             // Send IVT offset to master
             uninitialized
@@ -126,10 +128,12 @@ impl CascadedPIC {
     pub fn disable_irq(&mut self, irq: CascadedPicInterruptLine) {
         unsafe {
             if irq as u16 > PicInterruptLine::Irq7 as u16 {
-                let irq: PicInterruptLine = core::mem::transmute(((irq as u16) >> u8::BITS) as u8);
+                let irq: PicInterruptLine =
+                    core::mem::transmute(((irq as u16) >> u8::BITS) as u8);
                 self.slave.disable_irq(irq);
             } else {
-                let irq: PicInterruptLine = core::mem::transmute(irq as u8);
+                let irq: PicInterruptLine =
+                    core::mem::transmute(irq as u8);
                 self.master.disable_irq(irq);
             }
         }
@@ -137,10 +141,12 @@ impl CascadedPIC {
     pub fn enable_irq(&mut self, irq: CascadedPicInterruptLine) {
         unsafe {
             if irq as u16 >= CascadedPicInterruptLine::Irq8 as u16 {
-                let irq: PicInterruptLine = core::mem::transmute(((irq as u16) >> u8::BITS) as u8);
+                let irq: PicInterruptLine =
+                    core::mem::transmute(((irq as u16) >> u8::BITS) as u8);
                 self.slave.enable_irq(irq);
             } else {
-                let irq: PicInterruptLine = core::mem::transmute(irq as u8);
+                let irq: PicInterruptLine =
+                    core::mem::transmute(irq as u8);
                 self.master.enable_irq(irq);
             }
         }

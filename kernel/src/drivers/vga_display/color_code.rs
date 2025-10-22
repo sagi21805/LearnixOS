@@ -35,7 +35,8 @@ impl ColorCode {
         Self((background as u8) << 4 | (foreground as u8))
     }
 
-    /// Create a default color code with white characters in a black background
+    /// Create a default color code with white characters in
+    /// a black background
     pub const fn default() -> Self {
         ColorCode::new(Color::White, Color::Black)
     }

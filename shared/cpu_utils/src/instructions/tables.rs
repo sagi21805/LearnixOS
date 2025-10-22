@@ -2,13 +2,17 @@ use core::arch::asm;
 
 #[cfg(target_arch = "x86_64")]
 use crate::structures::{
-    global_descriptor_table::{GlobalDescriptorTableLong, GlobalDescriptorTableRegister},
+    global_descriptor_table::{
+        GlobalDescriptorTableLong, GlobalDescriptorTableRegister,
+    },
     interrupt_descriptor_table::InterruptDescriptorTableRegister,
     segments::SegmentSelector,
 };
 #[cfg(target_arch = "x86")]
 use crate::structures::{
-    global_descriptor_table::{GlobalDescriptorTableProtected, GlobalDescriptorTableRegister},
+    global_descriptor_table::{
+        GlobalDescriptorTableProtected, GlobalDescriptorTableRegister,
+    },
     segments::SegmentSelector,
 };
 use core::mem::MaybeUninit;
@@ -36,7 +40,8 @@ pub unsafe fn lidt(idtr: &InterruptDescriptorTableRegister) {
 
 #[cfg(target_arch = "x86")]
 pub unsafe fn sgdt() -> &'static GlobalDescriptorTableProtected {
-    let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> = MaybeUninit::uninit();
+    let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
+        MaybeUninit::uninit();
     unsafe {
         asm!(
             "sgdt [{}]",
@@ -45,13 +50,15 @@ pub unsafe fn sgdt() -> &'static GlobalDescriptorTableProtected {
         );
 
         // Get gdt from it's register.
-        &mut *(gdt_register.assume_init().base as *mut GlobalDescriptorTableProtected)
+        &mut *(gdt_register.assume_init().base
+            as *mut GlobalDescriptorTableProtected)
     }
 }
 
 #[cfg(target_arch = "x86_64")]
 pub unsafe fn sgdt() -> &'static GlobalDescriptorTableLong {
-    let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> = MaybeUninit::uninit();
+    let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
+        MaybeUninit::uninit();
     unsafe {
         asm!(
             "sgdt [{}]",
@@ -60,7 +67,8 @@ pub unsafe fn sgdt() -> &'static GlobalDescriptorTableLong {
         );
 
         // Get gdt from it's register.
-        &mut *(gdt_register.assume_init().base as *mut &GlobalDescriptorTableLong)
+        &mut *(gdt_register.assume_init().base
+            as *mut &GlobalDescriptorTableLong)
     }
 }
 

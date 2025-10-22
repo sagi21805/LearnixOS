@@ -9,7 +9,8 @@ use cpu_utils::instructions::port::PortExt;
 
 /// Writer implementation for the VGA driver.
 ///
-/// This implementation will help track the wanted position to write to the screen
+/// This implementation will help track the wanted position
+/// to write to the screen
 pub struct Writer {
     pub cursor_position: usize,
     pub color: ColorCode,
@@ -26,7 +27,8 @@ impl Writer {
         }
     }
 
-    /// Writes the given `char` to the screen with the color stored in self
+    /// Writes the given `char` to the screen with the color
+    /// stored in self
     ///
     /// # Parameters
     ///
@@ -69,7 +71,8 @@ impl Writer {
             // Fill remaining place with empty characters
             for i in 0..SCREEN_WIDTH {
                 ptr::write_volatile(
-                    (VGA_BUFFER_PTR as *mut ScreenChar).add(lines_index + i),
+                    (VGA_BUFFER_PTR as *mut ScreenChar)
+                        .add(lines_index + i),
                     ScreenChar::default(),
                 );
             }
@@ -78,7 +81,8 @@ impl Writer {
     }
 
     fn new_line(&mut self) {
-        self.cursor_position += SCREEN_WIDTH - (self.cursor_position % SCREEN_WIDTH)
+        self.cursor_position +=
+            SCREEN_WIDTH - (self.cursor_position % SCREEN_WIDTH)
     }
 
     fn backspace(&mut self) {
@@ -99,7 +103,8 @@ impl Writer {
         }
     }
 
-    /// Clears the screen by setting all of the buffer bytes to zero
+    /// Clears the screen by setting all of the buffer bytes
+    /// to zero
     fn clear(&mut self) {
         unsafe {
             for i in 0..(SCREEN_WIDTH * SCREEN_HEIGHT) {
@@ -114,15 +119,19 @@ impl Writer {
 }
 
 impl core::fmt::Write for Writer {
-    /// Print the given string to the string with the color in self
+    /// Print the given string to the string with the color
+    /// in self
     ///
     /// # Parameters
     ///
-    /// - `str`: The string that will be printed to the screen with the color in self
+    /// - `str`: The string that will be printed to the screen with the
+    ///   color in self
     ///
     /// # Safety
-    /// THIS FUNCTION IS NOT THREAD SAFE AND NOT MARKED UNSAFE BECAUSE OF TRAIT IMPLEMENTATION!
-    /// THE FUNCTION WILL ADD LOCK AND WILL BE SAFE IN THE FUTURE
+    /// THIS FUNCTION IS NOT THREAD SAFE AND NOT MARKED
+    /// UNSAFE BECAUSE OF TRAIT IMPLEMENTATION!
+    /// THE FUNCTION WILL ADD LOCK AND WILL BE SAFE IN THE
+    /// FUTURE
     ///
     /// TODO: use lock in the future
     fn write_str(&mut self, str: &str) -> core::fmt::Result {

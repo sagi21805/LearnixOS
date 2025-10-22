@@ -25,12 +25,14 @@ pub fn vga_print(color: Option<ColorCode>, args: fmt::Arguments<'_>) {
     }
 }
 
-/// Prints formatted text to the VGA display without a newline.
+/// Prints formatted text to the VGA display without a
+/// newline.
 ///
 /// # Parameters
 /// - `$fmt`: The format string.
 /// - `$arg`: Optional arguments to interpolate into the format string.
-/// - `color = $color`: Optional named parameter to change the VGA text color for this print.
+/// - `color = $color`: Optional named parameter to change the VGA text
+///   color for this print.
 #[macro_export]
 macro_rules! print {
     // Case 1: Standard print with optional arguments.
@@ -44,8 +46,9 @@ macro_rules! print {
     }};
 }
 
-/// Prints formatted text followed by a newline to the VGA display.
-/// Same as the [`print!`] macro just with a `\n` attached to the end
+/// Prints formatted text followed by a newline to the VGA
+/// display. Same as the [`print!`] macro just with a `\n`
+/// attached to the end
 #[macro_export]
 macro_rules! println {
     // Case 1: Standard println with optional arguments.
@@ -58,7 +61,8 @@ macro_rules! println {
     };
 }
 
-/// Prints a standardized failure message in red color with optional formatting and message color.
+/// Prints a standardized failure message in red color with
+/// optional formatting and message color.
 #[macro_export]
 macro_rules! fail_msg {
     // Case 1: Print "FAIL" with formatted message.
@@ -80,7 +84,8 @@ macro_rules! fail_msg {
     }};
 }
 
-/// Prints a standardized success message in green color with optional formatting and message color.
+/// Prints a standardized success message in green color
+/// with optional formatting and message color.
 #[macro_export]
 macro_rules! ok_msg {
     // Case 1: Print "OK" with formatted message.

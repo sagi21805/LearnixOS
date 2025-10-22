@@ -1,6 +1,6 @@
 use crate::registers::macros::{
-    impl_reg_read_write_u8, impl_reg_read_write_u16, impl_reg_read_write_u32,
-    impl_reg_read_write_u64,
+    impl_reg_read_write_u8, impl_reg_read_write_u16,
+    impl_reg_read_write_u32, impl_reg_read_write_u64,
 };
 
 // A register

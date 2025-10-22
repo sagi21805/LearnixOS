@@ -11,12 +11,14 @@ macro_rules! parsed_memory_map {
         unsafe {
             ::core::slice::from_raw_parts_mut(
                 common::address_types::PhysicalAddress::new_unchecked(
-                    common::constants::addresses::PARSED_MEMORY_MAP_OFFSET as usize,
+                    common::constants::addresses::PARSED_MEMORY_MAP_OFFSET
+                        as usize,
                 )
                 .translate()
                 .as_mut_ptr::<crate::memory::memory_map::MemoryRegion>(),
                 *(common::address_types::PhysicalAddress::new_unchecked(
-                    common::constants::addresses::PARSED_MEMORY_MAP_LENGTH as usize,
+                    common::constants::addresses::PARSED_MEMORY_MAP_LENGTH
+                        as usize,
                 )
                 .translate()
                 .as_mut_ptr::<u32>()) as usize,
@@ -102,7 +104,9 @@ impl MemoryRegionTrait for MemoryRegionExtended {
     }
 }
 
-pub struct ParsedMapDisplay<T: MemoryRegionTrait + 'static>(pub &'static [T]);
+pub struct ParsedMapDisplay<T: MemoryRegionTrait + 'static>(
+    pub &'static [T],
+);
 
 impl<T: MemoryRegionTrait> Display for ParsedMapDisplay<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -111,7 +115,8 @@ impl<T: MemoryRegionTrait> Display for ParsedMapDisplay<T> {
 
         for entry in self.0 {
             let size_mib = entry.length() / MiB as u64;
-            let size_kib = (entry.length() - (size_mib * MiB as u64)) / KiB as u64;
+            let size_kib =
+                (entry.length() - (size_mib * MiB as u64)) / KiB as u64;
 
             write!(
                 f,
@@ -124,11 +129,19 @@ impl<T: MemoryRegionTrait> Display for ParsedMapDisplay<T> {
             match entry.region_type() {
                 MemoryRegionType::Usable => {
                     usable += entry.length();
-                    writeln!(f, " (Size: {:>4} MiB{:>4} KiB)", size_mib, size_kib)?;
+                    writeln!(
+                        f,
+                        " (Size: {:>4} MiB{:>4} KiB)",
+                        size_mib, size_kib
+                    )?;
                 }
                 MemoryRegionType::Reserved => {
                     reserved += entry.length();
-                    writeln!(f, " (Size: {:>4} MiB{:>4} KiB)", size_mib, size_kib)?;
+                    writeln!(
+                        f,
+                        " (Size: {:>4} MiB{:>4} KiB)",
+                        size_mib, size_kib
+                    )?;
                 }
                 _ => writeln!(f)?,
             }
@@ -153,12 +166,15 @@ impl<T: MemoryRegionTrait> Display for ParsedMapDisplay<T> {
     }
 }
 
-/// This function will parse the memory map provided by the bios
+/// This function will parse the memory map provided by the
+/// bios
 ///
-/// This memory map is provided in the constatnt address of the global [`MEMORY_MAP_OFFSET`]
+/// This memory map is provided in the constatnt address of
+/// the global [`MEMORY_MAP_OFFSET`]
 ///
-/// The generated output will be saved to [`PARSED_MEMORY_MAP_OFFSET`],
-/// and will include non gapped, organized entries of type [`MemoryRegion`]
+/// The generated output will be saved to
+/// [`PARSED_MEMORY_MAP_OFFSET`], and will include non
+/// gapped, organized entries of type [`MemoryRegion`]
 pub fn parse_map() {
     let memory_map = raw_memory_map!();
     let mut range_count = 0;
@@ -167,14 +183,18 @@ pub fn parse_map() {
         unsafe {
             match (region.region_type, matched.region_type) {
                 (MemoryRegionType::Usable, MemoryRegionType::Usable) => {
-                    if region.base_address > (matched.base_address + matched.length) {
+                    if region.base_address
+                        > (matched.base_address + matched.length)
+                    {
                         write_region!(
                             range_count,
                             MemoryRegion {
-                                ..(*(&matched as *const _ as *const MemoryRegion))
+                                ..(*(&matched as *const _
+                                    as *const MemoryRegion))
                             }
                         );
-                        let inter_base = matched.base_address + matched.length;
+                        let inter_base =
+                            matched.base_address + matched.length;
                         write_region!(
                             range_count,
                             MemoryRegion {
@@ -186,15 +206,21 @@ pub fn parse_map() {
                     }
                     matched = *region;
                 }
-                (MemoryRegionType::Reserved, MemoryRegionType::Reserved) => {
-                    matched.length = (region.base_address + region.length) - matched.base_address;
+                (
+                    MemoryRegionType::Reserved,
+                    MemoryRegionType::Reserved,
+                ) => {
+                    matched.length = (region.base_address + region.length)
+                        - matched.base_address;
                 }
                 (MemoryRegionType::Usable, MemoryRegionType::Reserved)
-                | (MemoryRegionType::Reserved, MemoryRegionType::Usable) => {
+                | (MemoryRegionType::Reserved, MemoryRegionType::Usable) =>
+                {
                     write_region!(
                         range_count,
                         MemoryRegion {
-                            ..(*(&matched as *const _ as *const MemoryRegion))
+                            ..(*(&matched as *const _
+                                as *const MemoryRegion))
                         }
                     );
                     matched = *region;

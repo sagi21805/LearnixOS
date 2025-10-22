@@ -19,16 +19,22 @@ impl PageTable {
     #[inline]
     pub const fn empty() -> Self {
         Self {
-            entries: [const { PageTableEntry::empty() }; PAGE_DIRECTORY_ENTRIES],
+            entries: [const { PageTableEntry::empty() };
+                PAGE_DIRECTORY_ENTRIES],
         }
     }
     #[inline]
-    pub unsafe fn empty_from_ptr(page_table_ptr: VirtualAddress) -> Option<&'static mut PageTable> {
+    pub unsafe fn empty_from_ptr(
+        page_table_ptr: VirtualAddress,
+    ) -> Option<&'static mut PageTable> {
         if !page_table_ptr.is_aligned(REGULAR_PAGE_ALIGNMENT) {
             return None;
         }
         unsafe {
-            ptr::write_volatile(page_table_ptr.as_mut_ptr::<PageTable>(), PageTable::empty());
+            ptr::write_volatile(
+                page_table_ptr.as_mut_ptr::<PageTable>(),
+                PageTable::empty(),
+            );
             return Some(&mut *page_table_ptr.as_mut_ptr::<PageTable>());
         }
     }
@@ -44,7 +50,9 @@ impl PageTable {
     #[inline]
     #[cfg(target_arch = "x86_64")]
     pub fn address(&self) -> VirtualAddress {
-        unsafe { VirtualAddress::new_unchecked(self as *const Self as usize) }
+        unsafe {
+            VirtualAddress::new_unchecked(self as *const Self as usize)
+        }
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -62,7 +70,9 @@ impl PageTable {
                     }
                     return (i, Some(v));
                 }
-                Err(EntryError::NoMapping) => return (i, None),
+                Err(EntryError::NoMapping) => {
+                    return (i, None);
+                }
                 Err(EntryError::NotATable) => continue,
             }
         }
@@ -71,7 +81,9 @@ impl PageTable {
 
     /// Find an avavilable page.
     #[cfg(target_arch = "x86_64")]
-    pub fn find_available_page(page_size: PageSize) -> Result<VirtualAddress, TableError> {
+    pub fn find_available_page(
+        page_size: PageSize,
+    ) -> Result<VirtualAddress, TableError> {
         const LEVELS: usize = 4;
         let mut level_indices = [0usize; LEVELS];
         let mut page_tables = [Self::current_table(); LEVELS];
@@ -95,7 +107,9 @@ impl PageTable {
                 }
                 (i, None) => {
                     level_indices[current_level.as_usize()] = i;
-                    return Ok(VirtualAddress::from_indices(level_indices));
+                    return Ok(VirtualAddress::from_indices(
+                        level_indices,
+                    ));
                 }
             };
             let next_level = current_level
