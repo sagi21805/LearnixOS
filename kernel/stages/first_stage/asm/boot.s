@@ -1,4 +1,4 @@
-// ANCHOR: segment-zeroing
+// ANCHOR: segment
 //; This will define a boot section for this asm code,
 //; which we can put at the start of our binary.
 .section .boot, "awx"
@@ -14,7 +14,7 @@ start:
     mov ss, ax
     mov fs, ax
     mov gs, ax
-// ANCHOR_END: segment-zeroing
+// ANCHOR_END: segment
 
     //; clear the direction flag (e.g. go forward in memory when using
     //; instructions like lodsb)
