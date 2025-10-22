@@ -20,12 +20,14 @@ pub unsafe extern "C" fn _start() -> ! {
     // Set data segment register
     asm!("mov eax, 0x10", "mov ds, eax",);
 
-    // Enable paging and load page tables with an identity mapping
+    // Enable paging and load page tables with an identity
+    // mapping
     #[cfg(target_arch = "x86")]
     cpu_utils::structures::paging::enable();
     // Load the global descriptor table for long mode
     GLOBAL_DESCRIPTOR_TABLE_LONG_MODE.load();
-    // Update global descriptor table to enable long mode and jump to kernel code
+    // Update global descriptor table to enable long mode
+    // and jump to kernel code
     asm!(
         "ljmp ${section}, ${next_stage}",
         section = const Sections::KernelCode as u8,

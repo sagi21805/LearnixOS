@@ -4,9 +4,11 @@ pub const SECOND_STAGE_OFFSET: u32 = FIRST_STAGE_OFFSET + 512;
 pub const DISK_NUMBER_OFFSET: u16 = 0x7BFE;
 pub const VGA_BUFFER_PTR: u32 = 0xb8000;
 pub const MEMORY_MAP_LENGTH: u16 = 0x9000;
-pub const MEMORY_MAP_OFFSET: u16 = MEMORY_MAP_LENGTH + size_of::<u32>() as u16;
+pub const MEMORY_MAP_OFFSET: u16 =
+    MEMORY_MAP_LENGTH + size_of::<u32>() as u16;
 pub const PARSED_MEMORY_MAP_LENGTH: u16 = 0xa000;
-pub const PARSED_MEMORY_MAP_OFFSET: u16 = PARSED_MEMORY_MAP_LENGTH + size_of::<u32>() as u16;
+pub const PARSED_MEMORY_MAP_OFFSET: u16 =
+    PARSED_MEMORY_MAP_LENGTH + size_of::<u32>() as u16;
 pub const IDENTITY_PAGE_TABLE_L4_OFFSET: usize = 0xb000;
 pub const IDENTITY_PAGE_TABLE_L3_OFFSET: usize = 0xc000;
 pub const IDENTITY_PAGE_TABLE_L2_OFFSET: usize = 0xd000;

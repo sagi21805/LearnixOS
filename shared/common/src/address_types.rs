@@ -4,7 +4,8 @@ use crate::constants::PHYSICAL_MEMORY_OFFSET;
 use learnix_macros::CommonAddressFunctions;
 
 use derive_more::{
-    Add, AddAssign, AsMut, AsRef, Div, DivAssign, From, Mul, MulAssign, Sub, SubAssign,
+    Add, AddAssign, AsMut, AsRef, Div, DivAssign, From, Mul, MulAssign,
+    Sub, SubAssign,
 };
 
 #[derive(
@@ -51,7 +52,12 @@ pub struct VirtualAddress(usize);
 
 impl VirtualAddress {
     #[allow(arithmetic_overflow)]
-    pub const fn from_indexes(i4: usize, i3: usize, i2: usize, i1: usize) -> Self {
+    pub const fn from_indexes(
+        i4: usize,
+        i3: usize,
+        i2: usize,
+        i1: usize,
+    ) -> Self {
         Self((i4 << 39) | (i3 << 30) | (i2 << 21) | (i1 << 12) | 0)
     }
 
@@ -87,17 +93,19 @@ impl VirtualAddress {
     }
 
     // pub fn translate(&self) -> Option<PhysicalAddress> {
-    //     let mut current_table = PageTable::current_table();
-    //     for i in 0..4 {
+    //     let mut current_table =
+    // PageTable::current_table();     for i in 0..4 {
     //         let index = self.rev_nth_index_unchecked(i);
-    //         match current_table.entries[index].mapped_table_mut() {
+    //         match
+    // current_table.entries[index].mapped_table_mut() {
     //             Ok(table) => current_table = table,
     //             Err(EntryError::NotATable) => {
-    //                 return unsafe { Some(current_table.entries[index].mapped_unchecked()) };
-    //             }
-    //             Err(EntryError::NoMapping) => return None,
-    //             Err(EntryError::Full) => unreachable!(),
-    //         }
+    //                 return unsafe {
+    // Some(current_table.entries[index].mapped_unchecked())
+    // };             }
+    //             Err(EntryError::NoMapping) => return
+    // None,             Err(EntryError::Full) =>
+    // unreachable!(),         }
     //     }
     //     None
     // }

@@ -16,9 +16,10 @@ pub struct CpuidResult {
 
 /// Query the cpu about certain parameters
 ///
-/// Adapted from Rust's core CPUID implementation (MIT/Apache-2.0).
-/// Upstream attribution retained; minor adjustment for our no_std layout
-/// See LICENSE-MIT and LICENSE-APACHE at the repository root.
+/// Adapted from Rust's core CPUID implementation
+/// (MIT/Apache-2.0). Upstream attribution retained; minor
+/// adjustment for our no_std layout See LICENSE-MIT and
+/// LICENSE-APACHE at the repository root.
 pub unsafe fn cpuid(query: CpuidQuery) -> CpuidResult {
     let eax;
     let ebx;
@@ -27,8 +28,9 @@ pub unsafe fn cpuid(query: CpuidQuery) -> CpuidResult {
 
     let query_registers = query.registers();
 
-    // LLVM sometimes reserves `ebx` for its internal use, we so we need to use
-    // a scratch register for it instead.
+    // LLVM sometimes reserves `ebx` for its internal use,
+    // we so we need to use a scratch register for it
+    // instead.
     unsafe {
         #[cfg(target_arch = "x86")]
         {

@@ -84,8 +84,12 @@ pub enum CpuidQuery {
 impl CpuidQuery {
     pub const fn registers(self) -> QueryRegisters {
         match self {
-            CpuidQuery::GetVendorString => QueryRegisters { eax: 0, ecx: 0 },
-            CpuidQuery::GetCpuFeatures => QueryRegisters { eax: 1, ecx: 0 },
+            CpuidQuery::GetVendorString => {
+                QueryRegisters { eax: 0, ecx: 0 }
+            }
+            CpuidQuery::GetCpuFeatures => {
+                QueryRegisters { eax: 1, ecx: 0 }
+            }
         }
     }
 }

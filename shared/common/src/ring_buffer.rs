@@ -8,12 +8,18 @@ pub struct RingBuffer<T: 'static + Clone + Copy> {
 }
 
 impl<T: 'static + Clone + Copy> RingBuffer<T> {
-    pub fn new(buffer_address: VirtualAddress, length: NonZeroUsize) -> Self {
+    pub fn new(
+        buffer_address: VirtualAddress,
+        length: NonZeroUsize,
+    ) -> Self {
         Self {
             read_idx: 0,
             write_idx: 0,
             buffer: unsafe {
-                slice::from_raw_parts_mut(buffer_address.as_mut_ptr::<T>(), length.get())
+                slice::from_raw_parts_mut(
+                    buffer_address.as_mut_ptr::<T>(),
+                    length.get(),
+                )
             },
         }
     }

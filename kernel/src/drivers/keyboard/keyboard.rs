@@ -1,6 +1,9 @@
 use core::{mem::MaybeUninit, num::NonZero};
 
-use common::{address_types::VirtualAddress, enums::PS2ScanCode, flag, ring_buffer::RingBuffer};
+use common::{
+    address_types::VirtualAddress, enums::PS2ScanCode, flag,
+    ring_buffer::RingBuffer,
+};
 
 pub struct KeyboardFlags(u8);
 
@@ -22,7 +25,11 @@ pub struct Keyboard {
 }
 
 impl Keyboard {
-    pub fn init(uninit: &mut MaybeUninit<Self>, buffer: VirtualAddress, length: NonZero<usize>) {
+    pub fn init(
+        uninit: &mut MaybeUninit<Self>,
+        buffer: VirtualAddress,
+        length: NonZero<usize>,
+    ) {
         uninit.write(Keyboard {
             buffer: RingBuffer::new(buffer, length),
             flags: KeyboardFlags::default(),
@@ -33,7 +40,8 @@ impl Keyboard {
         self.buffer.read()
     }
 
-    /// TODO change in the future to just return the relevant asscii code and not a long str
+    /// TODO change in the future to just return the
+    /// relevant asscii code and not a long str
     pub fn read_char(&mut self) -> &'static str {
         let key = match self.read_raw_scancode() {
             Some(scancode) => PS2ScanCode::from_scancode(scancode),

@@ -27,7 +27,7 @@ use crate::{
         keyboard::{KEYBOARD, keyboard::Keyboard},
         pci::{self},
         pic8259::{CascadedPIC, PIC},
-        vga_display::color_code::Color,
+        vga_display::color_code::{Color, ColorCode},
     },
     memory::memory_map::{ParsedMapDisplay, parse_map},
 };
@@ -38,9 +38,13 @@ use common::{
 };
 use cpu_utils::{
     instructions::interrupts::{self},
-    structures::interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
+    structures::interrupt_descriptor_table::{
+        IDT, InterruptDescriptorTable,
+    },
 };
-use memory::allocators::page_allocator::{ALLOCATOR, allocator::PhysicalPageAllocator};
+use memory::allocators::page_allocator::{
+    ALLOCATOR, allocator::PhysicalPageAllocator,
+};
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -100,8 +104,12 @@ pub unsafe extern "C" fn _start() -> Result<!, AllocError> {
             }
         }
         match device.identify() {
-            HeaderType::GeneralDevice => println!("{:#?}", unsafe { device.common }),
-            _ => println!("{:#?}", unsafe { device.common }),
+            HeaderType::GeneralDevice => {
+                println!("{:#?}", unsafe { device.common })
+            }
+            _ => {
+                println!("{:#?}", unsafe { device.common })
+            }
         }
     }
     loop {

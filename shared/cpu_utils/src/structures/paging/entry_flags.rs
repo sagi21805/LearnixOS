@@ -15,11 +15,14 @@ macro_rules! table_entry_flags {
         // Disable cache for this page
         common::flag!(disable_cache, 4);
 
-        // This flag can help identifying if an entry is the last one, or it is pointing to another directory
-        // Is this page points to a custom memory address and not a page table?
+        // This flag can help identifying if an entry is the
+        // last one, or it is pointing to another directory
+        // Is this page points to a custom memory address
+        // and not a page table?
         common::flag!(huge_page, 7);
 
-        // Page isn’t flushed from caches on address space switch (PGE bit of CR4 register must be set)
+        // Page isn’t flushed from caches on address space
+        // switch (PGE bit of CR4 register must be set)
         common::flag!(global, 8);
 
         // mark a table as full

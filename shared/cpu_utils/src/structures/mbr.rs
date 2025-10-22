@@ -1,6 +1,7 @@
 #[repr(C, packed)]
 pub struct PartitionTableEntry {
-    /// Boot indicator bit flag: 0 = no, 0x80 = bootable (or "active").
+    /// Boot indicator bit flag: 0 = no, 0x80 = bootable
+    /// (or "active").
     pub bootable: u8,
 
     /// Starting head of the partition.
@@ -20,7 +21,8 @@ pub struct PartitionTableEntry {
     /// Bits 6-16 are the ending cylinder.    
     pub sector_cylinder_head: u16,
 
-    /// Relative Sector (to start of partition -- also equals the partition's starting LBA value)
+    /// Relative Sector (to start of partition -- also
+    /// equals the partition's starting LBA value)
     pub relative_sector: u32,
 
     /// Total Sectors in partition

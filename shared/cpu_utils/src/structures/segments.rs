@@ -19,12 +19,14 @@ impl SegmentSelector {
         self
     }
 
-    // Use the local descriptor table instead of the global descriptor table
+    // Use the local descriptor table instead of the global
+    // descriptor table
     flag!(use_local_descriptor_table, 2);
 
     /// Set the index in the table
     ///
-    /// **Note:** If a system segment is in the table, it should be counted as occupying two indices
+    /// **Note:** If a system segment is in the table, it
+    /// should be counted as occupying two indices
     pub const fn set_table_index(mut self, index: u16) -> Self {
         self.0 |= index << 3;
         self
@@ -50,13 +52,15 @@ impl SegmentSelector {
 #[repr(C, packed)]
 pub struct TaskStateSegment {
     _reserved0: u32,
-    /// Privileged stack pointers that can be used on interrupt from higher privilege
+    /// Privileged stack pointers that can be used on
+    /// interrupt from higher privilege
     priv_stack_ptr: [VirtualAddress; 3],
     _reserved1: u64,
     int_stack_table: [VirtualAddress; 7],
     _reserved2: u64,
     _reserved3: u16,
-    /// An offset from the base address of this struct to the I/O map
+    /// An offset from the base address of this struct to
+    /// the I/O map
     io_map_offset: u16,
 }
 
@@ -73,8 +77,10 @@ impl TaskStateSegment {
             _reserved1: 0,
             _reserved2: 0,
             _reserved3: 0,
-            priv_stack_ptr: [unsafe { VirtualAddress::new_unchecked(0) }; 3],
-            int_stack_table: [unsafe { VirtualAddress::new_unchecked(0) }; 7],
+            priv_stack_ptr: [unsafe { VirtualAddress::new_unchecked(0) };
+                3],
+            int_stack_table: [unsafe { VirtualAddress::new_unchecked(0) };
+                7],
             io_map_offset: size_of::<Self>() as u16,
         }
     }

@@ -45,8 +45,9 @@ impl rflags {
     flag!(cpuid_support, 21);
 
     pub unsafe fn write(&mut self, flags: Self) {
-        // HACK: we mark this function as preserves_flags to prevent Rust from restoring
-        // saved flags after the "popf" below.
+        // HACK: we mark this function as preserves_flags to
+        // prevent Rust from restoring saved flags
+        // after the "popf" below.
         unsafe {
             asm!(
                 "push {}",

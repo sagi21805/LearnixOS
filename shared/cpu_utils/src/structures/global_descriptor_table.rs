@@ -18,8 +18,9 @@ impl AccessByte {
     flag!(present, 7);
 
     /// Sets the privilege level while returning self.
-    /// This is corresponding to the cpu ring of this segment
-    /// 0 is commonly called kernel mode, 4 is commonly called user mode
+    /// This is corresponding to the cpu ring of this
+    /// segment 0 is commonly called kernel mode, 4 is
+    /// commonly called user mode
     pub const fn dpl(mut self, level: ProtectionLevel) -> Self {
         self.0 |= (level as u8) << 5;
         self
@@ -27,8 +28,12 @@ impl AccessByte {
 
     /// Set the type for a system segment.
     ///
-    /// **Note:** This function is relevant only for system segments
-    pub const fn set_system_type(mut self, system_type: SystemSegmentType) -> Self {
+    /// **Note:** This function is relevant only for system
+    /// segments
+    pub const fn set_system_type(
+        mut self,
+        system_type: SystemSegmentType,
+    ) -> Self {
         self.0 |= system_type as u8;
         self
     }
@@ -40,8 +45,8 @@ impl AccessByte {
     // Will the segment grow downwards?
     // relevant for non executable segments
     flag!(direction, 2);
-    // Can this code be executed from lower privilege segments.
-    // relevant to executable segments
+    // Can this code be executed from lower privilege
+    // segments. relevant to executable segments
     flag!(conforming, 2);
     // Can this segment be read or it is only executable?
     // relevant for code segment
@@ -54,7 +59,8 @@ impl AccessByte {
 struct LimitFlags(u8);
 
 impl LimitFlags {
-    /// Creates a default limit flags with all flags turned off.
+    /// Creates a default limit flags with all flags turned
+    /// off.
     pub const fn new() -> Self {
         Self(0)
     }
@@ -62,7 +68,8 @@ impl LimitFlags {
     flag!(granularity, 7);
     // Is this segment going to use 32bit mode?
     flag!(protected, 6);
-    // Set long mode flag, this will also clear protected mode
+    // Set long mode flag, this will also clear protected
+    // mode
     flag!(long, 5);
 }
 
@@ -98,7 +105,12 @@ impl GlobalDescriptorTableEntry32 {
     /// - `limit`: The size of the segment
     /// - `access_byte`: The type and access privileges of the entry
     /// - `flags`: Configuration flags of the entry
-    pub const fn new(base: u32, limit: u32, access_byte: AccessByte, flags: LimitFlags) -> Self {
+    pub const fn new(
+        base: u32,
+        limit: u32,
+        access_byte: AccessByte,
+        flags: LimitFlags,
+    ) -> Self {
         let base_low = (base & 0xffff) as u16;
         let base_mid = ((base >> 0x10) & 0xff) as u8;
         let base_high = ((base >> 0x18) & 0xff) as u8;
@@ -157,10 +169,15 @@ impl SystemSegmentDescriptor64 {
     /// # Parameters
     ///
     /// - `base`: The base address of the segment
-    /// - `limit`: The limit value of the segment, for each segment this may mean
+    /// - `limit`: The limit value of the segment, for each segment this
+    ///   may mean
     /// something different.
     /// - `segment_type`: The type of the constructed segment
-    pub const fn new(base: u64, limit: u32, segment_type: SystemSegmentType) -> Self {
+    pub const fn new(
+        base: u64,
+        limit: u32,
+        segment_type: SystemSegmentType,
+    ) -> Self {
         let base_low = (base & 0xffff) as u16;
         let base_mid = ((base >> 16) & 0xff) as u8;
         let base_high = ((base >> 24) & 0xff) as u8;
@@ -195,7 +212,8 @@ pub struct GlobalDescriptorTableProtected {
 }
 
 impl GlobalDescriptorTableProtected {
-    /// Creates default global descriptor table for protected mode
+    /// Creates default global descriptor table for
+    /// protected mode
     pub const fn default() -> Self {
         Self {
             null: GlobalDescriptorTableEntry32::empty(),
@@ -249,7 +267,8 @@ pub struct GlobalDescriptorTableLong {
 }
 
 impl GlobalDescriptorTableLong {
-    /// Creates default global descriptor table for long mode
+    /// Creates default global descriptor table for long
+    /// mode
     pub const fn default() -> Self {
         Self {
             null: GlobalDescriptorTableEntry32::empty(),
