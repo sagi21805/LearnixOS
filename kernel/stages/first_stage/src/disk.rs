@@ -31,7 +31,6 @@ pub struct DiskAddressPacket {
 // ANCHOR_END: dap
 
 impl DiskAddressPacket {
-    // ANCHOR: new
     /// Create a new Disk Packet
     ///
     /// # Parameters
@@ -41,6 +40,7 @@ impl DiskAddressPacket {
     ///   load the sectors to
     /// - `segment`: The memory segment start address
     /// - `abs_block_num`: The starting sector Logical Block Address (LBA)
+    // ANCHOR: new
     pub fn new(
         num_of_sectors: u16,
         memory_address: u16,
@@ -48,32 +48,49 @@ impl DiskAddressPacket {
         abs_block_num: u64,
     ) -> Self {
         Self {
+            // The size of the packet
             packet_size: size_of::<Self>() as u8,
+            // zero
             zero: 0,
+            // Number of sectors to read, this can be a max of 128 sectors.
+            // This is because the address increments every time we read a
+            // sector. The largest number a register in this
+            // mode can hold is 2^16 When divided by a sector
+            // size, we get that we can read only 128 sectors.
             num_of_sectors: num_of_sectors.min(128),
+            // The initial memory address
             memory_address,
+            // The segment the memory address is in
             segment,
+            // The starting LBA address to read from
             abs_block_num,
         }
     }
     // ANCHOR_END: new
 
-    // ANCHOR: load
     /// Load the sectors specified in the disk packet to the
     /// given memory segment
     ///
     /// # Parameters
     ///
     /// - `disk_number`: The disk number to read the sectors from
+    // ANCHOR: load
     pub fn load(&self, disk_number: u8) {
         unsafe {
+            // This is an inline assembly block
+            // This block's assembly will be injected to the function.
             asm!(
                 // si register is required for llvm it's content needs to be saved
                 "push si",
+                // Set the packet address in `si` and format it for a 16bit register
                 "mov si, {0:x}",
+                // Put function code in `ah`
                 "mov ah, {1}",
+                // Put disk number in `dl`
                 "mov dl, {2}",
+                // Call the `disk interrupt`
                 "int {3}",
+                // Restore si for llvm internal use.
                 "pop si",
                 in(reg) self as *const Self as u16,
                 const Disk::ExtendedRead as u8,
