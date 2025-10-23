@@ -5,18 +5,25 @@ use common::{
 
 use crate::{instructions, structures::segments::SegmentSelector};
 
+// ANCHOR: access_byte
 struct AccessByte(u8);
+// ANCHOR_END: access_byte
 
 impl AccessByte {
+    // ANCHOR: access_byte_new
     /// Creates an access byte with all flags turned off.
     pub const fn new() -> Self {
         Self(0)
     }
+    // ANCHOR_END: access_byte_new
 
+    // ANCHOR: access_byte_present
     // Is this a valid segment?
     // for all active segments this should be turned on.
     flag!(present, 7);
+    // ANCHOR_END: access_byte_present
 
+    // ANCHOR: access_byte_privilege_level
     /// Sets the privilege level while returning self.
     /// This is corresponding to the cpu ring of this
     /// segment 0 is commonly called kernel mode, 4 is
@@ -25,7 +32,9 @@ impl AccessByte {
         self.0 |= (level as u8) << 5;
         self
     }
+    // ANCHOR_END: access_byte_privilege_level
 
+    // ANCHOR: access_byte_type
     /// Set the type for a system segment.
     ///
     /// **Note:** This function is relevant only for system
@@ -37,55 +46,91 @@ impl AccessByte {
         self.0 |= system_type as u8;
         self
     }
+    // ANCHOR_END: access_byte_type
 
+    // ANCHOR: access_byte_code_data
     // Is this a code / data segment or a system segment.
     flag!(code_or_data, 4);
+    // ANCHOR_END: access_byte_code_data
+
+    // ANCHOR: access_byte_executable
     // Will this segment contains executable code?
     flag!(executable, 3);
+    // ANCHOR_END: access_byte_executable
+
+    // ANCHOR: access_byte_direction
     // Will the segment grow downwards?
     // relevant for non executable segments
     flag!(direction, 2);
+    // ANCHOR_END: access_byte_direction
+
+    // ANCHOR: access_byte_conforming
     // Can this code be executed from lower privilege
     // segments. relevant to executable segments
     flag!(conforming, 2);
+    // ANCHOR_END: access_byte_conforming
+
+    // ANCHOR: access_byte_readable
     // Can this segment be read or it is only executable?
     // relevant for code segment
     flag!(readable, 1);
+    // ANCHOR_END: access_byte_readable
+
+    // ANCHOR: access_byte_writable
     // Is this segment writable?
     // relevant for data segments
     flag!(writable, 1);
+    // ANCHOR_END: access_byte_writable
 }
 
+// ANCHOR: limit_flags
+/// Low 4 bits limit high 4 bits flags
 struct LimitFlags(u8);
+// ANCHOR_END: limit_flags
 
+// ANCHOR: limit_flags_impl
 impl LimitFlags {
+    // ANCHOR: limit_flags_new
     /// Creates a default limit flags with all flags turned
     /// off.
     pub const fn new() -> Self {
         Self(0)
     }
+
+    // ANCHOR: limit_flags_granularity
     // Toggle on paging for this segment (limit *= 0x1000)
     flag!(granularity, 7);
+    // ANCHOR_END: limit_flags_granularity
+
+    // ANCHOR: limit_flags_protected
     // Is this segment going to use 32bit mode?
     flag!(protected, 6);
+    // ANCHOR_END: limit_flags_protected
+
+    // ANCHOR: limit_flags_long
     // Set long mode flag, this will also clear protected
     // mode
     flag!(long, 5);
+    // ANCHOR_END: limit_flags_long
 }
+// ANCHOR_END: limit_flags_impl
 
+// ANCHOR: gdt_entry32
 #[repr(C, packed)]
 struct GlobalDescriptorTableEntry32 {
     limit_low: u16,
     base_low: u16,
     base_mid: u8,
     access_byte: AccessByte,
-    /// Low 4 bits limit high 4 bits flags
     limit_flags: LimitFlags,
     base_high: u8,
 }
+// ANCHOR_END: gdt_entry32
 
+// ANCHOR: gdt_entry32_impl
 impl GlobalDescriptorTableEntry32 {
     /// Construct and empty entry
+    // ANCHOR: gdt_entry32_empty
     pub const fn empty() -> Self {
         Self {
             limit_flags: LimitFlags::new(),
@@ -96,6 +141,7 @@ impl GlobalDescriptorTableEntry32 {
             limit_low: 0,
         }
     }
+    // ANCHOR_END: gdt_entry32_empty
 
     /// Create a new entry
     ///
@@ -105,6 +151,7 @@ impl GlobalDescriptorTableEntry32 {
     /// - `limit`: The size of the segment
     /// - `access_byte`: The type and access privileges of the entry
     /// - `flags`: Configuration flags of the entry
+    // ANCHOR: gdt_entry32_new
     pub const fn new(
         base: u32,
         limit: u32,
@@ -126,16 +173,19 @@ impl GlobalDescriptorTableEntry32 {
             base_high,
         }
     }
+    // ANCHOR_END: gdt_entry32_new
 }
+// ANCHOR_END: gdt_entry32_impl
 
-/// GDT register structure
+// ANCHOR: gdtr
 #[repr(C, packed)]
 pub struct GlobalDescriptorTableRegister {
     pub limit: u16,
     pub base: usize,
 }
+// ANCHOR_END: gdtr
 
-/// The structure of a system segment descriptor
+// ANCHOR: system_segment_descriptor64
 #[repr(C, packed)]
 pub struct SystemSegmentDescriptor64 {
     limit_low: u16,
@@ -147,9 +197,12 @@ pub struct SystemSegmentDescriptor64 {
     base_extra: u32,
     _reserved: u32,
 }
+// ANCHOR_END: system_segment_descriptor64
 
+// ANCHOR: system_segment_descriptor64_impl
 impl SystemSegmentDescriptor64 {
     /// Construct an empty system segment
+    // ANCHOR: system_segment_descriptor64_empty
     pub const fn empty() -> Self {
         SystemSegmentDescriptor64 {
             limit_low: 0,
@@ -162,6 +215,7 @@ impl SystemSegmentDescriptor64 {
             _reserved: 0,
         }
     }
+    // ANCHOR_END: system_segment_descriptor64_empty
 
     #[cfg(target_arch = "x86_64")]
     /// Construct a new system segment
@@ -170,9 +224,9 @@ impl SystemSegmentDescriptor64 {
     ///
     /// - `base`: The base address of the segment
     /// - `limit`: The limit value of the segment, for each segment this
-    ///   may mean
-    /// something different.
+    ///   may mean something different.
     /// - `segment_type`: The type of the constructed segment
+    // ANCHOR: system_segment_descriptor64_new
     pub const fn new(
         base: u64,
         limit: u32,
@@ -201,8 +255,10 @@ impl SystemSegmentDescriptor64 {
             _reserved: 0,
         }
     }
+    // ANCHOR_END: system_segment_descriptor64_new
 }
 
+// ANCHOR: gdtr
 /// Initial temporary GDT
 #[repr(C, packed)]
 pub struct GlobalDescriptorTableProtected {
@@ -210,10 +266,12 @@ pub struct GlobalDescriptorTableProtected {
     code: GlobalDescriptorTableEntry32,
     data: GlobalDescriptorTableEntry32,
 }
+// ANCHOR_END: gdtr
 
 impl GlobalDescriptorTableProtected {
     /// Creates default global descriptor table for
     /// protected mode
+    // ANCHOR: gdtr_default
     pub const fn default() -> Self {
         Self {
             null: GlobalDescriptorTableEntry32::empty(),
@@ -240,7 +298,9 @@ impl GlobalDescriptorTableProtected {
             ),
         }
     }
+    // ANCHOR_END: gdtr_default
 
+    // ANCHOR: gdtr_load
     /// Load the GDT with the `lgdt` instruction
     pub unsafe fn load(&'static self) {
         let gdtr = {
@@ -253,8 +313,10 @@ impl GlobalDescriptorTableProtected {
             instructions::lgdt(&gdtr);
         }
     }
+    // ANCHOR_END: gdtr_load
 }
 
+// ANCHOR: gdtr_long
 /// kernel GDT
 #[repr(C, packed)]
 pub struct GlobalDescriptorTableLong {
@@ -265,10 +327,12 @@ pub struct GlobalDescriptorTableLong {
     user_data: GlobalDescriptorTableEntry32,
     tss: SystemSegmentDescriptor64,
 }
+// ANCHOR_END: gdtr_long
 
 impl GlobalDescriptorTableLong {
     /// Creates default global descriptor table for long
     /// mode
+    // ANCHOR: gdtr_long_default
     pub const fn default() -> Self {
         Self {
             null: GlobalDescriptorTableEntry32::empty(),
@@ -317,7 +381,9 @@ impl GlobalDescriptorTableLong {
             tss: SystemSegmentDescriptor64::empty(),
         }
     }
+    // ANCHOR_END: gdtr_long_default
 
+    // ANCHOR: gdtr_long_load_tss
     /// Load the TSS segment into the GDT
     pub fn load_tss(&mut self, tss: SystemSegmentDescriptor64) {
         self.tss = tss;
@@ -326,7 +392,9 @@ impl GlobalDescriptorTableLong {
             instructions::ltr(tss_selector);
         }
     }
+    // ANCHOR_END: gdtr_long_load_tss
 
+    // ANCHOR: gdtr_long_load
     /// Load the GDT with the `lgdt` instruction
     pub unsafe fn load(&'static self) {
         let gdtr = {
@@ -339,6 +407,7 @@ impl GlobalDescriptorTableLong {
             instructions::lgdt(&gdtr);
         }
     }
+    // ANCHOR_END: gdtr_long_load
 }
 unsafe impl Send for GlobalDescriptorTableRegister {}
 unsafe impl Sync for GlobalDescriptorTableRegister {}
