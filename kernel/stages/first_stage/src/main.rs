@@ -24,19 +24,25 @@ static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTableProtected =
 
 global_asm!(include_str!("../asm/boot.s"));
 
+// ANCHOR: first_stage
 #[unsafe(no_mangle)]
 pub fn first_stage() -> ! {
     // Read the disk number the os was booted from
     let disk_number =
         unsafe { core::ptr::read(DISK_NUMBER_OFFSET as *const u8) };
 
-    // Create a disk packet which will load 128 sectors (512
-    // bytes each) from the disk to memory address 0x7e00
+    // Create a disk packet which will load 4 sectors (512 bytes each)
+    // from the disk to memory address 0x7e00
+    // The address 0x7e00 was chosen because it is exactly one sector
+    //  after the initial address 0x7c00.
     let dap = DiskAddressPacket::new(
-        4, // Max 128
-        0, 0x7e0, 1,
+        4,     // Number of sectors
+        0,     // Memory address
+        0x7e0, // Memory segment
+        1,     // Starting LBA address
     );
     dap.load(disk_number);
+    // ANCHOR_END: first_stage
     let kernel_dap = DiskAddressPacket::new(128, 0, 0x1000, 66);
     kernel_dap.load(disk_number);
     unsafe {
