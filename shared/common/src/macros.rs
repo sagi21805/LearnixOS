@@ -6,10 +6,10 @@
 /// With this information it will automatically generate
 /// three methods
 ///
-/// 1. `set_<flag_name>`: set the bit without returning self
-/// 2. `<flag_name>`: set the bit and will return self
-/// 3. `unset_<flag_name>:` unset the bit without returning self
-/// 4. `is_<flag_name>`: return true if the flag is set or false if not
+/// 1. `set_$flag_name`: set the bit without returning self
+/// 2. `$flag_name`: set the bit and will return self
+/// 3. `unset_$flag_name`: unset the bit without returning self
+/// 4. `is_$flag_name`: return true if the flag is set or false if not
 macro_rules! flag {
     ($flag_name:ident, $bit_number:expr) => {
         #[inline]
