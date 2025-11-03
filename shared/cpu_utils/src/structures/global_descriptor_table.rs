@@ -267,8 +267,9 @@ pub struct GlobalDescriptorTableProtected {
     code: GlobalDescriptorTableEntry32,
     data: GlobalDescriptorTableEntry32,
 }
-// ANCHOR_END: gdt_protcted
+// ANCHOR_END: gdt_protected
 
+// ANCHOR: gdt_protected_impl
 impl GlobalDescriptorTableProtected {
     /// Creates default global descriptor table for
     /// protected mode
@@ -316,6 +317,7 @@ impl GlobalDescriptorTableProtected {
     }
     // ANCHOR_END: gdt_load
 }
+// ANCHOR_END: gdt_protected_impl
 
 // ANCHOR: gdt_long
 /// kernel GDT
