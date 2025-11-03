@@ -96,6 +96,7 @@ impl LimitFlags {
     pub const fn new() -> Self {
         Self(0)
     }
+    // ANCHOR_END: limit_flags_new
 
     // ANCHOR: limit_flags_granularity
     // Toggle on paging for this segment (limit *= 0x1000)
