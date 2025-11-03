@@ -259,7 +259,7 @@ impl SystemSegmentDescriptor64 {
     // ANCHOR_END: system_segment_descriptor64_new
 }
 
-// ANCHOR: gdtr
+// ANCHOR: gdt_protected
 /// Initial temporary GDT
 #[repr(C, packed)]
 pub struct GlobalDescriptorTableProtected {
@@ -267,12 +267,12 @@ pub struct GlobalDescriptorTableProtected {
     code: GlobalDescriptorTableEntry32,
     data: GlobalDescriptorTableEntry32,
 }
-// ANCHOR_END: gdtr
+// ANCHOR_END: gdt_protcted
 
 impl GlobalDescriptorTableProtected {
     /// Creates default global descriptor table for
     /// protected mode
-    // ANCHOR: gdtr_default
+    // ANCHOR: gdt_default
     pub const fn default() -> Self {
         Self {
             null: GlobalDescriptorTableEntry32::empty(),
@@ -299,9 +299,9 @@ impl GlobalDescriptorTableProtected {
             ),
         }
     }
-    // ANCHOR_END: gdtr_default
+    // ANCHOR_END: gdt_default
 
-    // ANCHOR: gdtr_load
+    // ANCHOR: gdt_load
     /// Load the GDT with the `lgdt` instruction
     pub unsafe fn load(&'static self) {
         let gdtr = {
@@ -314,10 +314,10 @@ impl GlobalDescriptorTableProtected {
             instructions::lgdt(&gdtr);
         }
     }
-    // ANCHOR_END: gdtr_load
+    // ANCHOR_END: gdt_load
 }
 
-// ANCHOR: gdtr_long
+// ANCHOR: gdt_long
 /// kernel GDT
 #[repr(C, packed)]
 pub struct GlobalDescriptorTableLong {
@@ -328,12 +328,12 @@ pub struct GlobalDescriptorTableLong {
     user_data: GlobalDescriptorTableEntry32,
     tss: SystemSegmentDescriptor64,
 }
-// ANCHOR_END: gdtr_long
+// ANCHOR_END: gdt_long
 
 impl GlobalDescriptorTableLong {
     /// Creates default global descriptor table for long
     /// mode
-    // ANCHOR: gdtr_long_default
+    // ANCHOR: gdt_long_default
     pub const fn default() -> Self {
         Self {
             null: GlobalDescriptorTableEntry32::empty(),
@@ -382,9 +382,9 @@ impl GlobalDescriptorTableLong {
             tss: SystemSegmentDescriptor64::empty(),
         }
     }
-    // ANCHOR_END: gdtr_long_default
+    // ANCHOR_END: gdt_long_default
 
-    // ANCHOR: gdtr_long_load_tss
+    // ANCHOR: gdt_long_load_tss
     /// Load the TSS segment into the GDT
     pub fn load_tss(&mut self, tss: SystemSegmentDescriptor64) {
         self.tss = tss;
@@ -393,9 +393,9 @@ impl GlobalDescriptorTableLong {
             instructions::ltr(tss_selector);
         }
     }
-    // ANCHOR_END: gdtr_long_load_tss
+    // ANCHOR_END: gdt_long_load_tss
 
-    // ANCHOR: gdtr_long_load
+    // ANCHOR: gdt_long_load
     /// Load the GDT with the `lgdt` instruction
     pub unsafe fn load(&'static self) {
         let gdtr = {
@@ -408,7 +408,7 @@ impl GlobalDescriptorTableLong {
             instructions::lgdt(&gdtr);
         }
     }
-    // ANCHOR_END: gdtr_long_load
+    // ANCHOR_END: gdt_long_load
 }
 unsafe impl Send for GlobalDescriptorTableRegister {}
 unsafe impl Sync for GlobalDescriptorTableRegister {}
