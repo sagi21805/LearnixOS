@@ -19,8 +19,10 @@ use core::{
 use cpu_utils::structures::global_descriptor_table::GlobalDescriptorTableProtected;
 use disk::DiskAddressPacket;
 
+// ANCHOR: gdt_static
 static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTableProtected =
     GlobalDescriptorTableProtected::default();
+// ANCHOR_END: gdt_static
 
 global_asm!(include_str!("../asm/boot.s"));
 
