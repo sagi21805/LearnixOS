@@ -82,7 +82,7 @@ pub fn first_stage() -> ! {
         asm!(
             "ljmp ${segment}, ${next_stage_address}",
             segment = const Sections::KernelCode as u8,
-            next_stage_address = const SECOND_STAGE_OFFSET, // Change this to the correct address
+            next_stage_address = const SECOND_STAGE_OFFSET,
             options(att_syntax)
         );
         // ANCHOR_END: enter_protected_mode
