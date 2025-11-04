@@ -57,28 +57,35 @@ pub fn first_stage() -> ! {
             const VideoModes::VGA_TX_80X25_PB_9X16_PR_720X400 as u8,
             const BiosInterrupts::Video as u8
         );
-        // loop {}
+
         // Obtain memory map
         obtain_memory_map();
 
+        // ANCHOR: enter_protected_mode
         // Load Global Descriptor Table
         GLOBAL_DESCRIPTOR_TABLE.load();
 
-        // Set the Protected Mode bit and enter Protected
-        // Mode
+        // Set the Protected Mode bit and enter Protected Mode
         asm!(
             "mov eax, cr0",
             "or eax, 1",
             "mov cr0, eax",
             options(readonly, nostack, preserves_flags)
         );
+
         // Jump to the next stage
+        // The 'ljmp' instruction is required to because it updates the cpu
+        // segment to the new ones from our GDT.
+        //
+        // The segment is the offset in the GDT.
+        // (KernelCode = 0x10 which is the code segment)
         asm!(
-            "ljmp ${section}, ${next_stage}",
-            section = const Sections::KernelCode as u8,
-            next_stage = const SECOND_STAGE_OFFSET, // Change this to the correct address
+            "ljmp ${segment}, ${next_stage_address}",
+            segment = const Sections::KernelCode as u8,
+            next_stage_address = const SECOND_STAGE_OFFSET, // Change this to the correct address
             options(att_syntax)
         );
+        // ANCHOR_END: enter_protected_mode
     }
 
     loop {}
