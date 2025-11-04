@@ -7,13 +7,16 @@
         "${workspaceFolder}/shared/cpu_utils/Cargo.toml",
         "${workspaceFolder}/shared/common/Cargo.toml",
     ],
+    "rust-analyzer.cargo.target": "x86_64-unknown-linux-gnu",
     "cSpell.words": [
         "ACPINVS",
         "bootable",
+        "Cpuid",
         "EFER",
         "Learnix",
         "lgdt",
         "ljmp",
+        "nostack",
         "rdmsr",
         "repr",
         "rodata",
@@ -23,7 +26,8 @@
         "thiserror",
         "Uninit",
         "virt",
-        "wrmsr"
+        "wrmsr",
+        "xchg"
     ],
     "rust-analyzer.inlayHints.chainingHints.enable": false,
     "rust-analyzer.cargo.extraEnv": {
