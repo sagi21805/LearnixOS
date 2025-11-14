@@ -1,4 +1,4 @@
-use common::enums::{BiosInterrupts, Disk};
+use common::enums::{BiosInterrupts, DiskInterrupt};
 use core::arch::asm;
 
 // ANCHOR: dap
@@ -93,7 +93,7 @@ impl DiskAddressPacket {
                 // Restore si for llvm internal use.
                 "pop si",
                 in(reg) self as *const Self as u16,
-                const Disk::ExtendedRead as u8,
+                const DiskInterrupt::ExtendedRead as u8,
                 in(reg_byte) disk_number,
                 const BiosInterrupts::Disk as u8,
             )

@@ -13,7 +13,7 @@ pub enum BiosInterrupts {
 #[repr(u8)]
 /// Video interrupt number for each function used in the
 /// kernel.
-pub enum Video {
+pub enum VideoInterrupt {
     SetMode = 0x0,
 }
 // ANCHOR_END: video_interrupts
@@ -22,7 +22,7 @@ pub enum Video {
 #[repr(u8)]
 /// Disk interrupt number for each function used in the
 /// kernel.
-pub enum Disk {
+pub enum DiskInterrupt {
     ExtendedRead = 0x42,
 }
 // ANCHOR_END: disk_interrupts
@@ -31,7 +31,7 @@ pub enum Disk {
 #[repr(u16)]
 /// Memory interrupt number for each function used in the
 /// kernel.
-pub enum Memory {
+pub enum MemoryInterrupt {
     MemoryMap = 0xe820,
 }
 // ANCHOR_END: memory_interrupts

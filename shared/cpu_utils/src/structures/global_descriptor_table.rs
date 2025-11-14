@@ -159,11 +159,14 @@ impl GlobalDescriptorTableEntry32 {
         access_byte: AccessByte,
         flags: LimitFlags,
     ) -> Self {
+        // Split base into the appropriate parts
         let base_low = (base & 0xffff) as u16;
         let base_mid = ((base >> 0x10) & 0xff) as u8;
         let base_high = ((base >> 0x18) & 0xff) as u8;
+        // Split limit into the appropriate parts
         let limit_low = (limit & 0xffff) as u16;
         let limit_high = ((limit >> 0x10) & 0xf) as u8;
+        // Combine the part of the limit size with the flags
         let limit_flags = flags.0 | limit_high;
         Self {
             limit_low,
