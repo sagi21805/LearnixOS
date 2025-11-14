@@ -8,8 +8,8 @@ use common::{
         MEMORY_MAP_OFFSET, SECOND_STAGE_OFFSET,
     },
     enums::{
-        BiosInterrupts, Memory, MemoryRegionSize, Sections, Video,
-        VideoModes,
+        BiosInterrupts, MemoryInterrupt, MemoryRegionSize, Sections,
+        VideoInterrupt, VideoModes,
     },
 };
 use core::{
@@ -53,7 +53,7 @@ pub fn first_stage() -> ! {
             "mov ah, {0}",
             "mov al, {1}",
             "int {2}",
-            const Video::SetMode as u8,
+            const VideoInterrupt::SetMode as u8,
             const VideoModes::VGA_TX_80X25_PB_9X16_PR_720X400 as u8,
             const BiosInterrupts::Video as u8
         );
@@ -100,7 +100,7 @@ pub extern "C" fn obtain_memory_map() {
         len_address = const MEMORY_MAP_LENGTH,
         map_address = const MEMORY_MAP_OFFSET,
         smap = const MEMORY_MAP_MAGIC_NUMBER,
-        function_code = const Memory::MemoryMap as u16,
+        function_code = const MemoryInterrupt::MemoryMap as u16,
         extended_region_size = const MemoryRegionSize::Extended as u8,
         regular_region_size = const MemoryRegionSize::Regular as u8,
     );
