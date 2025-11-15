@@ -8,22 +8,32 @@ use common::{
     error::{EntryError, TableError},
 };
 
+// ANCHOR: page_table
 #[repr(C)]
 #[repr(align(4096))]
 #[derive(Debug)]
 pub struct PageTable {
     pub entries: [PageTableEntry; PAGE_DIRECTORY_ENTRIES],
 }
+// ANCHOR_END: page_table
 
+// ANCHOR: page_table_impl
 impl PageTable {
+    // ANCHOR: page_table_empty
+    /// Create an empty page table
     #[inline]
     pub const fn empty() -> Self {
         Self {
-            entries: [const { PageTableEntry::empty() };
-                PAGE_DIRECTORY_ENTRIES],
+            entries: {
+                [const { PageTableEntry::empty() }; PAGE_DIRECTORY_ENTRIES]
+            },
         }
     }
+    // ANCHOR_END: page_table_empty
+
+    // ANCHOR: page_table_empty_from_ptr
     #[inline]
+    /// Create an empty page table at the given virtual address
     pub unsafe fn empty_from_ptr(
         page_table_ptr: VirtualAddress,
     ) -> Option<&'static mut PageTable> {
@@ -38,15 +48,21 @@ impl PageTable {
             return Some(&mut *page_table_ptr.as_mut_ptr::<PageTable>());
         }
     }
+    // ANCHOR_END: page_table_empty_from_ptr
 
+    // ANCHOR: page_table_current_table
+    #[inline]
     pub fn current_table() -> &'static PageTable {
         unsafe { core::mem::transmute(cr3::read()) }
     }
 
+    #[inline]
     pub fn current_table_mut() -> &'static mut PageTable {
         unsafe { core::mem::transmute(cr3::read()) }
     }
+    // ANCHOR_END: page_table_current_table
 
+    // ANCHOR: page_table_address
     #[inline]
     #[cfg(target_arch = "x86_64")]
     pub fn address(&self) -> VirtualAddress {
@@ -54,13 +70,19 @@ impl PageTable {
             VirtualAddress::new_unchecked(self as *const Self as usize)
         }
     }
+    // ANCHOR_END: page_table_address
 
+    /// Tries to fetch a page table entry or an empty page starting from
+    /// the given index.
+    ///
+    /// Returns the index of the found entry and the page table if found.
+    // Anchor: page_table_try_fetch_table
     #[cfg(target_arch = "x86_64")]
-    fn fetch_table_or_empty(
+    fn try_fetch_table(
         &self,
         start_at: usize,
-        table_level: &PageTableLevel,
-        page_size: &PageSize,
+        table_level: PageTableLevel,
+        page_size: PageSize,
     ) -> (usize, Option<&PageTable>) {
         for (i, entry) in self.entries.iter().enumerate().skip(start_at) {
             match entry.mapped_table() {
@@ -79,7 +101,8 @@ impl PageTable {
         (PAGE_DIRECTORY_ENTRIES, None)
     }
 
-    /// Find an avavilable page.
+    /// Find an avavilable page in the given size.
+    // ANCHOR: page_table_find_available_page
     #[cfg(target_arch = "x86_64")]
     pub fn find_available_page(
         page_size: PageSize,
@@ -91,10 +114,10 @@ impl PageTable {
         loop {
             let current_table = page_tables[current_level.as_usize()];
 
-            let next_table = match current_table.fetch_table_or_empty(
+            let next_table = match current_table.try_fetch_table(
                 level_indices[current_level.as_usize()],
-                &current_level,
-                &page_size,
+                current_level,
+                page_size,
             ) {
                 (PAGE_DIRECTORY_ENTRIES, None) => {
                     current_level = current_level.prev()?;
@@ -119,4 +142,6 @@ impl PageTable {
             level_indices[next_level.as_usize()] += 1;
         }
     }
+    // ANCHOR_END: page_table_find_available_page
 }
+// ANCHOR_END: page_table_impl

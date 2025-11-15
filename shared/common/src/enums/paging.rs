@@ -7,7 +7,7 @@ use crate::{
     },
     error::TableError,
 };
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy)]
 pub enum PageSize {
     /// 4Kib pages
     Regular = 0,
@@ -16,7 +16,7 @@ pub enum PageSize {
     /// 1Gib pages
     Huge = 2,
 }
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PageTableLevel {
     ForthLevel = 0,
     ThirdLevel = 1,
@@ -58,7 +58,7 @@ impl PageSize {
         }
     }
 
-    pub fn exceeds(&self, table_level: &PageTableLevel) -> bool {
+    pub fn exceeds(&self, table_level: PageTableLevel) -> bool {
         return (3 - self.clone() as usize) <= table_level.as_usize();
     }
 

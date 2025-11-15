@@ -1,3 +1,4 @@
+// ANCHOR: table_entry_flags
 macro_rules! table_entry_flags {
     () => {
         // Is this page present?
@@ -25,6 +26,7 @@ macro_rules! table_entry_flags {
         // switch (PGE bit of CR4 register must be set)
         common::flag!(global, 8);
 
+        // 9-11 are custom custom flags for our use
         // mark a table as full
         common::flag!(full, 9);
 
@@ -38,11 +40,15 @@ macro_rules! table_entry_flags {
         common::flag!(not_executable, 63);
     };
 }
+// ANCHOR_END: table_entry_flags
 
+// ANCHOR: page_entry_flags
 /// A wrapper for `PageTableEntry` flags for easier use
 #[derive(Debug, Clone)]
-pub struct PageEntryFlags(u64);
+pub struct PageEntryFlags(pub u64);
+// ANCHOR_END: page_entry_flags
 
+// ANCHOR: impl_page_entry_flags
 impl PageEntryFlags {
     table_entry_flags!();
 
@@ -65,9 +71,5 @@ impl PageEntryFlags {
     pub const fn regular_page_flags() -> Self {
         PageEntryFlags::new().present().writable()
     }
-
-    /// Return the underlying flags as u64.
-    pub const fn as_u64(&self) -> u64 {
-        self.0
-    }
 }
+// ANCHOR_END: impl_page_entry_flags
