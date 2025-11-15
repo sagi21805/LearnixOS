@@ -2,6 +2,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, parse_macro_input};
 
+// ANCHOR: common_address_functions
 #[proc_macro_derive(CommonAddressFunctions)]
 pub fn common_address_functions(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -39,3 +40,4 @@ pub fn common_address_functions(input: TokenStream) -> TokenStream {
 
     expanded.into()
 }
+// ANCHOR_END: common_address_functions
