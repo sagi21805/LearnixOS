@@ -80,9 +80,11 @@ impl DiskAddressPacket {
             // This is an inline assembly block
             // This block's assembly will be injected to the function.
             asm!(
-                // si register is required for llvm it's content needs to be saved
+                // si register is required for llvm it's content needs to be
+                // saved
                 "push si",
-                // Set the packet address in `si` and format it for a 16bit register
+                // Set the packet address in `si` and format it for a 16bit
+                // register
                 "mov si, {0:x}",
                 // Put function code in `ah`
                 "mov ah, {1}",
