@@ -1,4 +1,4 @@
-#[cfg(target_arch = "x86")]
+// #[cfg(target_arch = "x86")]
 pub fn enable() -> Option<()> {
     use super::{PageEntryFlags, PageTable};
     use common::{
@@ -11,6 +11,9 @@ pub fn enable() -> Option<()> {
         },
     };
     use core::arch::asm;
+
+    // ANCHOR: initialize_page_tables
+    // These tables will hold the initial identity mapping
     let identity_page_table_l4 = unsafe {
         PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L4_OFFSET.into())?
     };
@@ -20,6 +23,9 @@ pub fn enable() -> Option<()> {
     let identity_page_table_l2 = unsafe {
         PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L2_OFFSET.into())?
     };
+
+    // These tables will hold identity mapping for the kernel on the top
+    // half of the address space
     let top_identity_page_table_l3 = unsafe {
         PageTable::empty_from_ptr(
             TOP_IDENTITY_PAGE_TABLE_L3_OFFSET.into(),
@@ -30,29 +36,35 @@ pub fn enable() -> Option<()> {
             TOP_IDENTITY_PAGE_TABLE_L2_OFFSET.into(),
         )?
     };
+    // ANCHOR_END: initialize_page_tables
 
+    // ANCHOR: setup_page_tables
     unsafe {
-        // Setup identity paging
-        // Mapping address virtual addresses
-        // 0x0000000000000000-0x00000000001fffff to the same
-        // physical addresses These entries can't be
-        // mapped with the map_table function because only
-        // after them the Page Table is considered valid
-        // At this point in the code, the variable address
-        // is it's physical address because paging is not
-        // turned on yet.
+        // Setup identity paging Mapping address virtual addresses
+        // 0x000000-0x1fffff to the same physical addresses.
         identity_page_table_l4.entries[0].map_unchecked(
             PhysicalAddress::new_unchecked(IDENTITY_PAGE_TABLE_L3_OFFSET),
             PageEntryFlags::table_flags(),
         );
+        identity_page_table_l3.entries[0].map_unchecked(
+            PhysicalAddress::new_unchecked(IDENTITY_PAGE_TABLE_L2_OFFSET),
+            PageEntryFlags::table_flags(),
+        );
+        identity_page_table_l2.entries[0].map_unchecked(
+            PhysicalAddress::new_unchecked(0),
+            PageEntryFlags::huge_page_flags(),
+        );
+        // Setup kernel identity paging Mapping at the top half
+        // of the address space
+        // The kernel is mapped from 0xffff800000000000 to
+        // 0xffff8000001fffff to the physical addresses of
+        // 0x000000-0x1fffff
+        // This mapping will allow the kernel to access physical addresses
+        // without any dependency on the current mapping
         identity_page_table_l4.entries[256].map_unchecked(
             PhysicalAddress::new_unchecked(
                 TOP_IDENTITY_PAGE_TABLE_L3_OFFSET,
             ),
-            PageEntryFlags::table_flags(),
-        );
-        identity_page_table_l3.entries[0].map_unchecked(
-            PhysicalAddress::new_unchecked(IDENTITY_PAGE_TABLE_L2_OFFSET),
             PageEntryFlags::table_flags(),
         );
         top_identity_page_table_l3.entries[0].map_unchecked(
@@ -61,14 +73,14 @@ pub fn enable() -> Option<()> {
             ),
             PageEntryFlags::table_flags(),
         );
-        identity_page_table_l2.entries[0].map_unchecked(
-            PhysicalAddress::new_unchecked(0),
-            PageEntryFlags::huge_page_flags(),
-        );
         top_identity_page_table_l2.entries[0].map_unchecked(
             PhysicalAddress::new_unchecked(0),
             PageEntryFlags::huge_page_flags(),
         );
+    }
+    // ANCHOR_END: setup_page_tables
+    // ANCHOR: enable_paging
+    unsafe {
         // Set the page table at cr3 register
         asm!(
             // load the address of the 4th page table to cr3 so the cpu can access it
@@ -78,25 +90,29 @@ pub fn enable() -> Option<()> {
         );
 
         asm!(
-            // Enable Physical Address Extension in cr4
+            // Enable Physical Address Extension (number 5) in cr4 ()
             "mov eax, cr4",
             "or eax, 1 << 5",
             "mov cr4, eax",
         );
+
         asm!(
-            // set long mode bit in the Extended Feature
+            // set long mode bit (number 8) in the Extended Feature
             // Enable Register Model Specific Register
             // (EFER MSR) This register became
             // architectural from amd64 and also adopted by
             // intel, it's number is 0xC0000080
             "mov ecx, 0xC0000080",
-            "rdmsr", /* read the MSR specified in ecx
-                      * into eax */
+            // read the MSR specified in ecx into eax
+            "rdmsr",
             "or eax, 1 << 8",
-            "wrmsr", /* write what's in eax to the MSR
-                      * specified in ecx */
+            // write what's in eax to the MSR specified in ecx
+            "wrmsr",
         );
+
+        // Toggle the paging bit (number 31)in cr0
         asm!("mov eax, cr0", "or eax, 1 << 31", "mov cr0, eax");
     }
     Some(())
+    // ANCHOR_END: enable_paging
 }
