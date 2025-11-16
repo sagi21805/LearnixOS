@@ -23,7 +23,9 @@ pub fn enable() -> Option<()> {
     let identity_page_table_l2 = unsafe {
         PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L2_OFFSET.into())?
     };
+    // ANCHOR_END: initialize_page_tables
 
+    // ANCHOR: initialize_top_page_tables
     // These tables will hold identity mapping for the kernel on the top
     // half of the address space
     let top_identity_page_table_l3 = unsafe {
@@ -36,7 +38,7 @@ pub fn enable() -> Option<()> {
             TOP_IDENTITY_PAGE_TABLE_L2_OFFSET.into(),
         )?
     };
-    // ANCHOR_END: initialize_page_tables
+    // ANCHOR_END: initialize_top_page_tables
 
     // ANCHOR: setup_page_tables
     unsafe {
@@ -54,6 +56,10 @@ pub fn enable() -> Option<()> {
             PhysicalAddress::new_unchecked(0),
             PageEntryFlags::huge_page_flags(),
         );
+    }
+    // ANCHOR_END: setup_page_tables
+    // ANCHOR: setup_top_page_tables
+    unsafe {
         // Setup kernel identity paging Mapping at the top half
         // of the address space
         // The kernel is mapped from 0xffff800000000000 to
@@ -78,8 +84,8 @@ pub fn enable() -> Option<()> {
             PageEntryFlags::huge_page_flags(),
         );
     }
-    // ANCHOR_END: setup_page_tables
-    // ANCHOR: enable_paging
+    // ANCHOR_END: setup_top_page_tables
+    // ANCHOR: set_cr3
     unsafe {
         // Set the page table at cr3 register
         asm!(
@@ -88,14 +94,20 @@ pub fn enable() -> Option<()> {
             "mov cr3, eax",
             const IDENTITY_PAGE_TABLE_L4_OFFSET
         );
-
+    }
+    // ANCHOR_END: set_cr3
+    // ANCHOR: set_cr4
+    unsafe {
         asm!(
-            // Enable Physical Address Extension (number 5) in cr4 ()
+            // Enable Physical Address Extension (number 5) in cr4
             "mov eax, cr4",
             "or eax, 1 << 5",
             "mov cr4, eax",
         );
-
+    }
+    // ANCHOR_END: set_cr4
+    // ANCHOR: set_efermsr
+    unsafe {
         asm!(
             // set long mode bit (number 8) in the Extended Feature
             // Enable Register Model Specific Register
@@ -109,8 +121,11 @@ pub fn enable() -> Option<()> {
             // write what's in eax to the MSR specified in ecx
             "wrmsr",
         );
-
-        // Toggle the paging bit (number 31)in cr0
+    }
+    // ANCHOR_END: set_efermsr
+    // ANCHOR: enable_paging
+    unsafe {
+        // Toggle the paging bit (number 31) in cr0
         asm!("mov eax, cr0", "or eax, 1 << 31", "mov cr0, eax");
     }
     Some(())
