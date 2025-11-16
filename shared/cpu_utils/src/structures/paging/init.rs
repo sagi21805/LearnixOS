@@ -1,4 +1,4 @@
-// #[cfg(target_arch = "x86")]
+#[cfg(target_arch = "x86")]
 pub fn enable() -> Option<()> {
     use super::{PageEntryFlags, PageTable};
     use common::{
@@ -89,7 +89,8 @@ pub fn enable() -> Option<()> {
     unsafe {
         // Set the page table at cr3 register
         asm!(
-            // load the address of the 4th page table to cr3 so the cpu can access it
+            // load the address of the 4th page table to cr3
+            // so the cpu can access it
             "mov eax, {0}",
             "mov cr3, eax",
             const IDENTITY_PAGE_TABLE_L4_OFFSET

@@ -4,10 +4,6 @@ ENTRY(_start)
 SECTIONS {
     . = 0x7c00 + 512;
 
-    .page_table : {
-        *(.page_table)
-    }
-
     .start : { *(.start) }
 
     .text : { *(.text .text.*) }
