@@ -1,5 +1,5 @@
 OUTPUT_FORMAT(binary)
-ENTRY(_start)
+ENTRY(second_stage)
 
 SECTIONS {
     . = 0x7c00 + 512;
