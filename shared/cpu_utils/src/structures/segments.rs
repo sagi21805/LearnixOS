@@ -1,8 +1,8 @@
 use common::{
     address_types::VirtualAddress,
     enums::{ProtectionLevel, Sections},
-    flag,
 };
+use learnix_macros::flag;
 
 #[derive(Clone, Debug, Copy)]
 pub struct SegmentSelector(u16);

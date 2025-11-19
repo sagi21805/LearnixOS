@@ -1,9 +1,10 @@
 use core::{mem::MaybeUninit, num::NonZero};
 
 use common::{
-    address_types::VirtualAddress, enums::PS2ScanCode, flag,
+    address_types::VirtualAddress, enums::PS2ScanCode,
     ring_buffer::RingBuffer,
 };
+use learnix_macros::flag;
 
 pub struct KeyboardFlags(u8);
 
@@ -41,7 +42,7 @@ impl Keyboard {
     }
 
     /// TODO change in the future to just return the
-    /// relevant asscii code and not a long str
+    /// relevant ascii code and not a long str
     pub fn read_char(&mut self) -> &'static str {
         let key = match self.read_raw_scancode() {
             Some(scancode) => PS2ScanCode::from_scancode(scancode),

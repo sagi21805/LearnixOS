@@ -3,14 +3,12 @@ use crate::memory::allocators::page_allocator::{
     ALLOCATOR, allocator::PhysicalPageAllocator,
 };
 use alloc::vec::Vec;
-use common::{
-    enums::{
-        ClassCode, DeviceID, HeaderType, PciDeviceType, Port,
-        ProgrammingInterface, SubClass, VendorDevice, VendorID,
-    },
-    flag,
+use common::enums::{
+    ClassCode, DeviceID, HeaderType, PciDeviceType, Port,
+    ProgrammingInterface, SubClass, VendorDevice, VendorID,
 };
 use cpu_utils::instructions::port::PortExt;
+use learnix_macros::flag;
 
 #[derive(Debug, Clone, Copy)]
 pub struct PciConfigurationCycle(u32);

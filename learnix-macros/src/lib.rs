@@ -1,6 +1,9 @@
+use flag::FlagInput;
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{DeriveInput, parse_macro_input};
+
+mod flag;
 
 // ANCHOR: common_address_functions
 #[proc_macro_derive(CommonAddressFunctions)]
@@ -55,3 +58,63 @@ pub fn common_address_functions(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 // ANCHOR_END: common_address_functions
+
+// ANCHOR: flag
+/// This macro will obtain `flag_name` and the corresponding
+/// `bit_number`
+///
+/// With this information it will automatically generate
+/// three methods
+///
+/// 1. `set_$flag_name`: set the bit without returning self
+/// 2. `$flag_name`: set the bit and will return self
+/// 3. `unset_$flag_name`: unset the bit without returning self
+/// 4. `is_$flag_name`: return true if the flag is set or false if not
+#[proc_macro]
+pub fn flag(input: TokenStream) -> TokenStream {
+    let FlagInput { name, bit, .. } =
+        syn::parse_macro_input!(input as FlagInput);
+
+    // build identifiers
+    let name_str = name.to_string();
+    let set_ident = format_ident!("set_{}", name_str);
+    let unset_ident = format_ident!("unset_{}", name_str);
+    let is_ident = format_ident!("is_{}", name_str);
+
+    let expanded = quote! {
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Sets the corresponding flag
+        pub const fn #set_ident(&mut self) {
+            self.0 |= 1 << #bit;
+        }
+
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Sets the corresponding flag while returning self
+        pub const fn #name(self) -> Self {
+            Self(self.0 | (1 << #bit))
+        }
+
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Unset the corresponding flag
+        pub const fn #unset_ident(&mut self) {
+            self.0 &= !(1 << #bit);
+        }
+
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Checks if the corresponding flag is set
+        pub const fn #is_ident(&self) -> bool {
+            (self.0 & (1 << #bit)) != 0
+        }
+    };
+
+    expanded.into()
+}
+// ANCHOR_END: flag
