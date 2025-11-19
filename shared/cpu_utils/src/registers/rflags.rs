@@ -1,6 +1,6 @@
+use common::enums::ProtectionLevel;
 use core::arch::asm;
-
-use common::{enums::ProtectionLevel, flag};
+use learnix_macros::flag;
 
 #[allow(non_camel_case_types)]
 #[derive(Debug)]

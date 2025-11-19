@@ -1,7 +1,5 @@
-use common::{
-    enums::{ProtectionLevel, SystemSegmentType},
-    flag,
-};
+use common::enums::{ProtectionLevel, SystemSegmentType};
+use learnix_macros::flag;
 
 use crate::{instructions, structures::segments::SegmentSelector};
 

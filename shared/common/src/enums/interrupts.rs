@@ -1,3 +1,5 @@
+use learnix_macros::flag;
+
 #[repr(u8)]
 pub enum Interrupt {
     DivisionError = 0x0,
