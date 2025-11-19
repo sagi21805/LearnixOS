@@ -21,19 +21,33 @@ pub fn common_address_functions(input: TokenStream) -> TokenStream {
             pub const fn as_ptr<T>(&self) -> *const T {
                 self.0 as *const T
             }
-            pub const fn is_aligned(&self, alignment: core::ptr::Alignment) -> bool {
+            pub const fn is_aligned(
+                &self,
+                alignment: core::ptr::Alignment,
+            ) -> bool {
                 self.0 & (alignment.as_usize() - 1) == 0
             }
-            pub const fn align_up(mut self, alignment: core::ptr::Alignment) -> Self {
-                self.0 = (self.0 + (alignment.as_usize() - 1)) & !(alignment.as_usize() - 1);
+            pub const fn align_up(
+                mut self,
+                alignment: core::ptr::Alignment,
+            ) -> Self {
+                self.0 = (self.0 + (alignment.as_usize() - 1))
+                    & !(alignment.as_usize() - 1);
                 self
             }
-            pub const fn align_down(mut self, alignment: core::ptr::Alignment) -> Self {
+            pub const fn align_down(
+                mut self,
+                alignment: core::ptr::Alignment,
+            ) -> Self {
                 self.0 &= !(alignment.as_usize() - 1);
                 self
             }
             pub const fn alignment(&self) -> core::ptr::Alignment {
-                unsafe { core::ptr::Alignment::new_unchecked(1 << self.0.trailing_zeros()) }
+                unsafe {
+                    core::ptr::Alignment::new_unchecked(
+                        1 << self.0.trailing_zeros(),
+                    )
+                }
             }
         }
     };
