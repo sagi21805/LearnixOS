@@ -1,3 +1,4 @@
+// ANCHOR: sections
 #[repr(u8)]
 pub enum Sections {
     Null = 0x0,
@@ -7,7 +8,9 @@ pub enum Sections {
     UserData = 0x20,
     TaskStateSegment = 0x28,
 }
+// ANCHOR_END: sections
 
+// ANCHOR: segment_type
 // Directly taken from Intel Software developer manual
 // volume 3.
 pub enum SystemSegmentType {
@@ -16,3 +19,4 @@ pub enum SystemSegmentType {
     InterruptGate = 0b1110,
     TrapGate = 0b1111,
 }
+// ANCHOR_END: segment_type
