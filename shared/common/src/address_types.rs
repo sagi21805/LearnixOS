@@ -1,5 +1,3 @@
-use core::convert::identity;
-
 #[cfg(target_arch = "x86_64")]
 use crate::constants::PHYSICAL_MEMORY_OFFSET;
 
