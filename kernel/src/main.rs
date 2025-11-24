@@ -13,6 +13,9 @@
 #![feature(allocator_api)]
 #![feature(never_type)]
 #![feature(vec_push_within_capacity)]
+#![feature(const_default)]
+#![feature(ascii_char_variants)]
+#![feature(ascii_char)]
 mod drivers;
 mod memory;
 use core::{
@@ -27,14 +30,13 @@ use crate::{
         keyboard::{KEYBOARD, keyboard::Keyboard},
         pci::{self},
         pic8259::{CascadedPIC, PIC},
-        vga_display::color_code::{Color, ColorCode},
     },
     memory::memory_map::{ParsedMapDisplay, parse_map},
 };
 
 use common::{
     constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
-    enums::HeaderType,
+    enums::{Color, HeaderType},
 };
 use cpu_utils::{
     instructions::interrupts::{self},
