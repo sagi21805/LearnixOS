@@ -1,29 +1,11 @@
-#[repr(u8)]
+use common::enums::Color;
 
-/// All the colors coded per the VGA documentation
-pub enum Color {
-    Black = 0,
-    Blue = 1,
-    Green = 2,
-    Cyan = 3,
-    Red = 4,
-    Magenta = 5,
-    Brown = 6,
-    LightGray = 7,
-    DarkGray = 8,
-    LightBlue = 9,
-    LightGreen = 10,
-    LightCyan = 11,
-    LightRed = 12,
-    Pink = 13,
-    Yellow = 14,
-    White = 15,
-}
-
-#[repr(transparent)]
-#[derive(Clone)]
+// ANCHOR: colorcode
+#[derive(Clone, Copy)]
 pub struct ColorCode(u8);
+// ANCHOR_END: colorcode
 
+// ANCHOR: impl_colorcode
 impl ColorCode {
     /// Set the VGA char Background and Foreground
     ///
@@ -34,10 +16,13 @@ impl ColorCode {
     pub const fn new(foreground: Color, background: Color) -> Self {
         Self((background as u8) << 4 | (foreground as u8))
     }
+}
+// ANCHOR_END: impl_colorcode
 
-    /// Create a default color code with white characters in
-    /// a black background
-    pub const fn default() -> Self {
+// ANCHOR: colorcode_default
+impl const Default for ColorCode {
+    fn default() -> Self {
         ColorCode::new(Color::White, Color::Black)
     }
 }
+// ANCHOR_END: colorcode_default

@@ -1,3 +1,4 @@
+use core::ascii::Char;
 use core::ptr;
 
 use super::color_code::ColorCode;
@@ -7,26 +8,26 @@ use common::constants::addresses::VGA_BUFFER_PTR;
 use common::enums::{Port, VgaCommand};
 use cpu_utils::instructions::port::PortExt;
 
+// ANCHOR: writer
 /// Writer implementation for the VGA driver.
-///
-/// This implementation will help track the wanted position
-/// to write to the screen
 pub struct Writer {
     pub cursor_position: usize,
     pub color: ColorCode,
 }
+// ANCHOR_END: writer
 
-impl Copy for ColorCode {}
-
-impl Writer {
-    /// Creates a default writer
-    pub const fn default() -> Self {
+// ANCHOR: writer_default
+impl const Default for Writer {
+    fn default() -> Self {
         Self {
             cursor_position: 0,
             color: ColorCode::default(),
         }
     }
+}
+// ANCHOR_END: writer_default
 
+impl Writer {
     /// Writes the given `char` to the screen with the color
     /// stored in self
     ///
@@ -34,30 +35,40 @@ impl Writer {
     ///
     /// - `char`: The char that will be printed to the screen
     fn write_char(&mut self, char: u8) {
-        unsafe {
-            match char {
-                b'\n' => {
-                    self.new_line();
-                }
-                b'\x08' => {
-                    self.backspace();
-                }
-                32..128 => {
-                    (VGA_BUFFER_PTR as *mut ScreenChar)
-                        .add(self.cursor_position)
-                        .write_volatile(ScreenChar::new(char, self.color));
+        // ANCHOR: handle_char
+        let c =
+            Char::from_u8(char).expect("Entered invalid ascii character");
+        match c {
+            Char::LineFeed => {
+                self.new_line();
+            }
+            Char::Backspace | Char::Delete => {
+                self.backspace();
+            }
+            _ => {
+                if !c.is_control() {
+                    unsafe {
+                        (VGA_BUFFER_PTR as *mut ScreenChar)
+                            .add(self.cursor_position)
+                            .write_volatile(ScreenChar::new(
+                                char, self.color,
+                            ));
+                    }
                     self.cursor_position += 1;
                 }
-                _ => {}
             }
-
-            if self.cursor_position >= (SCREEN_WIDTH * SCREEN_HEIGHT) {
-                self.scroll_down(1);
-            }
-            self.change_cursor_position_on_screen();
         }
+        if self.cursor_position >= (SCREEN_WIDTH * SCREEN_HEIGHT) {
+            self.scroll_down(1);
+        }
+        // ANCHOR_END: handle_char
+
+        // ANCHOR: change_position
+        self.change_cursor_position_on_screen();
+        // ANCHOR_END: change_position
     }
 
+    // ANCHOR: scroll_down
     /// Scroll `lines` down.
     fn scroll_down(&mut self, lines: usize) {
         let lines_index = SCREEN_WIDTH * (SCREEN_HEIGHT - lines);
@@ -79,12 +90,16 @@ impl Writer {
         }
         self.cursor_position -= lines * SCREEN_WIDTH;
     }
+    // ANCHOR_END: scroll_down
 
+    // ANCHOR: new_line
     fn new_line(&mut self) {
         self.cursor_position +=
             SCREEN_WIDTH - (self.cursor_position % SCREEN_WIDTH)
     }
+    // ANCHOR_END: new_line
 
+    // ANCHOR: backspace
     fn backspace(&mut self) {
         self.cursor_position -= 1;
         unsafe {
@@ -93,7 +108,9 @@ impl Writer {
                 .write_volatile(ScreenChar::new(b' ', self.color));
         }
     }
+    // ANCHOR_END: backspace
 
+    // ANCHOR: change_position_on_screen
     fn change_cursor_position_on_screen(&self) {
         unsafe {
             Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
@@ -102,7 +119,9 @@ impl Writer {
             Port::VgaData.outb(((self.cursor_position >> 8) & 0xff) as u8);
         }
     }
+    // ANCHOR_END: change_position_on_screen
 
+    // ANCHOR: clear
     /// Clears the screen by setting all of the buffer bytes
     /// to zero
     fn clear(&mut self) {
@@ -116,8 +135,10 @@ impl Writer {
             self.cursor_position = 0;
         }
     }
+    // ANCHOR_END: clear
 }
 
+// ANCHOR: format_impl
 impl core::fmt::Write for Writer {
     /// Print the given string to the string with the color
     /// in self
@@ -141,3 +162,4 @@ impl core::fmt::Write for Writer {
         Ok(())
     }
 }
+// ANCHOR_END: format_impl
