@@ -6,9 +6,9 @@ use color_code::ColorCode;
 use writer::Writer;
 
 #[allow(private_interfaces)]
-pub static mut WRITER: Writer = Writer::default();
 pub const SCREEN_WIDTH: usize = 80;
 pub const SCREEN_HEIGHT: usize = 25;
+pub static mut WRITER: Writer<80, 25> = Writer::default();
 use core::fmt::{self, Write};
 
 pub fn vga_print(color: Option<ColorCode>, args: fmt::Arguments<'_>) {

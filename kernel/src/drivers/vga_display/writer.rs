@@ -1,33 +1,39 @@
 use core::ascii::Char;
-use core::ptr;
+use core::mem::MaybeUninit;
 
 use super::color_code::ColorCode;
 use super::screen_char::ScreenChar;
-use super::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use common::constants::addresses::VGA_BUFFER_PTR;
 use common::enums::{Port, VgaCommand};
 use cpu_utils::instructions::port::PortExt;
 
 // ANCHOR: writer
 /// Writer implementation for the VGA driver.
-pub struct Writer {
+pub struct Writer<const W: usize, const H: usize> {
     pub cursor_position: usize,
     pub color: ColorCode,
+    pub screen: MaybeUninit<&'static mut [ScreenChar]>,
 }
 // ANCHOR_END: writer
 
 // ANCHOR: writer_default
-impl const Default for Writer {
+impl<const W: usize, const H: usize> const Default for Writer<W, H> {
     fn default() -> Self {
         Self {
             cursor_position: 0,
             color: ColorCode::default(),
+            screen: unsafe {
+                MaybeUninit::new(core::slice::from_raw_parts_mut(
+                    VGA_BUFFER_PTR as *mut ScreenChar,
+                    W * H + 1,
+                ))
+            },
         }
     }
 }
 // ANCHOR_END: writer_default
 
-impl Writer {
+impl<const W: usize, const H: usize> Writer<W, H> {
     /// Writes the given `char` to the screen with the color
     /// stored in self
     ///
@@ -38,6 +44,7 @@ impl Writer {
         // ANCHOR: handle_char
         let c =
             Char::from_u8(char).expect("Entered invalid ascii character");
+        let screen = unsafe { self.screen.assume_init_read() };
         match c {
             Char::LineFeed => {
                 self.new_line();
@@ -47,18 +54,13 @@ impl Writer {
             }
             _ => {
                 if !c.is_control() {
-                    unsafe {
-                        (VGA_BUFFER_PTR as *mut ScreenChar)
-                            .add(self.cursor_position)
-                            .write_volatile(ScreenChar::new(
-                                char, self.color,
-                            ));
-                    }
+                    screen[self.cursor_position] =
+                        ScreenChar::new(char, self.color);
                     self.cursor_position += 1;
                 }
             }
         }
-        if self.cursor_position >= (SCREEN_WIDTH * SCREEN_HEIGHT) {
+        if self.cursor_position > W * H {
             self.scroll_down(1);
         }
         // ANCHOR_END: handle_char
@@ -71,42 +73,33 @@ impl Writer {
     // ANCHOR: scroll_down
     /// Scroll `lines` down.
     fn scroll_down(&mut self, lines: usize) {
-        let lines_index = SCREEN_WIDTH * (SCREEN_HEIGHT - lines);
-        unsafe {
-            // Copy the buffer to the left
-            ptr::copy(
-                (VGA_BUFFER_PTR as *mut ScreenChar).add(SCREEN_WIDTH),
-                VGA_BUFFER_PTR as *mut ScreenChar,
-                lines_index,
-            );
-            // Fill remaining place with empty characters
-            for i in 0..SCREEN_WIDTH {
-                ptr::write_volatile(
-                    (VGA_BUFFER_PTR as *mut ScreenChar)
-                        .add(lines_index + i),
-                    ScreenChar::default(),
-                );
-            }
+        let screen = unsafe { self.screen.assume_init_read() };
+
+        let lines_index = W * (H - lines) + 1;
+
+        // Copy the buffer to the left
+        screen.copy_within(lines * W.., 0);
+
+        // Fill remaining place with empty characters
+        for x in &mut screen[lines_index..] {
+            *x = ScreenChar::default()
         }
-        self.cursor_position -= lines * SCREEN_WIDTH;
+
+        self.cursor_position -= lines * W;
     }
     // ANCHOR_END: scroll_down
 
     // ANCHOR: new_line
     fn new_line(&mut self) {
-        self.cursor_position +=
-            SCREEN_WIDTH - (self.cursor_position % SCREEN_WIDTH)
+        self.cursor_position += W - (self.cursor_position % W)
     }
     // ANCHOR_END: new_line
 
     // ANCHOR: backspace
     fn backspace(&mut self) {
+        let screen = unsafe { self.screen.assume_init_read() };
         self.cursor_position -= 1;
-        unsafe {
-            (VGA_BUFFER_PTR as *mut ScreenChar)
-                .add(self.cursor_position)
-                .write_volatile(ScreenChar::new(b' ', self.color));
-        }
+        screen[self.cursor_position] = ScreenChar::default();
     }
     // ANCHOR_END: backspace
 
@@ -125,21 +118,15 @@ impl Writer {
     /// Clears the screen by setting all of the buffer bytes
     /// to zero
     fn clear(&mut self) {
-        unsafe {
-            for i in 0..(SCREEN_WIDTH * SCREEN_HEIGHT) {
-                ptr::write_volatile(
-                    (VGA_BUFFER_PTR as *mut ScreenChar).add(i),
-                    ScreenChar::default(),
-                );
-            }
-            self.cursor_position = 0;
-        }
+        let screen = unsafe { self.screen.assume_init_read() };
+        screen.fill(ScreenChar::default());
+        self.cursor_position = 0;
     }
     // ANCHOR_END: clear
 }
 
 // ANCHOR: format_impl
-impl core::fmt::Write for Writer {
+impl<const W: usize, const H: usize> core::fmt::Write for Writer<W, H> {
     /// Print the given string to the string with the color
     /// in self
     ///

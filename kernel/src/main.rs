@@ -30,6 +30,7 @@ use crate::{
         keyboard::{KEYBOARD, keyboard::Keyboard},
         pci::{self},
         pic8259::{CascadedPIC, PIC},
+        vga_display::color_code::ColorCode,
     },
     memory::memory_map::{ParsedMapDisplay, parse_map},
 };
@@ -116,7 +117,7 @@ pub unsafe extern "C" fn _start() -> Result<!, AllocError> {
     }
     loop {
         unsafe {
-            print!("{}", KEYBOARD.assume_init_mut().read_char());
+            print!("{}", KEYBOARD.assume_init_mut().read_char() ; color = ColorCode::new(Color::Yellow, Color::White));
         }
     }
 }
