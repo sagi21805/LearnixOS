@@ -234,9 +234,9 @@ impl BaseAddressRegister {
         // both u32.
         unsafe {
             if self.memory.0 & 1 == 0 {
-                return BaseAddressRegisterType::Memory;
+                BaseAddressRegisterType::Memory
             } else {
-                return BaseAddressRegisterType::IO;
+                BaseAddressRegisterType::IO
             }
         }
     }
@@ -277,12 +277,24 @@ impl GeneralDeviceHeader {
     pub fn empty_from_common(common: PciCommonHeader) -> Self {
         Self {
             common,
-            bar0: unsafe { core::mem::transmute(0) },
-            bar1: unsafe { core::mem::transmute(0) },
-            bar2: unsafe { core::mem::transmute(0) },
-            bar3: unsafe { core::mem::transmute(0) },
-            bar4: unsafe { core::mem::transmute(0) },
-            bar5: unsafe { core::mem::transmute(0) },
+            bar0: unsafe {
+                core::mem::transmute::<i32, BaseAddressRegister>(0)
+            },
+            bar1: unsafe {
+                core::mem::transmute::<i32, BaseAddressRegister>(0)
+            },
+            bar2: unsafe {
+                core::mem::transmute::<i32, BaseAddressRegister>(0)
+            },
+            bar3: unsafe {
+                core::mem::transmute::<i32, BaseAddressRegister>(0)
+            },
+            bar4: unsafe {
+                core::mem::transmute::<i32, BaseAddressRegister>(0)
+            },
+            bar5: unsafe {
+                core::mem::transmute::<i32, BaseAddressRegister>(0)
+            },
             cardbus_cis_ptr: 0,
             subsystem_vendor_id: 0,
             subsystem_id: 0,
@@ -386,5 +398,5 @@ pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
             }
         }
     }
-    return v;
+    v
 }

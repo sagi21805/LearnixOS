@@ -303,8 +303,12 @@ impl GlobalDescriptorTableProtected {
     }
     // ANCHOR_END: gdt_default
 
-    // ANCHOR: gdt_load
     /// Load the GDT with the `lgdt` instruction
+    ///
+    /// # Safety
+    /// This function doesn't check if a GDT already exists, and just
+    /// overrides it.
+    // ANCHOR: gdt_load
     pub unsafe fn load(&'static self) {
         let gdtr = {
             GlobalDescriptorTableRegister {
@@ -387,8 +391,8 @@ impl GlobalDescriptorTableLong {
     }
     // ANCHOR_END: gdt_long_default
 
-    // ANCHOR: gdt_long_load_tss
     /// Load the TSS segment into the GDT
+    // ANCHOR: gdt_long_load_tss
     pub fn load_tss(&mut self, tss: SystemSegmentDescriptor64) {
         self.tss = tss;
         let tss_selector = SegmentSelector::default().set_table_index(5);
@@ -398,8 +402,12 @@ impl GlobalDescriptorTableLong {
     }
     // ANCHOR_END: gdt_long_load_tss
 
-    // ANCHOR: gdt_long_load
     /// Load the GDT with the `lgdt` instruction
+    ///
+    /// # Safety
+    /// This function doesn't check if a GDT already exists, and just
+    /// overrides it.
+    // ANCHOR: gdt_long_load
     pub unsafe fn load(&'static self) {
         let gdtr = {
             GlobalDescriptorTableRegister {

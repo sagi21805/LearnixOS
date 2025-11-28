@@ -17,6 +17,10 @@ use crate::structures::{
 };
 use core::mem::MaybeUninit;
 
+/// Load the global descriptor table.
+///
+/// # Safety
+/// This function overrides the current GDT if defined.
 pub unsafe fn lgdt(gdtr: &GlobalDescriptorTableRegister) {
     unsafe {
         asm!(
@@ -28,6 +32,10 @@ pub unsafe fn lgdt(gdtr: &GlobalDescriptorTableRegister) {
 }
 
 #[cfg(target_arch = "x86_64")]
+/// Load the interrupt descriptor table.
+///
+/// # Safety
+/// This function overrides the current IDT if defined.
 pub unsafe fn lidt(idtr: &InterruptDescriptorTableRegister) {
     unsafe {
         asm!(
@@ -39,6 +47,11 @@ pub unsafe fn lidt(idtr: &InterruptDescriptorTableRegister) {
 }
 
 #[cfg(target_arch = "x86")]
+/// Store the content of the global descriptor table
+///
+/// # Safety
+/// There is no way to check if the register has valid data in it, or it is
+/// not initialized
 pub unsafe fn sgdt() -> &'static GlobalDescriptorTableProtected {
     let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
         MaybeUninit::uninit();
@@ -56,6 +69,11 @@ pub unsafe fn sgdt() -> &'static GlobalDescriptorTableProtected {
 }
 
 #[cfg(target_arch = "x86_64")]
+/// Store the content of the global descriptor table
+///
+/// # Safety
+/// There is no way to check if the register has valid data in it, or it is
+/// not initialized
 pub unsafe fn sgdt() -> &'static GlobalDescriptorTableLong {
     let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
         MaybeUninit::uninit();
@@ -72,6 +90,11 @@ pub unsafe fn sgdt() -> &'static GlobalDescriptorTableLong {
     }
 }
 
+/// Load the task register
+///
+/// # Safety
+/// This function does not check if the segment selector points into a
+/// valid SegmentSelector
 pub unsafe fn ltr(selector: SegmentSelector) {
     unsafe {
         asm!(
