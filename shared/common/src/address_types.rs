@@ -4,8 +4,8 @@ use crate::enums::PageTableLevel;
 
 // ANCHOR: trait_imports
 use derive_more::{
-    Add, AddAssign, AsMut, AsRef, Div, DivAssign, From, Mul, MulAssign,
-    Sub, SubAssign,
+    Add, AddAssign, AsMut, AsRef, Div, DivAssign, Mul, MulAssign, Sub,
+    SubAssign,
 };
 use learnix_macros::CommonAddressFunctions;
 // ANCHOR_END: trait_imports
@@ -25,12 +25,19 @@ use learnix_macros::CommonAddressFunctions;
     Default,
     AsMut,
     AsRef,
-    From,
     Copy,
     CommonAddressFunctions,
 )]
 #[repr(C)]
 pub struct PhysicalAddress(usize);
+
+impl const From<usize> for PhysicalAddress {
+    // TODO! Change into new in the future
+    fn from(value: usize) -> Self {
+        unsafe { Self::new_unchecked(value) }
+    }
+}
+
 // ANCHOR_END: physical_address
 
 // ANCHOR: virtual_address
@@ -48,12 +55,19 @@ pub struct PhysicalAddress(usize);
     Default,
     AsMut,
     AsRef,
-    From,
     Copy,
     CommonAddressFunctions,
 )]
 #[repr(C)]
 pub struct VirtualAddress(usize);
+
+impl const From<usize> for VirtualAddress {
+    // TODO! Change into new in the future
+    fn from(value: usize) -> Self {
+        unsafe { Self::new_unchecked(value) }
+    }
+}
+
 // ANCHOR_END: virtual_address
 
 impl VirtualAddress {
@@ -88,26 +102,6 @@ impl VirtualAddress {
     pub const fn index_of(&self, level: PageTableLevel) -> usize {
         (self.0 >> (39 - 9 * (4 - level as usize))) & 0o777
     }
-    // ANCHOR_END: virtual_nth_pt_index_unchecked
-
-    /// Reverse indexing for the address:
-    ///
-    /// 0 -> index of 4th table
-    ///
-    /// 1 -> index of 3rd table
-    ///
-    /// 2 -> index of 2nd table
-    ///
-    /// 3 -> index of 1st table
-    // ANCHOR: virtual_rev_nth_index_unchecked
-    #[allow(arithmetic_overflow)]
-    pub const fn rev_nth_index_unchecked(
-        &self,
-        level: PageTableLevel,
-    ) -> usize {
-        (self.0 >> (39 - (9 * level as usize))) & 0o777
-    }
-    // ANCHOR_END: virtual_rev_nth_index_unchecked
 
     // pub fn translate(&self) -> Option<PhysicalAddress> {
     //     let mut current_table =

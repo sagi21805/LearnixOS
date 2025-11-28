@@ -5,17 +5,8 @@ use crate::{
         BIG_PAGE_ALIGNMENT, BIG_PAGE_SIZE, HUGE_PAGE_ALIGNMENT,
         HUGE_PAGE_SIZE, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
-    error::TableError,
+    error::{ConversionError, TableError},
 };
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
-pub enum PageSize {
-    /// 4Kib pages
-    Regular = 0,
-    /// 2Mib pages
-    Big = 1,
-    /// 1Gib pages
-    Huge = 2,
-}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PageTableLevel {
     PML4 = 4,
@@ -26,23 +17,59 @@ pub enum PageTableLevel {
 
 impl PageTableLevel {
     pub fn next(&self) -> Option<Self> {
-        let n = *self as u8;
-        (n != 0).then_some(unsafe { core::mem::transmute(n) })
+        let n = (*self as u8) - 1;
+        (n > 0).then(|| unsafe { core::mem::transmute(n) })
     }
+
     pub fn prev(&self) -> Result<Self, TableError> {
-        let n = *self as u8;
-        (n != 4)
-            .then_some(unsafe { core::mem::transmute(n) })
+        let n = (*self as u8) + 1;
+        (n <= 4)
+            .then(|| unsafe { core::mem::transmute(n) })
             .ok_or(TableError::Full)
     }
 
-    pub fn as_usize(&self) -> usize {
-        self.clone() as usize
+    pub const fn iterator<'a>() -> impl Iterator<Item = &'a PageTableLevel>
+    {
+        const VARIANTS: [PageTableLevel; 4] = [
+            PageTableLevel::PML4,
+            PageTableLevel::PDPT,
+            PageTableLevel::PD,
+            PageTableLevel::PT,
+        ];
+
+        // Convert the array slice into an iterator.
+        VARIANTS.iter()
     }
 }
 
+impl TryFrom<u8> for PageTableLevel {
+    type Error = ConversionError<u8>;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if (1..=4).contains(&value) {
+            Ok(unsafe {
+                core::mem::transmute::<u8, PageTableLevel>(value)
+            })
+        } else {
+            Err(ConversionError::CantConvertFrom(value))
+        }
+    }
+}
+
+// impl const From<usize> for PageTableLevel {}
+
+#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+pub enum PageSize {
+    /// 4Kib pages
+    Regular = 2,
+    /// 2Mib pages
+    Big = 1,
+    /// 1Gib pages
+    Huge = 0,
+}
+
 impl PageSize {
-    pub fn alignment(&self) -> Alignment {
+    pub const fn alignment(&self) -> Alignment {
         match self {
             PageSize::Regular => REGULAR_PAGE_ALIGNMENT,
 
@@ -53,7 +80,7 @@ impl PageSize {
     }
 
     pub fn exceeds(&self, table_level: PageTableLevel) -> bool {
-        return (3 - self.clone() as usize) <= table_level.as_usize();
+        (3 - *self as usize) <= table_level as usize
     }
 
     /// Determines the appropriate `PageSizeAlignment` for a
@@ -99,19 +126,19 @@ impl PageSize {
     }
 }
 
-impl Into<Layout> for PageSize {
-    fn into(self) -> Layout {
+impl const From<PageSize> for Layout {
+    fn from(val: PageSize) -> Self {
         unsafe {
-            match self {
-                Self::Regular => Layout::from_size_align_unchecked(
+            match val {
+                PageSize::Regular => Layout::from_size_align_unchecked(
                     REGULAR_PAGE_SIZE,
                     REGULAR_PAGE_ALIGNMENT.as_usize(),
                 ),
-                Self::Big => Layout::from_size_align_unchecked(
+                PageSize::Big => Layout::from_size_align_unchecked(
                     BIG_PAGE_SIZE,
                     BIG_PAGE_ALIGNMENT.as_usize(),
                 ),
-                Self::Huge => Layout::from_size_align_unchecked(
+                PageSize::Huge => Layout::from_size_align_unchecked(
                     HUGE_PAGE_SIZE,
                     HUGE_PAGE_ALIGNMENT.as_usize(),
                 ),

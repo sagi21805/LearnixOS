@@ -19,10 +19,10 @@ pub fn common_address_functions(input: TokenStream) -> TokenStream {
                 self.0
             }
             pub const unsafe fn as_mut_ptr<T>(&self) -> *mut T {
-                self.0 as *mut T
+                core::ptr::with_exposed_provenance_mut::<T>(self.0)
             }
             pub const fn as_ptr<T>(&self) -> *const T {
-                self.0 as *const T
+                core::ptr::with_exposed_provenance::<T>(self.0)
             }
             pub const fn is_aligned(
                 &self,

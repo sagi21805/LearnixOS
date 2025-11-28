@@ -2,9 +2,10 @@ use super::ALLOCATOR;
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     constants::{
-        BIG_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES, PHYSICAL_MEMORY_OFFSET,
+        BIG_PAGE_SIZE, PAGE_ALLOCATOR_OFFSET, PAGE_DIRECTORY_ENTRIES,
+        PHYSICAL_MEMORY_OFFSET,
     },
-    enums::PageSize,
+    enums::{PageSize, PageTableLevel},
 };
 use cpu_utils::structures::paging::{
     PageEntryFlags, PageTable, PageTableEntry,
@@ -18,15 +19,15 @@ pub impl PhysicalAddress {
         flags: PageEntryFlags,
         page_size: PageSize,
     ) {
-        address.map(self.clone(), flags, page_size)
+        address.map(*self, flags, page_size)
     }
 
     fn translate(&self) -> VirtualAddress {
-        return unsafe {
+        unsafe {
             VirtualAddress::new_unchecked(
                 PHYSICAL_MEMORY_OFFSET + self.as_usize(),
             )
-        };
+        }
     }
 }
 
@@ -40,7 +41,7 @@ pub impl PageTableEntry {
     /// to be returned.
     fn force_resolve_table_mut(&mut self) -> &mut PageTable {
         if let Ok(table) = self.mapped_table_mut() {
-            return table;
+            table
         } else {
             let resolved_table =
                 unsafe { ALLOCATOR.assume_init_ref().alloc_table() };
@@ -83,15 +84,15 @@ pub impl VirtualAddress {
             && self.is_aligned(page_size.alignment())
         {
             let mut table = PageTable::current_table_mut();
-            for table_number in 0..(3 - page_size.clone() as usize) {
-                let index = self.rev_nth_index_unchecked(table_number);
+            for level in PageTableLevel::iterator() {
+                let index = self.index_of(*level);
                 let entry = &mut table.entries[index];
                 let resolved_table = entry.force_resolve_table_mut();
                 table = resolved_table;
             }
             unsafe {
-                table.entries
-                    [self.rev_nth_index_unchecked(3 - page_size as usize)]
+                table.entries[self
+                    .index_of((3 - page_size as u8).try_into().unwrap())]
                 .map_unchecked(address, flags);
             }
         } else {
@@ -119,15 +120,12 @@ pub impl PageTable {
     fn map_physical_memory(&mut self, mem_size_bytes: usize) {
         let mut second_level_entries_count =
             (mem_size_bytes / BIG_PAGE_SIZE).max(1);
-        let mut third_level_entries_count =
-            ((second_level_entries_count + PAGE_DIRECTORY_ENTRIES - 1)
-                / PAGE_DIRECTORY_ENTRIES)
-                .max(1);
-        let forth_level_entries_count =
-            (((third_level_entries_count + PAGE_DIRECTORY_ENTRIES - 1)
-                / PAGE_DIRECTORY_ENTRIES)
-                .max(1))
-            .min(256);
+        let mut third_level_entries_count = second_level_entries_count
+            .div_ceil(PAGE_ALLOCATOR_OFFSET)
+            .max(1);
+        let forth_level_entries_count = third_level_entries_count
+            .div_ceil(PAGE_DIRECTORY_ENTRIES)
+            .clamp(1, 256);
         let mut next_mapped = unsafe { PhysicalAddress::new_unchecked(0) };
         for forth_entry in &mut self.entries[(PAGE_DIRECTORY_ENTRIES / 2)
             ..(forth_level_entries_count + (PAGE_DIRECTORY_ENTRIES / 2))]
@@ -147,7 +145,7 @@ pub impl PageTable {
                     if !second_entry.is_present() {
                         unsafe {
                             second_entry.map(
-                                next_mapped.clone(),
+                                next_mapped,
                                 PageEntryFlags::huge_page_flags(),
                             );
                         }

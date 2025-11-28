@@ -7,12 +7,14 @@ use learnix_macros::flag;
 #[derive(Clone, Debug, Copy)]
 pub struct SegmentSelector(u16);
 
-impl SegmentSelector {
+impl const Default for SegmentSelector {
     /// Default NULL segment selector
-    pub const fn default() -> Self {
+    fn default() -> Self {
         Self(0)
     }
+}
 
+impl SegmentSelector {
     /// Set the requested privilege level of this selector
     pub const fn set_rpl(mut self, rpl: ProtectionLevel) -> Self {
         self.0 |= rpl as u16;
@@ -21,7 +23,7 @@ impl SegmentSelector {
 
     // Use the local descriptor table instead of the global
     // descriptor table
-    flag!(use_local_descriptor_table, 2);
+    flag!(local_descriptor_table, 2);
 
     /// Set the index in the table
     ///

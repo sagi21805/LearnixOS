@@ -55,6 +55,12 @@ impl PageTableEntry {
     }
     // ANCHOR_END: page_table_entry_set_flags
 
+    /// Map new frame with the given with the given flags.
+    ///
+    /// # Safety
+    ///
+    /// This function doesn't check if address is properly aligned, and if
+    /// the entry was already mapped.
     // ANCHOR: page_table_entry_map_unchecked
     #[inline]
     pub const unsafe fn map_unchecked(
@@ -102,6 +108,10 @@ impl PageTableEntry {
     }
     // ANCHOR_END: page_table_entry_map
 
+    /// Return the address mapped by this entry.
+    ///
+    /// # Safety
+    /// This function doesn't check if the entry is actually mapped.
     // ANCHOR: page_table_entry_mapped_unchecked
     #[inline]
     pub const unsafe fn mapped_unchecked(&self) -> PhysicalAddress {
@@ -133,6 +143,7 @@ impl PageTableEntry {
     /// mapped.
     // ANCHOR: page_table_entry_mapped_table_mut
     #[cfg(target_arch = "x86_64")]
+    #[allow(clippy::mut_from_ref)]
     pub fn mapped_table_mut(&self) -> Result<&mut PageTable, EntryError> {
         // first check if the entry is mapped.
         let pt = unsafe {

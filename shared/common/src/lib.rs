@@ -1,6 +1,10 @@
 #![no_std]
+#![deny(clippy::all)]
+#![feature(const_convert)]
+#![feature(const_trait_impl)]
 #![feature(ptr_alignment_type)]
 #![feature(macro_metavar_expr_concat)]
+#![feature(const_slice_make_iter)]
 
 #[macro_use]
 pub mod macros;

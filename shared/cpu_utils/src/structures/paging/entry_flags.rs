@@ -49,27 +49,29 @@ pub struct PageEntryFlags(pub u64);
 // ANCHOR_END: page_entry_flags
 
 // ANCHOR: impl_page_entry_flags
+impl const Default for PageEntryFlags {
+    /// Constructs new flags, with all flags turned off.
+    fn default() -> Self {
+        Self(0)
+    }
+}
+
 impl PageEntryFlags {
     table_entry_flags!();
 
-    /// Constructs new flags, with all flags turned off.
-    pub const fn new() -> Self {
-        Self(0)
-    }
-
     /// Default flags for entry that contains page table.
     pub const fn table_flags() -> Self {
-        PageEntryFlags::new().present().writable().table()
+        PageEntryFlags::default().present().writable().table()
     }
 
     /// Default flags for entry that contains huge page.
     pub const fn huge_page_flags() -> Self {
-        PageEntryFlags::new().present().writable().huge_page()
+        PageEntryFlags::default().present().writable().huge_page()
     }
 
     /// Default flags for entry that contains regular page.
     pub const fn regular_page_flags() -> Self {
-        PageEntryFlags::new().present().writable()
+        PageEntryFlags::default().present().writable()
     }
 }
 // ANCHOR_END: impl_page_entry_flags

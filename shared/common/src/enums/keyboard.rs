@@ -1,6 +1,7 @@
 use core::fmt;
 
 #[repr(u8)]
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PS2ScanCode {
     None,

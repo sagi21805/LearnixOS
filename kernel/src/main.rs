@@ -16,6 +16,8 @@
 #![feature(const_default)]
 #![feature(ascii_char_variants)]
 #![feature(ascii_char)]
+#![feature(const_convert)]
+#![deny(clippy::all)]
 mod drivers;
 mod memory;
 use core::{
@@ -27,7 +29,7 @@ use core::{
 use crate::{
     drivers::{
         interrupt_handlers,
-        keyboard::{KEYBOARD, keyboard::Keyboard},
+        keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
         pci::{self},
         pic8259::{CascadedPIC, PIC},
         vga_display::color_code::ColorCode,
@@ -51,7 +53,8 @@ use memory::allocators::page_allocator::{
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
-pub unsafe extern "C" fn _start() -> Result<!, AllocError> {
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn _start() -> ! {
     ok_msg!("Entered Protected Mode");
     ok_msg!("Enabled Paging");
     ok_msg!("Entered Long Mode");
@@ -66,7 +69,8 @@ pub unsafe extern "C" fn _start() -> Result<!, AllocError> {
             .allocate(Layout::from_size_align_unchecked(
                 REGULAR_PAGE_SIZE,
                 REGULAR_PAGE_ALIGNMENT.as_usize(),
-            ))?
+            ))
+            .unwrap()
             .addr()
             .get()
             .into();
@@ -81,7 +85,8 @@ pub unsafe extern "C" fn _start() -> Result<!, AllocError> {
             .allocate(Layout::from_size_align_unchecked(
                 REGULAR_PAGE_SIZE,
                 REGULAR_PAGE_ALIGNMENT.as_usize(),
-            ))?
+            ))
+            .unwrap()
             .addr()
             .get()
             .into();

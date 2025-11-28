@@ -6,9 +6,9 @@ use cpu_utils::{
     structures::interrupt_descriptor_table::InterruptStackFrame,
 };
 
-use crate::drivers::{keyboard::keyboard::Keyboard, pic8259::PIC};
+use crate::drivers::{keyboard::ps2_keyboard::Keyboard, pic8259::PIC};
 
-pub mod keyboard;
+pub mod ps2_keyboard;
 
 pub static mut KEYBOARD: MaybeUninit<Keyboard> = MaybeUninit::uninit();
 

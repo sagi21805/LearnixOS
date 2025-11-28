@@ -1,4 +1,7 @@
 #![no_std]
+#![deny(clippy::all)]
+#![feature(const_trait_impl)]
+#![feature(const_default)]
 #![feature(macro_metavar_expr_concat)]
 #![feature(adt_const_params)]
 #![feature(ptr_alignment_type)]

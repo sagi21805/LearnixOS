@@ -18,7 +18,7 @@ pub static TSS: TaskStateSegment = TaskStateSegment::default();
 
 use crate::{
     instructions,
-    registers::rflags::rflags,
+    registers::rflags::Rflags,
     structures::{
         global_descriptor_table::{
             GlobalDescriptorTableLong, GlobalDescriptorTableRegister,
@@ -234,7 +234,7 @@ pub struct InterruptDescriptorTableRegister {
 pub struct InterruptStackFrame {
     pub instruction_pointer: VirtualAddress,
     pub code_segment: usize,
-    pub cpu_flags: rflags,
+    pub cpu_flags: Rflags,
     pub stack_pointer: VirtualAddress,
     pub stack_segment: usize,
 }

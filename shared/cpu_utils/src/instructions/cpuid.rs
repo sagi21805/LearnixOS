@@ -20,7 +20,7 @@ pub struct CpuidResult {
 /// (MIT/Apache-2.0). Upstream attribution retained; minor
 /// adjustment for our no_std layout See LICENSE-MIT and
 /// LICENSE-APACHE at the repository root.
-pub unsafe fn cpuid(query: CpuidQuery) -> CpuidResult {
+pub fn cpuid(query: CpuidQuery) -> CpuidResult {
     let eax;
     let ebx;
     let ecx;
@@ -63,7 +63,7 @@ pub unsafe fn cpuid(query: CpuidQuery) -> CpuidResult {
 }
 
 pub fn get_vendor_string() -> [u8; 12] {
-    let result = unsafe { cpuid(CpuidQuery::GetVendorString) };
+    let result = cpuid(CpuidQuery::GetVendorString);
     let mut vendor_string = [0u8; 12];
     vendor_string[0..4].copy_from_slice(&result.ebx.to_le_bytes());
     vendor_string[4..8].copy_from_slice(&result.edx.to_le_bytes());
@@ -75,14 +75,16 @@ pub fn get_vendor_string() -> [u8; 12] {
 /// Bits 32-63 are edx
 pub struct CpuFeatures(pub u64);
 
-impl CpuFeatures {
-    pub fn new() -> Self {
-        let features = unsafe { cpuid(CpuidQuery::GetCpuFeatures) };
+impl Default for CpuFeatures {
+    fn default() -> Self {
+        let features = cpuid(CpuidQuery::GetCpuFeatures);
         Self(((features.edx as u64) << 32) | (features.ecx as u64))
     }
+}
 
+impl CpuFeatures {
     cpu_feature!(
         apic,
-        (((CpuFeatureEdx::APIC as u64) << 32) as u64).trailing_zeros()
+        ((CpuFeatureEdx::APIC as u64) << 32).trailing_zeros()
     );
 }

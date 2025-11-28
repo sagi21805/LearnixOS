@@ -6,7 +6,7 @@ macro_rules! page_flag {
         }
 
         pub const fn $one_name(&self) -> bool {
-            self.0 & (1 << $bit_number) == 1
+            self.0 & (1 << $bit_number) != 0
         }
     };
 }

@@ -70,6 +70,7 @@ impl PhysicalPageAllocator {
         unsafe { self.0.as_ref_unchecked() }
     }
 
+    #[allow(clippy::mut_from_ref)]
     unsafe fn map_mut(&self) -> &mut BitMap {
         unsafe { self.0.as_mut_unchecked() }
     }
@@ -97,12 +98,12 @@ impl PhysicalPageAllocator {
                     .align_down(REGULAR_PAGE_ALIGNMENT)
             };
             let start_position =
-                Self::address_position(start_address.clone()).unwrap();
+                Self::address_position(start_address).unwrap();
             // Allocate the addresses that are used for the
             // code, and for other variables.
             let end_address = PhysicalAddress::new_unchecked(
                 PAGE_ALLOCATOR_OFFSET
-                    + (initialized.map().map.len() * size_of::<u64>()),
+                    + core::mem::size_of_val(initialized.map().map),
             )
             .align_up(REGULAR_PAGE_ALIGNMENT);
             let size_bits = ((end_address - start_address)
@@ -146,8 +147,7 @@ impl PhysicalPageAllocator {
     pub fn resolve_position(p: &Position) -> PhysicalAddress {
         unsafe {
             PhysicalAddress::new_unchecked(
-                ((p.map_index * (u64::BITS as usize))
-                    + p.bit_index as usize)
+                ((p.map_index * (u64::BITS as usize)) + p.bit_index)
                     * REGULAR_PAGE_SIZE,
             )
         }
@@ -177,7 +177,7 @@ impl PhysicalPageAllocator {
 
                 self.map_mut().set_bit(&p);
 
-                return &mut *physical_address.as_mut_ptr::<PageTable>();
+                &mut *physical_address.as_mut_ptr::<PageTable>()
             },
 
             None => panic!(
@@ -221,20 +221,19 @@ unsafe impl Allocator for PhysicalPageAllocator {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        match layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize()) {
-            Ok(layout) => {
-                let start_position =
-                    Self::resolve_address(PhysicalAddress::new_unchecked(
-                        ptr.as_ptr() as usize - PHYSICAL_MEMORY_OFFSET,
-                    ));
-                let block = ContiguousBlockLayout::from_start_size(
-                    &start_position,
-                    layout.size() / REGULAR_PAGE_SIZE,
-                );
-                self.map_mut()
-                    .unset_contiguous_block(&start_position, &block);
-            }
-            Err(_) => {}
+        if let Ok(layout) =
+            layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize())
+        {
+            let start_position =
+                Self::resolve_address(PhysicalAddress::new_unchecked(
+                    ptr.as_ptr() as usize - PHYSICAL_MEMORY_OFFSET,
+                ));
+            let block = ContiguousBlockLayout::from_start_size(
+                &start_position,
+                layout.size() / REGULAR_PAGE_SIZE,
+            );
+            self.map_mut()
+                .unset_contiguous_block(&start_position, &block);
         }
     }
 }

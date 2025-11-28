@@ -31,9 +31,13 @@ impl PageTable {
     }
     // ANCHOR_END: page_table_empty
 
+    /// Create an empty page table at the given virtual address
+    ///
+    /// # Safety
+    /// This function works on every address, and will override the data at
+    /// that address
     // ANCHOR: page_table_empty_from_ptr
     #[inline]
-    /// Create an empty page table at the given virtual address
     pub unsafe fn empty_from_ptr(
         page_table_ptr: VirtualAddress,
     ) -> Option<&'static mut PageTable> {
@@ -45,7 +49,7 @@ impl PageTable {
                 page_table_ptr.as_mut_ptr::<PageTable>(),
                 PageTable::empty(),
             );
-            return Some(&mut *page_table_ptr.as_mut_ptr::<PageTable>());
+            Some(&mut *page_table_ptr.as_mut_ptr::<PageTable>())
         }
     }
     // ANCHOR_END: page_table_empty_from_ptr
@@ -53,12 +57,18 @@ impl PageTable {
     // ANCHOR: page_table_current_table
     #[inline]
     pub fn current_table() -> &'static PageTable {
-        unsafe { core::mem::transmute(cr3::read()) }
+        unsafe {
+            &*core::ptr::with_exposed_provenance(cr3::read() as usize)
+        }
     }
 
     #[inline]
     pub fn current_table_mut() -> &'static mut PageTable {
-        unsafe { core::mem::transmute(cr3::read()) }
+        unsafe {
+            &mut *core::ptr::with_exposed_provenance_mut(
+                cr3::read() as usize
+            )
+        }
     }
     // ANCHOR_END: page_table_current_table
 
@@ -112,24 +122,24 @@ impl PageTable {
         let mut page_tables = [Self::current_table(); LEVELS];
         let mut current_level = PageTableLevel::PML4;
         loop {
-            let current_table = page_tables[current_level.as_usize()];
+            let current_table = page_tables[current_level as usize];
 
             let next_table = match current_table.try_fetch_table(
-                level_indices[current_level.as_usize()],
+                level_indices[current_level as usize],
                 current_level,
                 page_size,
             ) {
                 (PAGE_DIRECTORY_ENTRIES, None) => {
                     current_level = current_level.prev()?;
-                    level_indices[current_level.as_usize()] += 1;
+                    level_indices[current_level as usize] += 1;
                     continue;
                 }
                 (i, Some(table)) => {
-                    level_indices[current_level.as_usize()] = i;
+                    level_indices[current_level as usize] = i;
                     table
                 }
                 (i, None) => {
-                    level_indices[current_level.as_usize()] = i;
+                    level_indices[current_level as usize] = i;
                     return Ok(VirtualAddress::from_indices(
                         level_indices,
                     ));
@@ -138,8 +148,8 @@ impl PageTable {
             let next_level = current_level
                 .next()
                 .expect("Can't go next on a first level table");
-            page_tables[next_level.as_usize()] = next_table;
-            level_indices[next_level.as_usize()] += 1;
+            page_tables[next_level as usize] = next_table;
+            level_indices[next_level as usize] += 1;
         }
     }
     // ANCHOR_END: page_table_find_available_page

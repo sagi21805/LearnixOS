@@ -15,7 +15,7 @@ macro_rules! parsed_memory_map {
                         as usize,
                 )
                 .translate()
-                .as_mut_ptr::<crate::memory::memory_map::MemoryRegion>(),
+                .as_mut_ptr::<$crate::memory::memory_map::MemoryRegion>(),
                 *(common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::PARSED_MEMORY_MAP_LENGTH
                         as usize,
@@ -37,7 +37,7 @@ macro_rules! raw_memory_map {
                     common::constants::addresses::MEMORY_MAP_OFFSET as usize,
                 )
                 .translate()
-                .as_mut_ptr::<crate::memory::memory_map::MemoryRegionExtended>(),
+                .as_mut_ptr::<$crate::memory::memory_map::MemoryRegionExtended>(),
                 *(common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::MEMORY_MAP_LENGTH as usize,
                 )
@@ -169,7 +169,7 @@ impl<T: MemoryRegionTrait> Display for ParsedMapDisplay<T> {
 /// This function will parse the memory map provided by the
 /// bios
 ///
-/// This memory map is provided in the constatnt address of
+/// This memory map is provided in the constant address of
 /// the global [`MEMORY_MAP_OFFSET`]
 ///
 /// The generated output will be saved to
