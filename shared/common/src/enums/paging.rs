@@ -18,28 +18,22 @@ pub enum PageSize {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PageTableLevel {
-    ForthLevel = 0,
-    ThirdLevel = 1,
-    SecondLevel = 2,
-    FirstTable = 3,
+    PML4 = 4,
+    PDPT = 3,
+    PD = 2,
+    PT = 1,
 }
 
 impl PageTableLevel {
     pub fn next(&self) -> Option<Self> {
-        match self {
-            Self::FirstTable => None,
-            Self::SecondLevel => Some(Self::FirstTable),
-            Self::ThirdLevel => Some(Self::SecondLevel),
-            Self::ForthLevel => Some(Self::ThirdLevel),
-        }
+        let n = *self as u8;
+        (n != 0).then_some(unsafe { core::mem::transmute(n) })
     }
     pub fn prev(&self) -> Result<Self, TableError> {
-        match self {
-            Self::FirstTable => Ok(Self::SecondLevel),
-            Self::SecondLevel => Ok(Self::ThirdLevel),
-            Self::ThirdLevel => Ok(Self::ForthLevel),
-            Self::ForthLevel => Err(TableError::Full),
-        }
+        let n = *self as u8;
+        (n != 4)
+            .then_some(unsafe { core::mem::transmute(n) })
+            .ok_or(TableError::Full)
     }
 
     pub fn as_usize(&self) -> usize {

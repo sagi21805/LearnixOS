@@ -1,5 +1,5 @@
 use crate::address_types::VirtualAddress;
-use core::{panic, slice, u64};
+use core::{panic, slice};
 use derive_more::Constructor;
 
 #[derive(Debug, Clone, Default, Copy)]
@@ -23,8 +23,11 @@ impl Position {
         None
     }
 
-    /// Create a position for the map and bit index without
-    /// checking if `bit_index` < 64
+    /// Create a position for the map and bit index
+    ///
+    /// # Safety
+    ///
+    /// This is done without checking if `bit_index` < 64
     pub const unsafe fn new_unchecked(
         map_index: usize,
         bit_index: usize,
@@ -113,7 +116,7 @@ impl ContiguousBlockLayout {
         self.low_mask <<= 1;
         self.high_mask <<= overflowed as u64;
         self.high_mask += overflowed as u64;
-        let val = self.high_mask.saturating_sub(u64::MAX - 1) as u64;
+        let val = self.high_mask.saturating_sub(u64::MAX - 1);
         self.high_mask += val;
         self.index_count += val as usize;
         if self.low_mask == 0 {
@@ -218,7 +221,7 @@ impl BitMap {
     /// Set a contiguous block, the contiguous low mask, and
     /// high mask should be relative to the positions map
     /// index.
-    pub unsafe fn set_contiguous_block(
+    pub fn set_contiguous_block(
         &mut self,
         p: &Position,
         block: &ContiguousBlockLayout,
