@@ -22,8 +22,9 @@ fn build_stage(path: &str, target: &str, profile: &str) -> ExitStatus {
             artifact_dir.as_os_str().to_str().unwrap(),
         ])
         .status() // wait immediately
-        .expect(&format!("Failed to run cargo build for {}", path));
-
+        .unwrap_or_else(|_| {
+            panic!("Failed to run build script for {}", path)
+        });
     println!("cargo::rerun-if-changed={}/src", path);
 
     if !status.success() {

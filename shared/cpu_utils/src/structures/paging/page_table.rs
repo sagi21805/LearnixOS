@@ -110,7 +110,7 @@ impl PageTable {
         const LEVELS: usize = 4;
         let mut level_indices = [0usize; LEVELS];
         let mut page_tables = [Self::current_table(); LEVELS];
-        let mut current_level = PageTableLevel::ForthLevel;
+        let mut current_level = PageTableLevel::PML4;
         loop {
             let current_table = page_tables[current_level.as_usize()];
 

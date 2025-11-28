@@ -1,5 +1,6 @@
 #[cfg(target_arch = "x86_64")]
 use crate::constants::PHYSICAL_MEMORY_OFFSET;
+use crate::enums::PageTableLevel;
 
 // ANCHOR: trait_imports
 use derive_more::{
@@ -64,7 +65,7 @@ impl VirtualAddress {
         i2: usize,
         i1: usize,
     ) -> Self {
-        Self((i4 << 39) | (i3 << 30) | (i2 << 21) | (i1 << 12) | 0)
+        Self((i4 << 39) | (i3 << 30) | (i2 << 21) | (i1 << 12))
     }
     // ANCHOR_END: virtual_from_indexes
 
@@ -84,8 +85,8 @@ impl VirtualAddress {
     ///
     /// 1 -> index of 1st table
     // ANCHOR: virtual_nth_pt_index_unchecked
-    pub const unsafe fn nth_pt_index_unchecked(&self, n: usize) -> usize {
-        (self.0 >> (39 - 9 * (4 - n))) & 0o777
+    pub const fn index_of(&self, level: PageTableLevel) -> usize {
+        (self.0 >> (39 - 9 * (4 - level as usize))) & 0o777
     }
     // ANCHOR_END: virtual_nth_pt_index_unchecked
 
@@ -100,8 +101,11 @@ impl VirtualAddress {
     /// 3 -> index of 1st table
     // ANCHOR: virtual_rev_nth_index_unchecked
     #[allow(arithmetic_overflow)]
-    pub const fn rev_nth_index_unchecked(&self, n: usize) -> usize {
-        (self.0 >> (39 - (9 * n))) & 0o777
+    pub const fn rev_nth_index_unchecked(
+        &self,
+        level: PageTableLevel,
+    ) -> usize {
+        (self.0 >> (39 - (9 * level as usize))) & 0o777
     }
     // ANCHOR_END: virtual_rev_nth_index_unchecked
 
