@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Write};
 use std::path::PathBuf;
-use std::process::{Command, ExitStatus};
+use std::process::{Command, ExitStatus, Stdio};
 
 fn build_stage(path: &str, target: &str, profile: &str) -> ExitStatus {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
@@ -9,8 +9,11 @@ fn build_stage(path: &str, target: &str, profile: &str) -> ExitStatus {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
 
     let status = Command::new(cargo)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
         .args([
             "build",
+            "--color=always",
             &format!("--{}", profile),
             "--target",
             target,
@@ -21,7 +24,7 @@ fn build_stage(path: &str, target: &str, profile: &str) -> ExitStatus {
             "--artifact-dir",
             artifact_dir.as_os_str().to_str().unwrap(),
         ])
-        .status() // wait immediately
+        .status()
         .unwrap_or_else(|_| {
             panic!("Failed to run build script for {}", path)
         });
