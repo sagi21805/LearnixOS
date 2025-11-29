@@ -28,6 +28,7 @@
         "lshift",
         "nomem",
         "nostack",
+        "okprintln",
         "outb",
         "outl",
         "PDPT",

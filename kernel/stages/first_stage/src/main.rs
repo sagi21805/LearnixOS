@@ -1,5 +1,6 @@
 #![no_std] // don't link the Rust standard library
 #![no_main] // disable all Rust-level entry points
+#![deny(clippy::all)]
 mod disk;
 
 use common::{
@@ -88,7 +89,8 @@ pub fn first_stage() -> ! {
         // ANCHOR_END: enter_protected_mode
     }
 
-    unreachable!();
+    #[allow(clippy::empty_loop)]
+    loop {}
 }
 
 #[unsafe(naked)]
