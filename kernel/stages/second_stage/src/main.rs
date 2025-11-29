@@ -1,11 +1,11 @@
 #![no_std] // don't link the Rust standard library
 #![no_main] // disable all Rust-level entry points
-#![allow(dead_code)]
 #![feature(optimize_attribute)]
 #![feature(ptr_as_ref_unchecked)]
 #![allow(static_mut_refs)]
 #![feature(unsafe_cell_access)]
 #![feature(ptr_alignment_type)]
+#![deny(clippy::all)]
 use common::{constants::addresses::KERNEL_OFFSET, enums::Sections};
 use core::{arch::asm, panic::PanicInfo};
 use cpu_utils::structures::global_descriptor_table::GlobalDescriptorTableLong;
@@ -38,7 +38,8 @@ pub unsafe extern "C" fn second_stage() -> ! {
         options(att_syntax)
     );
 
-    unreachable!();
+    #[allow(clippy::all)]
+    loop {}
 }
 // ANCHOR_END: _start
 
