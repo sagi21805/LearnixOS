@@ -19,6 +19,7 @@ static GLOBAL_DESCRIPTOR_TABLE_LONG_MODE: GlobalDescriptorTableLong =
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 #[allow(unsafe_op_in_unsafe_fn)]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn second_stage() -> ! {
     // Set data segment register
     asm!("mov eax, 0x10", "mov ds, eax",);
@@ -36,7 +37,8 @@ pub unsafe extern "C" fn second_stage() -> ! {
         next_stage = const KERNEL_OFFSET,
         options(att_syntax)
     );
-    loop {}
+
+    unreachable!();
 }
 // ANCHOR_END: _start
 
