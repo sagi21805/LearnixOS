@@ -88,7 +88,7 @@ pub fn first_stage() -> ! {
         // ANCHOR_END: enter_protected_mode
     }
 
-    loop {}
+    unreachable!();
 }
 
 #[unsafe(naked)]
