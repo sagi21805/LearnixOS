@@ -23,7 +23,7 @@ pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
         WRITER.color = ColorCode::default();
     }
 }
-// ANCHOR: vga_print
+// ANCHOR_END: vga_print
 
 /// Prints formatted text to the VGA display without a
 /// newline.
