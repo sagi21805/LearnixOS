@@ -5,13 +5,14 @@ mod writer;
 use color_code::ColorCode;
 use writer::Writer;
 
-#[allow(private_interfaces)]
-pub const SCREEN_WIDTH: usize = 80;
-pub const SCREEN_HEIGHT: usize = 25;
-pub static mut WRITER: Writer<80, 25> = Writer::default();
 use core::fmt::{self, Write};
 
-pub fn vga_print(color: Option<ColorCode>, args: fmt::Arguments<'_>) {
+// ANCHOR: writer
+static mut WRITER: Writer<80, 25> = Writer::default();
+// ANCHOR_END: writer
+
+// ANCHOR: vga_print
+pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
     unsafe {
         if let Some(c) = color {
             WRITER.color = c;
@@ -19,11 +20,10 @@ pub fn vga_print(color: Option<ColorCode>, args: fmt::Arguments<'_>) {
 
         WRITER.write_fmt(args).unwrap();
 
-        if color.is_some() {
-            WRITER.color = ColorCode::default();
-        }
+        WRITER.color = ColorCode::default();
     }
 }
+// ANCHOR: vga_print
 
 /// Prints formatted text to the VGA display without a
 /// newline.
@@ -37,12 +37,12 @@ pub fn vga_print(color: Option<ColorCode>, args: fmt::Arguments<'_>) {
 macro_rules! print {
     // Case 1: Standard print with optional arguments.
     ($fmt:expr $(, $arg:expr)* $(;)?) => {{
-        $crate::drivers::vga_display::vga_print(None, format_args!($fmt, $($arg,)*))
+        $crate::drivers::vga_display::vga_print(format_args!($fmt, $($arg,)*), None)
     }};
 
     // Case 2: Print with custom color.
     ($fmt:expr $(, $arg:expr)* ; color = $color:expr) => {{
-        $crate::drivers::vga_display::vga_print(Some($color), format_args!($fmt, $($arg,)*))
+        $crate::drivers::vga_display::vga_print(format_args!($fmt, $($arg,)*), Some($color))
     }};
 }
 
@@ -64,7 +64,7 @@ macro_rules! println {
 /// Prints a standardized failure message in red color with
 /// optional formatting and message color.
 #[macro_export]
-macro_rules! fail_msg {
+macro_rules! eprintln {
     // Case 1: Print "FAIL" with formatted message.
     ($fmt:expr $(, $arg:tt)*) => {{
         use $crate::drivers::vga_display::color_code::ColorCode;
@@ -87,7 +87,7 @@ macro_rules! fail_msg {
 /// Prints a standardized success message in green color
 /// with optional formatting and message color.
 #[macro_export]
-macro_rules! ok_msg {
+macro_rules! okprintln {
     // Case 1: Print "OK" with formatted message.
     ($fmt:expr $(, $arg:tt)*) => {{
         use $crate::drivers::vga_display::color_code::ColorCode;
@@ -104,16 +104,5 @@ macro_rules! ok_msg {
         $crate::print!(" OK " ; color = ColorCode::new(Color::Green, Color::Black));
         $crate::print!("]: ");
         $crate::println!($fmt $(, $arg)* ; color = $color);
-    }};
-}
-
-/// Clears the VGA screen using the current writer instance.
-#[macro_export]
-macro_rules! clear {
-    () => {{
-        use core::fmt::Write;
-        use $crate::screen::WRITER;
-        use $crate::screen::color_code::ColorCode;
-        WRITER.clear()
     }};
 }

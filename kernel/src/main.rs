@@ -21,7 +21,7 @@
 mod drivers;
 mod memory;
 use core::{
-    alloc::{AllocError, Allocator, Layout},
+    alloc::{Allocator, Layout},
     num::NonZero,
     panic::PanicInfo,
 };
@@ -55,14 +55,14 @@ use memory::allocators::page_allocator::{
 #[unsafe(link_section = ".start")]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _start() -> ! {
-    ok_msg!("Entered Protected Mode");
-    ok_msg!("Enabled Paging");
-    ok_msg!("Entered Long Mode");
+    okprintln!("Entered Protected Mode");
+    okprintln!("Enabled Paging");
+    okprintln!("Entered Long Mode");
     parse_map();
-    ok_msg!("Obtained Memory Map");
+    okprintln!("Obtained Memory Map");
     println!("{}", ParsedMapDisplay(parsed_memory_map!()));
     PhysicalPageAllocator::init(unsafe { &mut ALLOCATOR });
-    ok_msg!("Allocator Initialized");
+    okprintln!("Allocator Initialized");
     unsafe {
         let idt_address = ALLOCATOR
             .assume_init_ref()
@@ -75,11 +75,11 @@ pub unsafe extern "C" fn _start() -> ! {
             .get()
             .into();
         InterruptDescriptorTable::init(&mut IDT, idt_address);
-        ok_msg!("Initialized interrupt descriptor table");
+        okprintln!("Initialized interrupt descriptor table");
         interrupt_handlers::init(IDT.assume_init_mut());
-        ok_msg!("Initialized interrupts handlers");
+        okprintln!("Initialized interrupts handlers");
         CascadedPIC::init(&mut PIC);
-        ok_msg!("Initialized Programmable Interrupt Controller");
+        okprintln!("Initialized Programmable Interrupt Controller");
         let keyboard_buffer_address = ALLOCATOR
             .assume_init_ref()
             .allocate(Layout::from_size_align_unchecked(
@@ -95,7 +95,7 @@ pub unsafe extern "C" fn _start() -> ! {
             keyboard_buffer_address,
             NonZero::new(REGULAR_PAGE_SIZE).unwrap(),
         );
-        ok_msg!("Initialized Keyboard");
+        okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
     let pci_devices = pci::scan_pci();
@@ -122,7 +122,7 @@ pub unsafe extern "C" fn _start() -> ! {
     }
     loop {
         unsafe {
-            print!("{}", KEYBOARD.assume_init_mut().read_char() ; color = ColorCode::new(Color::Yellow, Color::White));
+            print!("{}", KEYBOARD.assume_init_mut().read_char() ; color = ColorCode::new(Color::Green, Color::Black));
         }
     }
 }
@@ -133,6 +133,6 @@ unsafe fn panic(_info: &PanicInfo) -> ! {
     unsafe {
         interrupts::disable();
     }
-    fail_msg!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
+    eprintln!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
     loop {}
 }
