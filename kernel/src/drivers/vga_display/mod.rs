@@ -5,22 +5,28 @@ mod writer;
 use color_code::ColorCode;
 use writer::Writer;
 
-use core::fmt::{self, Write};
+use core::{
+    fmt::{self, Write},
+    mem::MaybeUninit,
+};
 
 // ANCHOR: writer
-static mut WRITER: Writer<80, 25> = Writer::default();
+static mut WRITER: MaybeUninit<Writer<80, 25>> =
+    MaybeUninit::new(Writer::default());
 // ANCHOR_END: writer
 
 // ANCHOR: vga_print
 pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
     unsafe {
+        let writer = WRITER.assume_init_mut();
+
         if let Some(c) = color {
-            WRITER.color = c;
+            writer.color = c;
         }
 
-        WRITER.write_fmt(args).unwrap();
+        writer.write_fmt(args).unwrap();
 
-        WRITER.color = ColorCode::default();
+        writer.color = ColorCode::default();
     }
 }
 // ANCHOR_END: vga_print
