@@ -1,5 +1,4 @@
 use core::ascii::Char;
-use core::mem::MaybeUninit;
 
 use super::color_code::ColorCode;
 use super::screen_char::ScreenChar;
@@ -12,7 +11,7 @@ use cpu_utils::instructions::port::PortExt;
 pub struct Writer<const W: usize, const H: usize> {
     pub cursor_position: usize,
     pub color: ColorCode,
-    pub screen: MaybeUninit<&'static mut [ScreenChar]>,
+    pub screen: &'static mut [ScreenChar],
 }
 // ANCHOR_END: writer
 
@@ -23,10 +22,10 @@ impl<const W: usize, const H: usize> const Default for Writer<W, H> {
             cursor_position: 0,
             color: ColorCode::default(),
             screen: unsafe {
-                MaybeUninit::new(core::slice::from_raw_parts_mut(
+                core::slice::from_raw_parts_mut(
                     VGA_BUFFER_PTR as *mut ScreenChar,
                     W * H + 1,
-                ))
+                )
             },
         }
     }
@@ -44,7 +43,6 @@ impl<const W: usize, const H: usize> Writer<W, H> {
         // ANCHOR: handle_char
         let c =
             Char::from_u8(char).expect("Entered invalid ascii character");
-        let screen = unsafe { self.screen.assume_init_read() };
         match c {
             Char::LineFeed => {
                 self.new_line();
@@ -54,7 +52,7 @@ impl<const W: usize, const H: usize> Writer<W, H> {
             }
             _ => {
                 if !c.is_control() {
-                    screen[self.cursor_position] =
+                    self.screen[self.cursor_position] =
                         ScreenChar::new(char, self.color);
                     self.cursor_position += 1;
                 }
@@ -73,15 +71,13 @@ impl<const W: usize, const H: usize> Writer<W, H> {
     // ANCHOR: scroll_down
     /// Scroll `lines` down.
     fn scroll_down(&mut self, lines: usize) {
-        let screen = unsafe { self.screen.assume_init_read() };
-
         let lines_index = W * (H - lines) + 1;
 
         // Copy the buffer to the left
-        screen.copy_within(lines * W.., 0);
+        self.screen.copy_within(lines * W.., 0);
 
         // Fill remaining place with empty characters
-        for x in &mut screen[lines_index..] {
+        for x in &mut self.screen[lines_index..] {
             *x = ScreenChar::default()
         }
 
@@ -97,9 +93,8 @@ impl<const W: usize, const H: usize> Writer<W, H> {
 
     // ANCHOR: backspace
     fn backspace(&mut self) {
-        let screen = unsafe { self.screen.assume_init_read() };
         self.cursor_position -= 1;
-        screen[self.cursor_position] = ScreenChar::default();
+        self.screen[self.cursor_position] = ScreenChar::default();
     }
     // ANCHOR_END: backspace
 
@@ -118,8 +113,7 @@ impl<const W: usize, const H: usize> Writer<W, H> {
     /// Clears the screen by setting all of the buffer bytes
     /// to zero
     fn clear(&mut self) {
-        let screen = unsafe { self.screen.assume_init_read() };
-        screen.fill(ScreenChar::default());
+        self.screen.fill(ScreenChar::default());
         self.cursor_position = 0;
     }
     // ANCHOR_END: clear
