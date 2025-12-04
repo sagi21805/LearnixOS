@@ -34,7 +34,10 @@ use crate::{
         pic8259::{CascadedPIC, PIC},
         vga_display::color_code::ColorCode,
     },
-    memory::memory_map::{ParsedMapDisplay, parse_map},
+    memory::{
+        allocators::page_allocator::allocator::PhysicalPageAllocator,
+        memory_map::{ParsedMapDisplay, parse_map},
+    },
 };
 
 use common::{
@@ -47,9 +50,8 @@ use cpu_utils::{
         IDT, InterruptDescriptorTable,
     },
 };
-use memory::allocators::page_allocator::{
-    ALLOCATOR, allocator::PhysicalPageAllocator,
-};
+
+use memory::allocators::page_allocator::ALLOCATOR;
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -64,32 +66,14 @@ pub unsafe extern "C" fn _start() -> ! {
     PhysicalPageAllocator::init(unsafe { &mut ALLOCATOR });
     okprintln!("Allocator Initialized");
     unsafe {
-        let idt_address = ALLOCATOR
-            .assume_init_ref()
-            .allocate(Layout::from_size_align_unchecked(
-                REGULAR_PAGE_SIZE,
-                REGULAR_PAGE_ALIGNMENT.as_usize(),
-            ))
-            .unwrap()
-            .addr()
-            .get()
-            .into();
+        let idt_address = alloc_pages!(1).into();
         InterruptDescriptorTable::init(&mut IDT, idt_address);
         okprintln!("Initialized interrupt descriptor table");
         interrupt_handlers::init(IDT.assume_init_mut());
         okprintln!("Initialized interrupts handlers");
         CascadedPIC::init(&mut PIC);
         okprintln!("Initialized Programmable Interrupt Controller");
-        let keyboard_buffer_address = ALLOCATOR
-            .assume_init_ref()
-            .allocate(Layout::from_size_align_unchecked(
-                REGULAR_PAGE_SIZE,
-                REGULAR_PAGE_ALIGNMENT.as_usize(),
-            ))
-            .unwrap()
-            .addr()
-            .get()
-            .into();
+        let keyboard_buffer_address = alloc_pages!(1).into();
         Keyboard::init(
             &mut KEYBOARD,
             keyboard_buffer_address,
