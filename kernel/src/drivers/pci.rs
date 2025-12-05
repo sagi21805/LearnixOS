@@ -1,6 +1,9 @@
 extern crate alloc;
-use crate::memory::allocators::page_allocator::{
-    ALLOCATOR, allocator::PhysicalPageAllocator,
+use crate::{
+    drivers::ata::ahci::AHCIBaseAddress,
+    memory::allocators::page_allocator::{
+        ALLOCATOR, allocator::PhysicalPageAllocator,
+    },
 };
 use alloc::vec::Vec;
 use common::enums::{
@@ -175,15 +178,15 @@ impl BISTRegister {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct PciCommonHeader {
-    vendor_device: VendorDevice,
-    command: CommandRegister,
-    status: StatusRegister,
-    revision: u8,
-    device_type: PciDeviceType,
-    cache_size: u8,
-    latency_timer: u8,
-    header_type: HeaderType,
-    bist: BISTRegister,
+    pub vendor_device: VendorDevice,
+    pub command: CommandRegister,
+    pub status: StatusRegister,
+    pub revision: u8,
+    pub device_type: PciDeviceType,
+    pub cache_size: u8,
+    pub latency_timer: u8,
+    pub header_type: HeaderType,
+    pub bist: BISTRegister,
 }
 
 impl PciCommonHeader {
@@ -209,18 +212,17 @@ impl PciCommonHeader {
     }
 }
 
-#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryBaseAddressRegister(u32);
 
-#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct IOBaseAddressRegister(u32);
 
 #[derive(Clone, Copy)]
 pub union BaseAddressRegister {
-    memory: MemoryBaseAddressRegister,
-    io: IOBaseAddressRegister,
+    pub memory: MemoryBaseAddressRegister,
+    pub io: IOBaseAddressRegister,
+    pub abar: AHCIBaseAddress,
 }
 
 pub enum BaseAddressRegisterType {
@@ -244,33 +246,33 @@ impl BaseAddressRegister {
 
 impl core::fmt::Debug for BaseAddressRegister {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "Memory: {:?}", unsafe { self.memory })?;
-        writeln!(f, "I/O: {:?}", unsafe { self.io })
+        writeln!(f, "Memory: {:x?}", unsafe { self.memory })?;
+        writeln!(f, "I/O: {:x?}", unsafe { self.io })
     }
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct GeneralDeviceHeader {
-    common: PciCommonHeader,
-    bar0: BaseAddressRegister,
-    bar1: BaseAddressRegister,
-    bar2: BaseAddressRegister,
-    bar3: BaseAddressRegister,
-    bar4: BaseAddressRegister,
-    bar5: BaseAddressRegister,
-    cardbus_cis_ptr: u32,
-    subsystem_vendor_id: u16,
-    subsystem_id: u16,
-    expansion_rom_base: u32,
-    capabilities_ptr: u8,
-    _reserved0: u8,
-    _reserved1: u16,
-    _reserved2: u32,
-    interrupt_line: u8,
-    interrupt_pin: u8,
-    min_grant: u8,
-    max_latency: u8,
+    pub common: PciCommonHeader,
+    pub bar0: BaseAddressRegister,
+    pub bar1: BaseAddressRegister,
+    pub bar2: BaseAddressRegister,
+    pub bar3: BaseAddressRegister,
+    pub bar4: BaseAddressRegister,
+    pub bar5: BaseAddressRegister,
+    pub cardbus_cis_ptr: u32,
+    pub subsystem_vendor_id: u16,
+    pub subsystem_id: u16,
+    pub expansion_rom_base: u32,
+    pub capabilities_ptr: u8,
+    pub _reserved0: u8,
+    pub _reserved1: u16,
+    pub _reserved2: u32,
+    pub interrupt_line: u8,
+    pub interrupt_pin: u8,
+    pub min_grant: u8,
+    pub max_latency: u8,
 }
 
 impl GeneralDeviceHeader {
