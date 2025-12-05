@@ -42,7 +42,7 @@ use crate::{
 
 use common::{
     constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
-    enums::{Color, HeaderType},
+    enums::{ClassCode, Color},
 };
 use cpu_utils::{
     instructions::interrupts::{self},
@@ -87,21 +87,10 @@ pub unsafe extern "C" fn _start() -> ! {
     let a = pci_devices.as_ptr() as usize;
     println!("pci_devices address: {:x}", a);
     for device in pci_devices.iter() {
-        loop {
-            unsafe {
-                let c = KEYBOARD.assume_init_mut().read_char();
-                if c == "\n" {
-                    break;
-                }
-            }
-        }
-        match device.identify() {
-            HeaderType::GeneralDevice => {
-                println!("{:#?}", unsafe { device.common })
-            }
-            _ => {
-                println!("{:#?}", unsafe { device.common })
-            }
+        if device.common().device_type.is_ahci() {
+            print!("{:#x?}", unsafe {
+                device.general_device.bar5.abar.base_address()
+            });
         }
     }
     loop {

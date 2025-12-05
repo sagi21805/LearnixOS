@@ -1,4 +1,5 @@
 #[repr(u16)]
+#[non_exhaustive]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum VendorID {
     Intel = 0x8086,
@@ -77,16 +78,29 @@ pub struct VendorDevice {
 impl core::fmt::Debug for VendorDevice {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Vendor: {:?} ", self.vendor)?;
-        write!(f, "Device: 0x{:x?}", unsafe { self.device.num })
+        write!(f, "Device: ")?;
+        match self.vendor {
+            VendorID::Intel => {
+                write!(f, "{:?}", unsafe { self.device.intel })
+            }
+            VendorID::Nvidia => {
+                write!(f, "{:?}", unsafe { self.device.nvidia })
+            }
+            VendorID::QEMU => {
+                write!(f, "{:?}", unsafe { self.device.qemu })
+            }
+            VendorID::Realtek => {
+                write!(f, "{:?}", unsafe { self.device.realtek })
+            }
+            VendorID::VirtIO => {
+                write!(f, "{:?}", unsafe { self.device.virtio })
+            }
+            VendorID::NonExistent => {
+                write!(f, "NoneExistent")
+            }
+        }
     }
 }
-
-impl core::fmt::Debug for DeviceID {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Device: 0x{:x?}", unsafe { self.num })
-    }
-}
-
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClassCode {
@@ -713,6 +727,16 @@ impl core::fmt::Debug for PciDeviceType {
                 write!(f, "{:?} ", unsafe { self.subclass.none })?;
                 write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
             }
+        }
+    }
+}
+
+impl PciDeviceType {
+    pub fn is_ahci(&self) -> bool {
+        unsafe {
+            self.class == ClassCode::MassStorageController
+                && self.subclass.storage == MassStorageSubClass::SATA
+                && self.prog_if.sata == SATAControllerPI::AHCI1
         }
     }
 }
