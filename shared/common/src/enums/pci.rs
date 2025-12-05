@@ -13,12 +13,12 @@ pub enum VendorID {
 #[repr(u16)]
 pub enum IntelDeviceID {
     HostBridge = 0x1237,
-    PIIX3ISA = 0x700,
-    PIIX3IDE = 0x701,
-    PIIX3USB = 0x702,
-    PIIX3ACPI = 0x703,
+    PIIX3ISA = 0x7000,
+    PIIX3IDE = 0x7010,
+    PIIX3USB = 0x7020,
+    PIIX3ACPI = 0x7113,
     ExpressDramController = 0x29C0,
-    NetworkController = 0x100E, // e1000 again
+    NetworkController = 0x100E,
     LPCInterface82801IB = 0x2410,
     SataControllerAHCI = 0x2822,
     NonExistent = 0xFFFF,
@@ -68,6 +68,7 @@ pub union DeviceID {
 }
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct VendorDevice {
     pub vendor: VendorID,
     pub device: DeviceID,
@@ -534,6 +535,7 @@ impl core::fmt::Debug for ProgrammingInterface {
 }
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct PciDeviceType {
     pub prog_if: ProgrammingInterface,
     pub subclass: SubClass,
