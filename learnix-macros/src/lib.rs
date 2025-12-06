@@ -134,45 +134,14 @@ pub fn ro_flag(input: TokenStream) -> TokenStream {
 
     // build identifiers
     let name_str = name.to_string();
-    let is_ident = format_ident!("is_{}", name_str);
+    let support_ident = format_ident!("supports_{}", name_str);
 
     let expanded = quote! {
         #[inline]
         #[allow(dead_code)]
         #[allow(unused_attributes)]
         /// Checks if the corresponding flag is set
-        pub const fn #is_ident(&self) -> bool {
-            (self.0 & (1 << #bit)) != 0
-        }
-    };
-
-    expanded.into()
-}
-// ANCHOR_END: ro_flag
-
-// ANCHOR: rw_flag
-/// This macro will obtain `flag_name` and the corresponding
-/// `bit_number` and create read-only flag functionality
-///
-/// With this information it will automatically generate
-/// three methods
-///
-/// 4. `is_$flag_name`: return true if the flag is set or false if not
-#[proc_macro]
-pub fn rw_flag(input: TokenStream) -> TokenStream {
-    let FlagInput { name, bit, .. } =
-        syn::parse_macro_input!(input as FlagInput);
-
-    // build identifiers
-    let name_str = name.to_string();
-    let is_ident = format_ident!("is_{}", name_str);
-
-    let expanded = quote! {
-        #[inline]
-        #[allow(dead_code)]
-        #[allow(unused_attributes)]
-        /// Checks if the corresponding flag is set
-        pub const fn #is_ident(&self) -> bool {
+        pub const fn #support_ident(&self) -> bool {
             (self.0 & (1 << #bit)) != 0
         }
     };
