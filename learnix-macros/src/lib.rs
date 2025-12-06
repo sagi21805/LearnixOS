@@ -118,3 +118,113 @@ pub fn flag(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 // ANCHOR_END: flag
+
+// ANCHOR: ro_flag
+/// This macro will obtain `flag_name` and the corresponding
+/// `bit_number` and create read-only flag functionality
+///
+/// With this information it will automatically generate
+/// three methods
+///
+/// 1. `is_$flag_name`: return true if the flag is set or false if not
+#[proc_macro]
+pub fn ro_flag(input: TokenStream) -> TokenStream {
+    let FlagInput { name, bit, .. } =
+        syn::parse_macro_input!(input as FlagInput);
+
+    // build identifiers
+    let name_str = name.to_string();
+    let is_ident = format_ident!("is_{}", name_str);
+
+    let expanded = quote! {
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Checks if the corresponding flag is set
+        pub const fn #is_ident(&self) -> bool {
+            (self.0 & (1 << #bit)) != 0
+        }
+    };
+
+    expanded.into()
+}
+// ANCHOR_END: ro_flag
+
+// ANCHOR: rw_flag
+/// This macro will obtain `flag_name` and the corresponding
+/// `bit_number` and create read-only flag functionality
+///
+/// With this information it will automatically generate
+/// three methods
+///
+/// 4. `is_$flag_name`: return true if the flag is set or false if not
+#[proc_macro]
+pub fn rw_flag(input: TokenStream) -> TokenStream {
+    let FlagInput { name, bit, .. } =
+        syn::parse_macro_input!(input as FlagInput);
+
+    // build identifiers
+    let name_str = name.to_string();
+    let is_ident = format_ident!("is_{}", name_str);
+
+    let expanded = quote! {
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Checks if the corresponding flag is set
+        pub const fn #is_ident(&self) -> bool {
+            (self.0 & (1 << #bit)) != 0
+        }
+    };
+
+    expanded.into()
+}
+// ANCHOR_END: ro_flag
+
+// ANCHOR: rwc_flag
+#[proc_macro]
+pub fn rwc_flag(input: TokenStream) -> TokenStream {
+    let FlagInput { name, bit, .. } =
+        syn::parse_macro_input!(input as FlagInput);
+
+    // build identifiers
+    let name_str = name.to_string();
+    let clear_ident = format_ident!("clear_{}", name_str);
+
+    let expanded = quote! {
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Sets the corresponding flag
+        pub const fn #clear_ident(&mut self) {
+            self.0 |= 1 << #bit;
+        }
+    };
+
+    expanded.into()
+}
+// ANCHOR_END: rwc_flag
+
+// ANCHOR: rw1_flag
+#[proc_macro]
+pub fn rw1_flag(input: TokenStream) -> TokenStream {
+    let FlagInput { name, bit, .. } =
+        syn::parse_macro_input!(input as FlagInput);
+
+    // build identifiers
+    let name_str = name.to_string();
+    let set_ident = format_ident!("set_{}", name_str);
+
+    let expanded = quote! {
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Sets the corresponding flag
+        pub const fn #set_ident(&mut self) {
+            self.0 |= 1 << #bit;
+        }
+    };
+
+    expanded.into()
+}
+// ANCHOR_END: rw1_flag
