@@ -19,6 +19,7 @@ pub enum IntelDeviceID {
     PIIX3USB = 0x7020,
     PIIX3ACPI = 0x7113,
     ExpressDramController = 0x29C0,
+    ICH9SataController = 0x2922,
     NetworkController = 0x100E,
     LPCInterface82801IB = 0x2410,
     SataControllerAHCI = 0x2822,
@@ -96,7 +97,7 @@ impl core::fmt::Debug for VendorDevice {
                 write!(f, "{:?}", unsafe { self.device.virtio })
             }
             VendorID::NonExistent => {
-                write!(f, "NoneExistent")
+                write!(f, "NonExistent")
             }
         }
     }
@@ -548,8 +549,8 @@ impl core::fmt::Debug for ProgrammingInterface {
     }
 }
 
+#[repr(C, packed)]
 #[derive(Clone, Copy)]
-#[repr(C)]
 pub struct PciDeviceType {
     pub prog_if: ProgrammingInterface,
     pub subclass: SubClass,
