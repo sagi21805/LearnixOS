@@ -84,7 +84,7 @@ pub impl VirtualAddress {
             && self.is_aligned(page_size.alignment())
         {
             let mut table = PageTable::current_table_mut();
-            for level in PageTableLevel::iterator() {
+            for level in PageTableLevel::iterator_without_last() {
                 let index = self.index_of(*level);
                 let entry = &mut table.entries[index];
                 let resolved_table = entry.force_resolve_table_mut();
