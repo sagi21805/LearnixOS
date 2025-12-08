@@ -1,9 +1,11 @@
 extern crate alloc;
+
 use crate::{
     drivers::ata::ahci::AHCIBaseAddress,
     memory::allocators::page_allocator::{
         ALLOCATOR, allocator::PhysicalPageAllocator,
     },
+    print, println,
 };
 use alloc::vec::Vec;
 use common::enums::{
@@ -225,9 +227,16 @@ pub union BaseAddressRegister {
     pub abar: AHCIBaseAddress,
 }
 
+#[derive(PartialEq, Eq)]
 pub enum BaseAddressRegisterType {
     Memory,
     IO,
+}
+
+pub enum BaseAddressRegisterSize {
+    Bit32 = 0,
+    Reserved = 1,
+    Bit64 = 2,
 }
 
 impl BaseAddressRegister {
@@ -240,6 +249,21 @@ impl BaseAddressRegister {
             } else {
                 BaseAddressRegisterType::IO
             }
+        }
+    }
+
+    pub fn is_64bit(&self) -> bool {
+        self.identify() == BaseAddressRegisterType::Memory
+            && unsafe {
+                self.memory.0 & BaseAddressRegisterSize::Bit64 as u32 != 0
+            }
+    }
+
+    pub fn address(&self) -> usize {
+        if !self.is_64bit() {
+            (unsafe { self.io.0 } & 0xfffffff0) as usize
+        } else {
+            unimplemented!("Still didn't implemented 64bit addresses")
         }
     }
 }
@@ -369,7 +393,7 @@ pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
             let common =
                 PciConfigurationCycle::read_common_header(bus, device, 0);
             if common.vendor_device.vendor == VendorID::NonExistent {
-                return v;
+                continue;
             }
             v.push_within_capacity(
                 PciConfigurationCycle::read_pci_device_header(
@@ -383,11 +407,12 @@ pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
                 continue;
             }
             for function in 1..8 {
+                println!("{}", function);
                 let common = PciConfigurationCycle::read_common_header(
                     bus, device, function,
                 );
                 if common.vendor_device.vendor == VendorID::NonExistent {
-                    break;
+                    continue;
                 }
                 v.push_within_capacity(
                     PciConfigurationCycle::read_pci_device_header(
