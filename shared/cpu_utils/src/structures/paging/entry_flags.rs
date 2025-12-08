@@ -73,5 +73,13 @@ impl PageEntryFlags {
     pub const fn regular_page_flags() -> Self {
         PageEntryFlags::default().present().writable()
     }
+
+    pub const fn regular_io_page_flags() -> Self {
+        PageEntryFlags::default()
+            .present()
+            .writable()
+            .disable_cache()
+            .global()
+    }
 }
 // ANCHOR_END: impl_page_entry_flags
