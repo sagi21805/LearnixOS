@@ -6,14 +6,6 @@ use learnix_macros::{flag, ro_flag, rw1_flag, rwc_flag};
 #[derive(Copy, Clone)]
 pub struct AHCIBaseAddress(u32);
 
-impl AHCIBaseAddress {
-    /// Bits 31-13 (Taken from AHCI Specification)
-    pub fn base_address(&self) -> usize {
-        const MASK: u32 = ((1 << 19) - 1) << 13;
-        ((self.0 & MASK) >> 13) as usize
-    }
-}
-
 /// CAP
 #[derive(Debug, Clone, Copy)]
 pub struct HBACapabilities(u32);
@@ -345,20 +337,20 @@ impl BiosOsControlStatus {
     flag!(bos, 0);
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct GenericHostControl {
-    cap: HBACapabilities,
-    ghc: GlobalHostControl,
-    is: InterruptStatus,
-    pi: PortsImplemented,
-    vs: Version,
-    ccc_ctl: CommandCompletionCoalescingControl,
-    ccc_ports: CommandCompletionCoalescingPorts,
-    em_loc: EnclosureManagementLocation,
-    em_ctl: EnclosureManagementControl,
-    cap_ext: HostCapabilitiesExtended,
-    bohc: BiosOsControlStatus,
+    pub cap: HBACapabilities,
+    pub ghc: GlobalHostControl,
+    pub is: InterruptStatus,
+    pub pi: PortsImplemented,
+    pub vs: Version,
+    pub ccc_ctl: CommandCompletionCoalescingControl,
+    pub ccc_ports: CommandCompletionCoalescingPorts,
+    pub em_loc: EnclosureManagementLocation,
+    pub em_ctl: EnclosureManagementControl,
+    pub cap_ext: HostCapabilitiesExtended,
+    pub bohc: BiosOsControlStatus,
 }
 
 pub struct VendorSpecificRegisters {}
