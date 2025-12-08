@@ -24,10 +24,12 @@ use core::{
     alloc::{Allocator, Layout},
     num::NonZero,
     panic::PanicInfo,
+    ptr,
 };
 
 use crate::{
     drivers::{
+        ata::ahci::{GenericHostControl, HBAMemoryRegisters},
         interrupt_handlers,
         keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
         pci::{self},
@@ -35,19 +37,28 @@ use crate::{
         vga_display::color_code::ColorCode,
     },
     memory::{
-        allocators::page_allocator::allocator::PhysicalPageAllocator,
+        allocators::page_allocator::{
+            allocator::PhysicalPageAllocator,
+            extensions::PhysicalAddressExt,
+        },
         memory_map::{ParsedMapDisplay, parse_map},
     },
 };
 
 use common::{
-    constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
-    enums::{ClassCode, Color},
+    address_types::{PhysicalAddress, VirtualAddress},
+    constants::{
+        BIG_PAGE_ALIGNMENT, HUGE_PAGE_ALIGNMENT, REGULAR_PAGE_ALIGNMENT,
+        REGULAR_PAGE_SIZE,
+    },
+    enums::{ClassCode, Color, PS2ScanCode, PageSize},
 };
 use cpu_utils::{
     instructions::interrupts::{self},
-    structures::interrupt_descriptor_table::{
-        IDT, InterruptDescriptorTable,
+    registers::al,
+    structures::{
+        interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
+        paging::PageEntryFlags,
     },
 };
 
@@ -82,15 +93,54 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
-    let pci_devices = pci::scan_pci();
+    let mut pci_devices = pci::scan_pci();
     println!("Press ENTER to enumerate PCI devices!");
     let a = pci_devices.as_ptr() as usize;
     println!("pci_devices address: {:x}", a);
-    for device in pci_devices.iter() {
+
+    loop {
+        let c = unsafe { KEYBOARD.assume_init_mut().read_raw_scancode() };
+        if let Some(e) = c
+            && PS2ScanCode::from_scancode(e) == PS2ScanCode::Enter
+        {
+            break;
+        }
+    }
+
+    for device in pci_devices.iter_mut() {
+        // println!("{:#?}", unsafe { device.common.vendor_device });
+        // println!("{:#?}", unsafe { device.common.header_type });
+        // println!("{:#?}\n", unsafe { device.common.device_type });
+
         if device.common().device_type.is_ahci() {
-            print!("{:#x?}", unsafe {
-                device.general_device.bar5.abar.base_address()
-            });
+            let a = unsafe {
+                PhysicalAddress::new_unchecked(
+                    device.general_device.bar5.address(),
+                )
+            };
+
+            println!("unaligned: {:x?}", a);
+
+            let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
+
+            println!("aligned: {:x?}", aligned);
+
+            aligned.map(
+                aligned.as_usize().into(),
+                PageEntryFlags::regular_io_page_flags(),
+                PageSize::Regular,
+            );
+
+            let hba_ptr =
+                unsafe { &*aligned.as_mut_ptr::<GenericHostControl>() };
+
+            println!("{:#?}", hba_ptr.vs.major_version());
+
+            // unsafe {
+            //     device.common.command.set_bus_master();
+            //     hba.ghc.set_ae();
+            //     hba.ghc.set_hr();
+            // }
         }
     }
     loop {
