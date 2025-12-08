@@ -40,6 +40,18 @@ impl PageTableLevel {
         // Convert the array slice into an iterator.
         VARIANTS.iter()
     }
+
+    pub const fn iterator_without_last<'a>()
+    -> impl Iterator<Item = &'a PageTableLevel> {
+        const VARIANTS: [PageTableLevel; 3] = [
+            PageTableLevel::PML4,
+            PageTableLevel::PDPT,
+            PageTableLevel::PD,
+        ];
+
+        // Convert the array slice into an iterator.
+        VARIANTS.iter()
+    }
 }
 
 impl TryFrom<u8> for PageTableLevel {
