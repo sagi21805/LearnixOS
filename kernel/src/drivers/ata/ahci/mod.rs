@@ -1,14 +1,14 @@
-use core::num::NonZero;
+use core::{num::NonZero, option::IterMut};
 
 use common::enums::AHCIInterfaceSpeed;
 use learnix_macros::{flag, ro_flag, rw1_flag, rwc_flag};
 
 #[derive(Copy, Clone)]
-pub struct AHCIBaseAddress(u32);
+pub struct AHCIBaseAddress(pub u32);
 
 /// CAP
 #[derive(Debug, Clone, Copy)]
-pub struct HBACapabilities(u32);
+pub struct HBACapabilities(pub u32);
 
 impl HBACapabilities {
     // Support 64bit addressing
@@ -78,7 +78,7 @@ impl HBACapabilities {
 
 /// GHC
 #[derive(Debug, Clone, Copy)]
-pub struct GlobalHostControl(u32);
+pub struct GlobalHostControl(pub u32);
 
 impl GlobalHostControl {
     // AHCI Enable. Must be set for the HBA to operate in AHCI mode.
@@ -97,7 +97,7 @@ impl GlobalHostControl {
 
 /// IS
 #[derive(Debug, Clone, Copy)]
-pub struct InterruptStatus(u32);
+pub struct InterruptStatus(pub u32);
 
 impl InterruptStatus {
     // Port Interrupt Pending Status. Corresponds to bits of the PI
@@ -146,7 +146,7 @@ impl InterruptStatus {
 
 // PI
 #[derive(Debug, Clone, Copy)]
-pub struct PortsImplemented(u32);
+pub struct PortsImplemented(pub u32);
 
 impl PortsImplemented {
     // Port i is Implemented (P[i])
@@ -157,7 +157,7 @@ impl PortsImplemented {
 
 // VS
 #[derive(Debug, Clone, Copy)]
-pub struct Version(u32);
+pub struct Version(pub u32);
 
 impl Version {
     // Major Version Number (Bits 31:16)
@@ -173,7 +173,7 @@ impl Version {
 
 /// CCC_CTL
 #[derive(Debug, Clone, Copy)]
-pub struct CommandCompletionCoalescingControl(u32);
+pub struct CommandCompletionCoalescingControl(pub u32);
 
 impl CommandCompletionCoalescingControl {
     pub fn interrupt_time_ms(&self) -> u16 {
@@ -193,7 +193,7 @@ impl CommandCompletionCoalescingControl {
 
 /// CCC_PORTS
 #[derive(Debug, Clone, Copy)]
-pub struct CommandCompletionCoalescingPorts(u32);
+pub struct CommandCompletionCoalescingPorts(pub u32);
 
 impl CommandCompletionCoalescingPorts {
     pub fn set_port(&mut self, port_num: u8) {
@@ -239,7 +239,7 @@ impl CommandCompletionCoalescingPorts {
 
 /// EM_LOC
 #[derive(Debug, Clone, Copy)]
-pub struct EnclosureManagementLocation(u32);
+pub struct EnclosureManagementLocation(pub u32);
 
 impl EnclosureManagementLocation {
     pub fn dword_offset_from_abar(&self) -> usize {
@@ -255,7 +255,7 @@ impl EnclosureManagementLocation {
 
 /// EM_CTL
 #[derive(Debug, Clone, Copy)]
-pub struct EnclosureManagementControl(u32);
+pub struct EnclosureManagementControl(pub u32);
 
 impl EnclosureManagementControl {
     // Port multiplier support
@@ -294,7 +294,7 @@ impl EnclosureManagementControl {
 
 /// CAP2
 #[derive(Debug, Clone, Copy)]
-pub struct HostCapabilitiesExtended(u32);
+pub struct HostCapabilitiesExtended(pub u32);
 
 impl HostCapabilitiesExtended {
     // DevSleep entrance from slumber only
@@ -318,7 +318,7 @@ impl HostCapabilitiesExtended {
 
 // BOHC
 #[derive(Debug, Clone, Copy)]
-pub struct BiosOsControlStatus(u32);
+pub struct BiosOsControlStatus(pub u32);
 
 impl BiosOsControlStatus {
     // Bios Busy
@@ -353,15 +353,110 @@ pub struct GenericHostControl {
     pub bohc: BiosOsControlStatus,
 }
 
-pub struct VendorSpecificRegisters {}
+#[repr(C)]
+pub struct VendorSpecificRegisters {
+    _reserved: [u8; 0x74],
+}
 
-pub struct PortControlRegisters {}
+/// Port X Command list base address low
+pub struct CmdListAddressLow(pub u32);
 
-/// Host Bust Controller Memory Registers
-#[repr(C, packed)]
+/// Port X Command list base address high
+pub struct CmdListAddressHigh(pub u32);
+
+/// Port X Frame Information Structure base address low
+pub struct FisAddressLow(pub u32);
+
+/// Port X Frame Information Structure base address high
+pub struct FisAddressHigh(pub u32);
+
+/// Port X Interrupt status
+pub struct PortInterruptStatus(pub u32);
+
+/// Port X Interrupt Enable
+pub struct InterruptEnable(pub u32);
+
+/// Port X Command and status
+pub struct CmdStatus(pub u32);
+
+/// Port x Task File Data
+pub struct TaskFileData(pub u32);
+
+/// Port X Signature
+pub struct Signature(pub u32);
+
+/// Port X SATA Status
+pub struct SataStatus(pub u32);
+
+/// Port X SATA control
+pub struct SataControl(pub u32);
+
+/// Port X SATA error
+pub struct SataError(pub u32);
+
+/// Port X Sata Active
+pub struct SataActive(pub u32);
+
+/// Port X Command issue
+pub struct CmdIssue(pub u32);
+
+/// Port X SATA Notification
+pub struct SataNotification(pub u32);
+
+/// Port X Frame Information Structure based switching control
+pub struct FisSwitchControl(pub u32);
+
+/// Port x Device sleep
+pub struct DeviceSleep(pub u32);
+
+/// Port X Vendor specific
+pub struct VendorSpecific(pub u32);
+
+#[repr(C)]
+pub struct PortControlRegisters {
+    clb: CmdListAddressLow,
+    clbu: CmdListAddressHigh,
+    fb: FisAddressLow,
+    fbu: FisAddressHigh,
+    is: PortInterruptStatus,
+    ie: InterruptEnable,
+    cmd: CmdStatus,
+    _reserved0: u32,
+    tfd: TaskFileData,
+    sig: Signature,
+    ssts: SataStatus,
+    sctl: SataControl,
+    serr: SataError,
+    sact: SataActive,
+    ci: CmdIssue,
+    sntf: SataNotification,
+    fbs: FisSwitchControl,
+    devslp: DeviceSleep,
+    _reserved1: [u32; 10],
+    vs: [VendorSpecific; 4],
+}
+
+impl PortControlRegisters {
+    /// Return the full command list address by combining the low and high
+    /// 32bit parts
+    pub fn cmd_list_address(&self) -> usize {
+        ((self.clbu.0 as usize) << 32)
+            | (self.clb.0 as usize & !((1 << 10) - 1))
+    }
+
+    /// Return the full frame information structure address by combining
+    /// the low and high 32bit parts
+    pub fn fis_address(&self) -> usize {
+        ((self.fbu.0 as usize) << 32)
+            | (self.fb.0 as usize & !((1 << 8) - 1))
+    }
+}
+
+#[repr(C)]
+/// Host Bus Adapter Memory Registers
 pub struct HBAMemoryRegisters {
-    ghc: GenericHostControl,
-    _reserved: (),
-    vsr: VendorSpecificRegisters,
-    ports: [PortControlRegisters; 32],
+    pub ghc: GenericHostControl,
+    pub _reserved: [u8; 0x60],
+    pub vsr: VendorSpecificRegisters,
+    pub ports: [PortControlRegisters; 32],
 }
