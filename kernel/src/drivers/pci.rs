@@ -5,7 +5,7 @@ use crate::{
     memory::allocators::page_allocator::{
         ALLOCATOR, allocator::PhysicalPageAllocator,
     },
-    print, println,
+    println,
 };
 use alloc::vec::Vec;
 use common::enums::{
