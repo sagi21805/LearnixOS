@@ -24,12 +24,11 @@ use core::{
     alloc::{Allocator, Layout},
     num::NonZero,
     panic::PanicInfo,
-    ptr,
 };
 
 use crate::{
     drivers::{
-        ata::ahci::{GenericHostControl, HBAMemoryRegisters},
+        ata::ahci::GenericHostControl,
         interrupt_handlers,
         keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
         pci::{self},
@@ -46,16 +45,12 @@ use crate::{
 };
 
 use common::{
-    address_types::{PhysicalAddress, VirtualAddress},
-    constants::{
-        BIG_PAGE_ALIGNMENT, HUGE_PAGE_ALIGNMENT, REGULAR_PAGE_ALIGNMENT,
-        REGULAR_PAGE_SIZE,
-    },
-    enums::{ClassCode, Color, PS2ScanCode, PageSize},
+    address_types::PhysicalAddress,
+    constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
+    enums::{Color, PS2ScanCode, PageSize},
 };
 use cpu_utils::{
     instructions::interrupts::{self},
-    registers::al,
     structures::{
         interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
         paging::PageEntryFlags,
@@ -134,7 +129,15 @@ pub unsafe extern "C" fn _start() -> ! {
             let hba_ptr =
                 unsafe { &*aligned.as_mut_ptr::<GenericHostControl>() };
 
-            println!("{:#?}", hba_ptr.vs.major_version());
+            println!(
+                "AHCI Version: {}.{}",
+                hba_ptr.vs.major_version(),
+                hba_ptr.vs.minor_version()
+            );
+
+            println!("Ports Implemented: {:b}", hba_ptr.pi.0);
+
+            println!("Interface Speed: {}", hba_ptr.cap.interface_speed())
 
             // unsafe {
             //     device.common.command.set_bus_master();
