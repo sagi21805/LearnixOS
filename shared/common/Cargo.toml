@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+num_enum = { version = "0.7.5", default-features = false, features = [
+    "complex-expressions",
+] }
 derive_more = { version = "2.0.1", default-features = false, features = [
     "full",
 ] }
