@@ -1,6 +1,6 @@
-use core::{num::NonZero, option::IterMut};
+use core::num::NonZero;
 
-use common::enums::AHCIInterfaceSpeed;
+use common::enums::{AHCIInterfaceSpeed, InterfaceCommunicationControl};
 use learnix_macros::{flag, ro_flag, rw1_flag, rwc_flag};
 
 #[derive(Copy, Clone)]
@@ -33,8 +33,7 @@ impl HBACapabilities {
     ro_flag!(sal, 25);
 
     pub fn interface_speed(&self) -> AHCIInterfaceSpeed {
-        const MASK: u32 = (1 << 24) - 1;
-        unsafe { core::mem::transmute(((self.0 & MASK) >> 20) as u8) }
+        unsafe { core::mem::transmute(((self.0 >> 20) & 0xf) as u8) }
     }
 
     // Support AHCI mode only
@@ -57,8 +56,7 @@ impl HBACapabilities {
 
     // This value is between 1 and 32
     pub fn number_of_commands(&self) -> u8 {
-        const MASK: u32 = (1 << 13) - 1;
-        ((self.0 & MASK) >> 8) as u8
+        ((self.0 >> 8) & 0x1f) as u8
     }
 
     // Command completion coalescing supported
@@ -71,8 +69,7 @@ impl HBACapabilities {
     ro_flag!(sxs, 5);
 
     pub fn number_of_ports(&self) -> u8 {
-        const MASK: u32 = (1 << 5) - 1;
-        (self.0 & MASK) as u8
+        (self.0 & 0x1f) as u8
     }
 }
 
@@ -373,17 +370,219 @@ pub struct FisAddressHigh(pub u32);
 /// Port X Interrupt status
 pub struct PortInterruptStatus(pub u32);
 
+impl PortInterruptStatus {
+    // Cold port detect status
+    rwc_flag!(cpds, 31);
+
+    // Task file error status
+    rwc_flag!(tfes, 30);
+
+    // Host bust fatal error status
+    rwc_flag!(hbfs, 29);
+
+    // Host Bus Data Error Status
+    rwc_flag!(hbds, 28);
+
+    // Interface Fatal Error Status
+    rwc_flag!(ifs, 27);
+
+    // Interface Non-fatal Error Status
+    rwc_flag!(infs, 26);
+
+    // Overflow Status
+    rwc_flag!(ofs, 24);
+
+    // Incorrect Port Multiplier Status
+    rwc_flag!(ipms, 23);
+
+    // PhyRdy Change Status
+    ro_flag!(prcs, 22);
+
+    // Device Mechanical Presence Status
+    rwc_flag!(dmps, 7);
+
+    // Port Connect Change Status
+    ro_flag!(pcs, 6);
+
+    // Descriptor Processed
+    rwc_flag!(dps, 5);
+
+    // Unknown FIS Interrupt
+    ro_flag!(ufs, 4);
+
+    // Set Device Bits Interrupt
+    rwc_flag!(sdbs, 3);
+
+    // DMA Setup FIS Interrupt
+    rwc_flag!(dss, 2);
+
+    // PIO Setup FIS Interrupt
+    rwc_flag!(pss, 1);
+
+    // Device to Host Register FIS Interrupt
+    rwc_flag!(dhrs, 0);
+}
+
 /// Port X Interrupt Enable
 pub struct InterruptEnable(pub u32);
+
+impl InterruptEnable {
+    // Cold Presence Detect Enable
+    flag!(cpde, 31);
+
+    // Task File Error Enable
+    flag!(tfee, 30);
+
+    // Host Bus Fatal Error Enable
+    flag!(hbfe, 29);
+
+    // Host Bus Data Error Enable
+    flag!(hbde, 28);
+
+    // Interface Fatal Error Enable
+    flag!(ife, 27);
+
+    // Interface Non-fatal Error Enable
+    flag!(infe, 26);
+
+    // Overflow Enable
+    flag!(ofe, 24);
+
+    // Incorrect Port Multiplier Enable
+    flag!(ipme, 23);
+
+    // PhyRdy Change Interrupt Enable
+    flag!(prce, 22);
+
+    // Device Mechanical Presence Enable
+    flag!(dmpe, 7);
+
+    // Port Change Interrupt Enable
+    flag!(pce, 6);
+
+    // Descriptor Processed Interrupt Enable
+    flag!(dpe, 5);
+
+    // Unknown FIS Interrupt Enable
+    flag!(ufe, 4);
+
+    // Set Device Bits FIS Interrupt Enable
+    flag!(sdbe, 3);
+
+    // DMA Setup FIS Interrupt Enable
+    flag!(dse, 2);
+
+    // PIO Setup FIS Interrupt Enable
+    flag!(pse, 1);
+
+    // Device to Host Register FIS Interrupt Enable
+    flag!(dhre, 0);
+}
 
 /// Port X Command and status
 pub struct CmdStatus(pub u32);
 
+impl CmdStatus {
+    pub fn set_icc(&mut self, icc: InterfaceCommunicationControl) {
+        self.0 &= !(0xf << 28);
+        self.0 |= (icc as u32) << 28;
+    }
+
+    // Aggressive Slumber / Partial
+    flag!(asp, 27);
+
+    // Aggressive Link Power Management Enable
+    flag!(alpe, 26);
+
+    // Drive LED on ATAPI Enable
+    flag!(dlae, 25);
+
+    // Device is ATAPI
+    flag!(atapi, 24);
+
+    // Automatic Partial to Slumber Transitions Enabled
+    flag!(apste, 23);
+
+    // FIS-based Switching Capable Port
+    ro_flag!(fbscp, 22);
+
+    // External SATA Port
+    ro_flag!(esp, 21);
+
+    // Cold Presence Detection
+    ro_flag!(cpd, 20);
+
+    // Mechanical Presence Switch Attached to Port
+    ro_flag!(mpsp, 19);
+
+    // Hot Plug Capable Port
+    ro_flag!(hpcp, 18);
+
+    // Port Multiplier Attached
+    flag!(pma, 17);
+
+    // Cold Presence State
+    ro_flag!(cps, 16);
+
+    // Command List Running
+    ro_flag!(cr, 15);
+
+    // FIS Receive Running
+    ro_flag!(fr, 14);
+
+    // Mechanical Presence Switch State
+    ro_flag!(mpss, 13);
+
+    /// If None is returned, invalid ccs has entered (Value should be
+    /// between 0x0 and 0xf)
+    pub fn set_current_cmd(&mut self, ccs: u8) -> Option<()> {
+        (0x0u8..=0xfu8).contains(&ccs).then(|| {
+            self.0 &= !(0xff << 8);
+            self.0 |= (ccs as u32) << 8;
+        })
+    }
+
+    // FIS Receive Enable
+    flag!(fre, 4);
+
+    // Command List Override
+    flag!(clo, 3);
+
+    // Power On Device
+    flag!(pod, 2);
+
+    // Spin-Up Device
+    flag!(sud, 1);
+
+    // Start
+    flag!(st, 0);
+}
+
 /// Port x Task File Data
 pub struct TaskFileData(pub u32);
 
+impl TaskFileData {
+    // Indicates error during transfer
+    ro_flag!(err, 0);
+
+    // Indicates a data transfer request
+    ro_flag!(drq, 3);
+
+    // Indicates that the interface is busy
+    ro_flag!(bsy, 7);
+
+    pub fn error(&self) -> u8 {
+        (self.0 >> 8) as u8
+    }
+}
+
 /// Port X Signature
-pub struct Signature(pub u32);
+pub struct Signature {
+    pub sector_count: u8,
+    pub lba_low: u8,
+    pub lba_mid: u8,
+    pub lba_high: u8,
+}
 
 /// Port X SATA Status
 pub struct SataStatus(pub u32);
