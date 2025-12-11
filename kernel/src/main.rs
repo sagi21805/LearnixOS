@@ -28,7 +28,7 @@ use core::{
 
 use crate::{
     drivers::{
-        ata::ahci::GenericHostControl,
+        ata::ahci::{GenericHostControl, HBAMemoryRegisters},
         interrupt_handlers,
         keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
         pci::{self},
@@ -46,8 +46,10 @@ use crate::{
 
 use common::{
     address_types::PhysicalAddress,
-    constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
-    enums::{Color, PS2ScanCode, PageSize},
+    constants::{
+        BIG_PAGE_ALIGNMENT, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+    },
+    enums::{Color, InterfacePowerManagement, PS2ScanCode, PageSize},
 };
 use cpu_utils::{
     instructions::interrupts::{self},
@@ -114,11 +116,7 @@ pub unsafe extern "C" fn _start() -> ! {
                 )
             };
 
-            println!("unaligned: {:x?}", a);
-
             let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
-
-            println!("aligned: {:x?}", aligned);
 
             aligned.map(
                 aligned.as_usize().into(),
@@ -127,23 +125,32 @@ pub unsafe extern "C" fn _start() -> ! {
             );
 
             let hba_ptr =
-                unsafe { &*aligned.as_mut_ptr::<GenericHostControl>() };
+                unsafe { &*aligned.as_mut_ptr::<HBAMemoryRegisters>() };
 
             println!(
                 "AHCI Version: {}.{}",
-                hba_ptr.vs.major_version(),
-                hba_ptr.vs.minor_version()
+                hba_ptr.ghc.vs.major_version(),
+                hba_ptr.ghc.vs.minor_version()
+            );
+            println!(
+                "Interface Speed: {}",
+                hba_ptr.ghc.cap.interface_speed()
             );
 
-            println!("Ports Implemented: {:b}", hba_ptr.pi.0);
-
-            println!("Interface Speed: {}", hba_ptr.cap.interface_speed())
-
-            // unsafe {
-            //     device.common.command.set_bus_master();
-            //     hba.ghc.set_ae();
-            //     hba.ghc.set_hr();
-            // }
+            for (i, p) in hba_ptr.ports[0..20].iter().enumerate() {
+                if let Ok(power) = p.ssts.power()
+                    && let InterfacePowerManagement::Active = power
+                {
+                    println!(
+                        "Detected {:?} AHCI Disk at {} speed: {} \
+                         detection: {:?}",
+                        power,
+                        i,
+                        p.ssts.speed(),
+                        p.ssts.detection()
+                    );
+                }
+            }
         }
     }
     loop {
