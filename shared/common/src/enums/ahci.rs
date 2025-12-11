@@ -1,10 +1,22 @@
+use crate::error::ConversionError;
 use derive_more::Display;
 use num_enum::{TryFromPrimitive, UnsafeFromPrimitive};
 
 // ANCHOR: AHCIInterfaceSpeed
-#[derive(Display, Clone, Copy, TryFromPrimitive, UnsafeFromPrimitive)]
 #[repr(u8)]
-pub enum AHCIInterfaceSpeed {
+#[derive(
+    PartialEq,
+    Eq,
+    Display,
+    Clone,
+    Copy,
+    TryFromPrimitive,
+    UnsafeFromPrimitive,
+)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+pub enum InterfaceSpeed {
+    #[display("Device not present or communication not established")]
+    DevNotPresent = 0,
     #[display("Gen1: 1.5Gb/s")]
     Gen1 = 1,
     #[display("Gen1: 3.0Gb/s")]
@@ -17,6 +29,7 @@ pub enum AHCIInterfaceSpeed {
 // ANCHOR: InterfaceCommunicationControl
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum InterfaceCommunicationControl {
     Idle = 0x0,
     Active = 0x1,
@@ -27,3 +40,55 @@ pub enum InterfaceCommunicationControl {
     Reserved = 0xf,
 }
 // ANCHOR_END: InterfaceCommunicationControl
+
+// ANCHOR: InterfacePowerManagement
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+pub enum InterfacePowerManagement {
+    DevNotPresent = 0,
+    Active = 1,
+    Partial = 2,
+    Slumber = 6,
+    DevSleep = 8,
+}
+// ANCHOR_END: InterfacePowerManagement
+
+// ANCHOR: DeviceDetection
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+pub enum DeviceDetection {
+    NotDetected = 0,
+    DetectedNoCommunication = 1,
+    Detected = 3,
+    Device = 4,
+}
+// ANCHOR_END: device Detection
+
+// ANCHOR: SpeedAllowed
+#[repr(u8)]
+#[derive(Display, Clone, Copy, TryFromPrimitive, UnsafeFromPrimitive)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+pub enum InterfaceSpeedRestriction {
+    #[display("Device not present or communication not established")]
+    NoRestriction = 0,
+    #[display("Gen1: 1.5Gb/s")]
+    Gen1 = 1,
+    #[display("Gen1: 3.0Gb/s")]
+    Gen2 = 2,
+    #[display("Gen1: 6.0Gb/s")]
+    Gen3 = 3,
+}
+// ANCHOR_END: SpeedAllowed
+
+// ANCHOR: DeviceDetectionInitialization
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+pub enum InterfaceInitialization {
+    NoInitializationRequested = 0,
+    CommunicationInitialization = 1,
+    DisableInterface = 4,
+}
+// ANCHOR_END: DeviceDetectionInitialization

@@ -1,7 +1,18 @@
+/// AHCI implementation for the learnix operating system
+///
+/// Implemented directly from https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/serial-ata-ahci-spec-rev1-3-1.pdf
 use core::num::NonZero;
 
-use common::enums::{AHCIInterfaceSpeed, InterfaceCommunicationControl};
+use common::{
+    enums::{
+        DeviceDetection, InterfaceCommunicationControl,
+        InterfaceInitialization, InterfacePowerManagement, InterfaceSpeed,
+        InterfaceSpeedRestriction,
+    },
+    error::ConversionError,
+};
 use learnix_macros::{flag, ro_flag, rw1_flag, rwc_flag};
+use num_enum::UnsafeFromPrimitive;
 
 #[derive(Copy, Clone)]
 pub struct AHCIBaseAddress(pub u32);
@@ -32,7 +43,7 @@ impl HBACapabilities {
     // Support activity lead
     ro_flag!(sal, 25);
 
-    pub fn interface_speed(&self) -> AHCIInterfaceSpeed {
+    pub fn interface_speed(&self) -> InterfaceSpeed {
         unsafe { core::mem::transmute(((self.0 >> 20) & 0xf) as u8) }
     }
 
@@ -587,8 +598,74 @@ pub struct Signature {
 /// Port X SATA Status
 pub struct SataStatus(pub u32);
 
+impl SataStatus {
+    pub fn power(
+        &self,
+    ) -> Result<InterfacePowerManagement, ConversionError<u8>> {
+        let power = ((self.0 >> 8) & 0xf) as u8;
+        InterfacePowerManagement::try_from(power)
+    }
+
+    pub fn speed(&self) -> InterfaceSpeed {
+        let speed = ((self.0 >> 4) & 0xf) as u8;
+        unsafe { InterfaceSpeed::unchecked_transmute_from(speed) }
+    }
+
+    pub fn detection(
+        &self,
+    ) -> Result<DeviceDetection, ConversionError<u8>> {
+        let detection = (self.0 & 0xf) as u8;
+        DeviceDetection::try_from(detection)
+    }
+}
+
 /// Port X SATA control
 pub struct SataControl(pub u32);
+
+impl SataControl {
+    pub fn port_multiplier(&self) -> u8 {
+        ((self.0 >> 16) & 0xf) as u8
+    }
+
+    pub fn select_power_management(&self) -> u8 {
+        ((self.0 >> 12) & 0xf) as u8
+    }
+
+    flag!(devslp_disabled, 10);
+    flag!(slumber_disabled, 9);
+    flag!(partial_disabled, 8);
+
+    pub fn max_speed(&self) -> InterfaceSpeedRestriction {
+        let speed = ((self.0 >> 4) & 0xf) as u8;
+        unsafe {
+            InterfaceSpeedRestriction::unchecked_transmute_from(speed)
+        }
+    }
+
+    pub fn set_max_speed(&mut self, speed: InterfaceSpeed) {
+        if speed != InterfaceSpeed::DevNotPresent {
+            self.0 &= !(0xf << 4);
+            self.0 |= (speed as u32) << 4;
+        }
+    }
+
+    pub fn device_initialization(
+        &self,
+    ) -> Result<InterfaceInitialization, ConversionError<u8>> {
+        InterfaceInitialization::try_from((self.0 & 0xf) as u8)
+    }
+
+    // TODO THIS COMMAND ANY MAYBE OTHER SHOULD PROBABLY MOVE TO THE PORT
+    // SETTING BECAUSE THEY REQUIRE PxCMD.st BIT TO BE SET WHILE THEY ARE
+    // SET
+    pub fn set_device_initialization(
+        &mut self,
+        init: InterfaceInitialization,
+    ) {
+        self.0 &= !0xf;
+        self.0 |= init as u32;
+    }
+}
 
 /// Port X SATA error
 pub struct SataError(pub u32);
@@ -613,26 +690,26 @@ pub struct VendorSpecific(pub u32);
 
 #[repr(C)]
 pub struct PortControlRegisters {
-    clb: CmdListAddressLow,
-    clbu: CmdListAddressHigh,
-    fb: FisAddressLow,
-    fbu: FisAddressHigh,
-    is: PortInterruptStatus,
-    ie: InterruptEnable,
-    cmd: CmdStatus,
+    pub clb: CmdListAddressLow,
+    pub clbu: CmdListAddressHigh,
+    pub fb: FisAddressLow,
+    pub fbu: FisAddressHigh,
+    pub is: PortInterruptStatus,
+    pub ie: InterruptEnable,
+    pub cmd: CmdStatus,
     _reserved0: u32,
-    tfd: TaskFileData,
-    sig: Signature,
-    ssts: SataStatus,
-    sctl: SataControl,
-    serr: SataError,
-    sact: SataActive,
-    ci: CmdIssue,
-    sntf: SataNotification,
-    fbs: FisSwitchControl,
-    devslp: DeviceSleep,
+    pub tfd: TaskFileData,
+    pub sig: Signature,
+    pub ssts: SataStatus,
+    pub sctl: SataControl,
+    pub serr: SataError,
+    pub sact: SataActive,
+    pub ci: CmdIssue,
+    pub sntf: SataNotification,
+    pub fbs: FisSwitchControl,
+    pub devslp: DeviceSleep,
     _reserved1: [u32; 10],
-    vs: [VendorSpecific; 4],
+    pub vs: [VendorSpecific; 4],
 }
 
 impl PortControlRegisters {
