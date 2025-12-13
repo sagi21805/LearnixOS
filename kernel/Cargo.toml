@@ -14,3 +14,5 @@ num_enum = { version = "0.7.5", default-features = false, features = [
 ] }
 extend = "1.2.0"
 learnix-macros = { path = "../learnix-macros" }
+strum_macros = { version = "0.27", default-features = false }
+strum = { version = "0.27", default-features = false }

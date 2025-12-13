@@ -9,10 +9,11 @@ use common::{
         InterfaceInitialization, InterfacePowerManagement, InterfaceSpeed,
         InterfaceSpeedRestriction,
     },
-    error::ConversionError,
+    error::{AhciError, ConversionError, DiagnosticError},
 };
 use learnix_macros::{flag, ro_flag, rw1_flag, rwc_flag};
 use num_enum::UnsafeFromPrimitive;
+use strum::IntoEnumIterator;
 
 #[derive(Copy, Clone)]
 pub struct AHCIBaseAddress(pub u32);
@@ -545,12 +546,13 @@ impl CmdStatus {
     ro_flag!(mpss, 13);
 
     /// If None is returned, invalid ccs has entered (Value should be
-    /// between 0x0 and 0xf)
-    pub fn set_current_cmd(&mut self, ccs: u8) -> Option<()> {
-        (0x0u8..=0xfu8).contains(&ccs).then(|| {
-            self.0 &= !(0xff << 8);
+    /// between 0x0 and 0x1f)
+    pub fn set_current_cmd(&mut self, ccs: u8) {
+        self.set_st();
+        (0x0u8..=0x1fu8).contains(&ccs).then(|| {
+            self.0 &= !(0x1f << 8);
             self.0 |= (ccs as u32) << 8;
-        })
+        });
     }
 
     // FIS Receive Enable
@@ -670,6 +672,19 @@ impl SataControl {
 /// Port X SATA error
 pub struct SataError(pub u32);
 
+impl SataError {
+    pub fn diagnostic(&self) -> impl Iterator<Item = DiagnosticError> {
+        let diagnostic_errors = ((self.0 >> 16) & 0xffff) as u16;
+        DiagnosticError::iter()
+            .filter(move |n| *n as u16 & diagnostic_errors != 0)
+    }
+
+    pub fn error(&self) -> impl Iterator<Item = AhciError> {
+        let ahci_error = (self.0 & 0xffff) as u16;
+        AhciError::iter().filter(move |n| *n as u16 & ahci_error != 0)
+    }
+}
+
 /// Port X Sata Active
 pub struct SataActive(pub u32);
 
@@ -679,8 +694,29 @@ pub struct CmdIssue(pub u32);
 /// Port X SATA Notification
 pub struct SataNotification(pub u32);
 
+impl SataNotification {
+    /// Get port multiplier notification
+    pub fn set_pm_notif(&mut self, pm_port: u8) {
+        (0x0..0xf)
+            .contains(&pm_port)
+            .then(|| self.0 |= pm_port as u32);
+    }
+
+    /// Get port multiplier notification
+    pub fn get_pm_notif(&self, pm_port: u8) -> bool {
+        (0x0..0xf)
+            .contains(&pm_port)
+            .then(|| (self.0 & !0xffff) & (1 << pm_port) != 0)
+            .unwrap_or(false)
+    }
+}
+
 /// Port X Frame Information Structure based switching control
 pub struct FisSwitchControl(pub u32);
+
+impl FisSwitchControl {
+    // pub fn device_with_error(&self) -> u8 {}
+}
 
 /// Port x Device sleep
 pub struct DeviceSleep(pub u32);
@@ -688,7 +724,6 @@ pub struct DeviceSleep(pub u32);
 /// Port X Vendor specific
 pub struct VendorSpecific(pub u32);
 
-#[repr(C)]
 pub struct PortControlRegisters {
     pub clb: CmdListAddressLow,
     pub clbu: CmdListAddressHigh,
@@ -725,6 +760,22 @@ impl PortControlRegisters {
     pub fn fis_address(&self) -> usize {
         ((self.fbu.0 as usize) << 32)
             | (self.fb.0 as usize & !((1 << 8) - 1))
+    }
+
+    pub fn set_status(&mut self, port: u8) {
+        self.cmd.set_st();
+        (0x0u8..=0x1fu8).contains(&port).then(|| {
+            self.sact.0 &= !(0x1f << 8);
+            self.sact.0 |= (port as u32) << 8;
+        });
+    }
+
+    pub fn send_command(&mut self, port: u8) {
+        self.cmd.set_st();
+        (0x0u8..=0x1fu8).contains(&port).then(|| {
+            self.ci.0 &= !(0x1f << 8);
+            self.ci.0 |= (port as u32) << 8;
+        });
     }
 }
 
