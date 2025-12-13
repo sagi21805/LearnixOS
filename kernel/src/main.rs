@@ -118,6 +118,8 @@ pub unsafe extern "C" fn _start() -> ! {
 
             let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
 
+            println!("A: {:x?}, Aligned: {:x?}", aligned, a);
+
             aligned.map(
                 aligned.as_usize().into(),
                 PageEntryFlags::regular_io_page_flags(),
