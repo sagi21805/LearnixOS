@@ -5,7 +5,7 @@ use core::num::NonZero;
 
 use common::{
     enums::{
-        DeviceDetection, InterfaceCommunicationControl,
+        DeviceDetection, DeviceType, InterfaceCommunicationControl,
         InterfaceInitialization, InterfacePowerManagement, InterfaceSpeed,
         InterfaceSpeedRestriction,
     },
@@ -80,6 +80,7 @@ impl HBACapabilities {
     // Support external SATA
     ro_flag!(sxs, 5);
 
+    /// Returns the number of ports implemented
     pub fn number_of_ports(&self) -> u8 {
         (self.0 & 0x1f) as u8
     }
@@ -597,6 +598,17 @@ pub struct Signature {
     pub lba_high: u8,
 }
 
+impl Signature {
+    pub fn device_type(&self) -> Result<DeviceType, ConversionError<u32>> {
+        DeviceType::try_from(u32::from_le_bytes([
+            self.sector_count,
+            self.lba_low,
+            self.lba_mid,
+            self.lba_high,
+        ]))
+    }
+}
+
 /// Port X SATA Status
 pub struct SataStatus(pub u32);
 
@@ -715,15 +727,82 @@ impl SataNotification {
 pub struct FisSwitchControl(pub u32);
 
 impl FisSwitchControl {
-    // pub fn device_with_error(&self) -> u8 {}
+    /// Port multiplier device that experienced fatal error
+    pub fn device_with_error(&self) -> u8 {
+        ((self.0 >> 16) & 0xf) as u8
+    }
+
+    /// The number of devices that FIS-Based switching has been optimized
+    /// for. The minimum value for this field should be 0x2.
+    pub fn active_device_optimization(&self) -> u8 {
+        ((self.0 >> 12) & 0xf) as u8
+    }
+
+    /// Set the port multiplier port number, that should recieve the next
+    /// command
+    pub fn device_to_issue(&mut self, dev_num: u8) {
+        self.0 &= !(0xf << 8);
+        self.0 |= (dev_num as u32) << 8;
+    }
+
+    // Single device error
+    ro_flag!(sde, 2);
+
+    // Device error clear
+    rw1_flag!(dec, 1);
+
+    // Enable, should be set if there is a port multiplier
+    flag!(en, 0);
 }
 
 /// Port x Device sleep
 pub struct DeviceSleep(pub u32);
 
+impl DeviceSleep {
+    /// Device Sleep Idle Timeout Multiplier
+    pub fn dito_multiplier(&self) -> u8 {
+        ((self.0 >> 25) & 0xf) as u8
+    }
+
+    /// Raw dito value
+    ///
+    /// **Use [`dito_actual`] for the actual wait time**
+    pub fn dito_ms(&self) -> u16 {
+        ((self.0 >> 15) & 0x3ff) as u16
+    }
+
+    /// The actual timeout, which is dito * (dito_multiplier + 1)
+    pub fn dito_actual_ms(&self) -> u16 {
+        self.dito_ms() * (self.dito_multiplier() + 1) as u16
+    }
+
+    /// Minimu device sleep assertion time
+    ///
+    /// TODO: currently only read only, if write needed, check documentatio
+    /// about extended cap and writing to this offset
+    pub fn mdat(&self) -> u8 {
+        ((self.0 >> 10) & 0x1f) as u8
+    }
+
+    /// Device sleep exit timeout
+    ///
+    /// TODO: currently only read only, if write needed, check documentatio
+    /// about extended cap and writing to this offset
+    pub fn deto_ms(&self) -> u8 {
+        ((self.0 >> 2) & 0xff) as u8
+    }
+
+    // Device sleep present
+    ro_flag!(dsp, 1);
+
+    // Aggressive device sleep enable
+    ro_flag!(adse, 0);
+}
+
 /// Port X Vendor specific
 pub struct VendorSpecific(pub u32);
 
+#[repr(C)]
 pub struct PortControlRegisters {
     pub clb: CmdListAddressLow,
     pub clbu: CmdListAddressHigh,

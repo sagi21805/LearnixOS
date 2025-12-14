@@ -41,6 +41,18 @@ pub enum InterfaceCommunicationControl {
 }
 // ANCHOR_END: InterfaceCommunicationControl
 
+// ANCHOR: DeviceType
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[num_enum(error_type(name = ConversionError<u32>, constructor = ConversionError::CantConvertFrom))]
+pub enum DeviceType {
+    SataDevice = 0x00000101,
+    AtapiDevice = 0xeb140101,
+    EnclosureManagementBridge = 0xc33c0101,
+    PortMultiplier = 0x96690191,
+}
+// ANCHOR_END: DeviceType
+
 // ANCHOR: InterfacePowerManagement
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, TryFromPrimitive)]
