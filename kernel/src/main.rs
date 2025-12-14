@@ -49,7 +49,10 @@ use common::{
     constants::{
         BIG_PAGE_ALIGNMENT, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
-    enums::{Color, InterfacePowerManagement, PS2ScanCode, PageSize},
+    enums::{
+        Color, DeviceDetection, DeviceType, InterfacePowerManagement,
+        PS2ScanCode, PageSize, PciDeviceType,
+    },
 };
 use cpu_utils::{
     instructions::interrupts::{self},
@@ -126,8 +129,22 @@ pub unsafe extern "C" fn _start() -> ! {
                 PageSize::Regular,
             );
 
-            let hba_ptr =
-                unsafe { &*aligned.as_mut_ptr::<HBAMemoryRegisters>() };
+            let hba_ptr = unsafe {
+                &mut *aligned.as_mut_ptr::<HBAMemoryRegisters>()
+            };
+
+            println!("AE: {:?}", hba_ptr.ghc.ghc.is_ae());
+
+            println!(
+                "AHCI Mode Only: {:?}",
+                hba_ptr.ghc.cap.supports_sam()
+            );
+
+            println!(
+                "Port Implemented: {:?}, {:b}",
+                hba_ptr.ghc.cap.number_of_ports(),
+                hba_ptr.ghc.pi.0
+            );
 
             println!(
                 "AHCI Version: {}.{}",
@@ -139,17 +156,27 @@ pub unsafe extern "C" fn _start() -> ! {
                 hba_ptr.ghc.cap.interface_speed()
             );
 
-            for (i, p) in hba_ptr.ports[0..20].iter().enumerate() {
-                if let Ok(power) = p.ssts.power()
-                    && let InterfacePowerManagement::Active = power
+            let total_ports = hba_ptr.ghc.cap.number_of_ports() as usize;
+
+            for (i, p) in hba_ptr.ports[0..total_ports].iter().enumerate()
+            {
+                if let Ok(detection) = p.ssts.detection()
+                    && let DeviceDetection::Detected = detection
                 {
                     println!(
                         "Detected {:?} AHCI Disk at {} speed: {} \
                          detection: {:?}",
-                        power,
+                        detection,
                         i,
                         p.ssts.speed(),
                         p.ssts.detection()
+                    );
+
+                    println!("Device Type: {:?}", p.sig.device_type());
+
+                    println!(
+                        "ADO: {:?}",
+                        p.fbs.active_device_optimization()
                     );
                 }
             }
