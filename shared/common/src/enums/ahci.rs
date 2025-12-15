@@ -1,6 +1,6 @@
 use crate::error::ConversionError;
 use derive_more::Display;
-use num_enum::{TryFromPrimitive, UnsafeFromPrimitive};
+use num_enum::{FromPrimitive, TryFromPrimitive, UnsafeFromPrimitive};
 
 // ANCHOR: AHCIInterfaceSpeed
 #[repr(u8)]
@@ -104,3 +104,27 @@ pub enum InterfaceInitialization {
     DisableInterface = 4,
 }
 // ANCHOR_END: DeviceDetectionInitialization
+
+// ANCHOR: FisTypes
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, FromPrimitive)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+pub enum FisTypes {
+    RegisterFisHost2Device = 0x27,
+    RegisterFisDevice2Host = 0x34,
+    DmaActivateFisDevice2Host = 0x39,
+    DmaSetupFisBiDirectional = 0x41,
+    DataFisBiDirectional = 0x46,
+    BistActivateFisBiDirectional = 0x58,
+    PioSetupFisDevice2Host = 0x5f,
+    SetDevicesBits = 0xa1,
+    _Reserved0 = 0xa6,
+    _Reserved1 = 0xb8,
+    _Reserved2 = 0xbf,
+    _VendorSpecific0 = 0xc7,
+    _VendorSpecific1 = 0xd4,
+    _Reserved3 = 0xd9,
+
+    #[num_enum(default)]
+    Unknown = 0xff,
+}
