@@ -109,7 +109,7 @@ pub enum InterfaceInitialization {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, FromPrimitive)]
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
-pub enum FisTypes {
+pub enum FisType {
     RegisterFisHost2Device = 0x27,
     RegisterFisDevice2Host = 0x34,
     DmaActivateFisDevice2Host = 0x39,
