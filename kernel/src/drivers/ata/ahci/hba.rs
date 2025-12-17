@@ -9,11 +9,17 @@ use common::{
         InterfaceInitialization, InterfacePowerManagement, InterfaceSpeed,
         InterfaceSpeedRestriction,
     },
-    error::{AhciError, ConversionError, DiagnosticError},
+    error::{AhciError, ConversionError, DiagnosticError, HbaError},
 };
 use learnix_macros::{flag, ro_flag, rw1_flag, rwc_flag};
 use num_enum::UnsafeFromPrimitive;
 use strum::IntoEnumIterator;
+
+use crate::drivers::ata::ahci::{
+    DmaSetup, Fis, PioSetupD2H, RegisterD2H, SetDeviceBits,
+};
+
+use crate::eprintln;
 
 #[derive(Copy, Clone)]
 pub struct AHCIBaseAddress(pub u32);
@@ -591,6 +597,7 @@ impl TaskFileData {
 }
 
 /// Port X Signature
+#[repr(C)]
 pub struct Signature {
     pub sector_count: u8,
     pub lba_low: u8,
@@ -858,6 +865,103 @@ impl PortControlRegisters {
     }
 }
 
+/// TODO, DECIDE IF ITS OK THAT THIS IS ONE BYTE GREATER IN SIZE
+#[repr(C)]
+pub struct RecievedFis {
+    dsfis: DmaSetup,
+    _reserved0: u32,
+    psfis: PioSetupD2H,
+    _reserved1: [u32; 3],
+    rfis: RegisterD2H,
+    _reserved2: u32,
+    sdbfis: SetDeviceBits,
+    ufis: [u8; 64],
+    _reserved3: [u32; 24],
+}
+
+pub struct CmdListDescriptionInfo(pub u32);
+
+impl CmdListDescriptionInfo {
+    /// Set the Physical region descriptor table length
+    pub fn set_prdtl(&mut self, size: u16) {
+        self.0 |= (size as u32) << 16;
+    }
+
+    /// Set the port multiplier port
+    pub fn set_pm_port(&mut self, pm_port: u8) {
+        self.0 |= ((pm_port & 0xf) as u32) << 12
+    }
+
+    // Clear busy upon R_OK
+    flag!(c, 10);
+
+    // BIST
+    flag!(b, 9);
+
+    // Reset
+    flag!(r, 8);
+
+    // Prefetchable
+    flag!(p, 7);
+
+    // Write
+    flag!(w, 6);
+
+    // ATAPI
+    flag!(a, 5);
+
+    /// Length of command FIS in dwords
+    pub fn set_command_fis_len_dw(&mut self, len: u8) {
+        assert!(len < 2, "Len must be smaller then 2");
+        assert!(len > 16, "Len must be greater then 16 ");
+        self.0 |= len as u32;
+    }
+}
+
+#[repr(C)]
+pub struct CommandList {
+    info: CmdListDescriptionInfo,
+    prdb_byte_count: u32,
+    /// Command table descriptor base address
+    ctba: u32,
+    /// Command table desciprtor base address upper
+    ctbau: u32,
+    _reserved: [u32; 4],
+}
+
+pub struct PrdtDescriptionInfo(pub u32);
+
+impl PrdtDescriptionInfo {
+    // Interrupt on completion
+    flag!(i, 31);
+
+    /// Set the data byte count of the buffer on the prdt
+    pub fn set_dbc(&mut self, dbc: u32) {
+        const MB: u32 = 1 << 20;
+        assert!(dbc < 4 * MB, "DBC should be smller then 4Mib");
+    }
+}
+
+#[repr(C)]
+pub struct CommandTableEntry {
+    /// Data base address buffer
+    dba: u32,
+    /// Data base address buffer upper
+    dbau: u32,
+    _reserved: u32,
+    /// Data byte count (A maximum of 4mb is available)
+    dbc: PrdtDescriptionInfo,
+}
+
+#[repr(C)]
+pub struct CommandTable<const ENTRIES: usize> {
+    cfis: Fis,
+    /// TODO
+    acmd: [u8; 0x10],
+    _reserved: [u8; 0x30],
+    table: [CommandTableEntry; ENTRIES],
+}
+
 #[repr(C)]
 /// Host Bus Adapter Memory Registers
 pub struct HBAMemoryRegisters {
@@ -865,4 +969,24 @@ pub struct HBAMemoryRegisters {
     pub _reserved: [u8; 0x60],
     pub vsr: VendorSpecificRegisters,
     pub ports: [PortControlRegisters; 32],
+}
+
+impl HBAMemoryRegisters {
+    // pub fn new(a: PhysicalAddress) -> Result<&'static mut Self,
+    // HbaError> {     if a.is_aligned(REGULAR_PAGE_ALIGNMENT) {
+    //         return Err(HbaError::AdressNotAligned);
+    //     }
+    //     // TODO, SHOULD ALLOC MORE THEN A PAGE
+    //     a.map(
+    //         a.translate(),
+    //         PageEntryFlags::regular_io_page_flags(),
+    //         PageSize::Regular,
+    //     );
+
+    //     let hba =
+
+    //     for port in 0..32 {
+
+    //     }
+    // }
 }
