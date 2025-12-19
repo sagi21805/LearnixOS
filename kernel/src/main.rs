@@ -22,13 +22,16 @@ mod drivers;
 mod memory;
 use core::{
     alloc::{Allocator, Layout},
+    mem::MaybeUninit,
     num::NonZero,
     panic::PanicInfo,
 };
 
 use crate::{
     drivers::{
-        ata::ahci::{GenericHostControl, HBAMemoryRegisters},
+        ata::ahci::{
+            AhciDeviceController, GenericHostControl, HBAMemoryRegisters,
+        },
         interrupt_handlers,
         keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
         pci::{self},
@@ -120,10 +123,13 @@ pub unsafe extern "C" fn _start() -> ! {
             };
 
             let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
-            let hba = HBAMemoryRegisters::new(aligned);
-            if let Err(e) = hba {
-                println!("{}", e)
-            }
+            let hba = HBAMemoryRegisters::new(aligned).unwrap();
+            let active = hba.probe();
+            let controller = hba.map_device(0);
+            println!(
+                "{:x?}",
+                controller.port_commands as *const _ as usize
+            )
         }
     }
     loop {
