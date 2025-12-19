@@ -3,13 +3,13 @@
 /// Implemented directly from https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/serial-ata-ahci-spec-rev1-3-1.pdf
 extern crate alloc;
 
-use core::num::NonZero;
+use core::{mem::MaybeUninit, num::NonZero};
 
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
     enums::{
-        DeviceDetection, DeviceType, InterfaceCommunicationControl,
+        Color, DeviceDetection, DeviceType, InterfaceCommunicationControl,
         InterfaceInitialization, InterfacePowerManagement, InterfaceSpeed,
         InterfaceSpeedRestriction, PageSize, PicInterruptVectorOffset,
     },
@@ -22,13 +22,16 @@ use strum::IntoEnumIterator;
 
 use crate::{
     alloc_pages,
-    drivers::ata::ahci::{
-        DmaSetup, Fis, PioSetupD2H, RegisterD2H, SetDeviceBits,
+    drivers::{
+        ata::ahci::{
+            DmaSetup, Fis, PioSetupD2H, RegisterD2H, SetDeviceBits,
+        },
+        vga_display::color_code::ColorCode,
     },
     memory::allocators::page_allocator::{
         allocator::PhysicalPageAllocator, extensions::PhysicalAddressExt,
     },
-    println,
+    print, println,
 };
 
 use alloc::vec::Vec;
@@ -935,7 +938,6 @@ impl CmdListDescriptionInfo {
 }
 
 #[repr(C)]
-#[derive(Default)]
 pub struct CommandListEntry {
     info: CmdListDescriptionInfo,
     prdb_byte_count: u32,
@@ -956,12 +958,10 @@ impl CommandListEntry {
     }
 }
 
-#[derive(Default)]
 pub struct CommandList {
     pub entries: [CommandListEntry; 32],
 }
 
-#[derive(Clone, Copy, Default)]
 pub struct PrdtDescriptionInfo(pub u32);
 
 impl PrdtDescriptionInfo {
@@ -996,19 +996,7 @@ pub struct CommandTable<const ENTRIES: usize = 14> {
     table: [CommandTableEntry; ENTRIES],
 }
 
-impl<const ENTRIES: usize> Default for CommandTable<ENTRIES> {
-    fn default() -> Self {
-        Self {
-            cfis: Fis::default(),
-            _reserved: [0; 0x30],
-            acmd: [0; 0x10],
-            table: [CommandTableEntry::default(); ENTRIES],
-        }
-    }
-}
-
 #[repr(align(4096))]
-#[derive(Default)]
 pub struct PortCommands<const ENTRIES: usize = 14> {
     pub cmd_list: CommandList,
     pub cmd_table: [CommandTable<ENTRIES>; 32],
@@ -1016,17 +1004,21 @@ pub struct PortCommands<const ENTRIES: usize = 14> {
 
 impl<const ENTRIES: usize> PortCommands<ENTRIES> {
     pub fn empty() -> &'static mut PortCommands<ENTRIES> {
-        let port_cmd_ptr = unsafe {
-            alloc_pages!(size_of::<PortCommands>() / REGULAR_PAGE_SIZE)
-                as *mut PortCommands<ENTRIES>
+        // TODO CREATE EXTERNAL UTIL FUNCTION FOR THIS AND USE ALSO ON PAGE
+        // TABLE CREATION
+        let zeroed = unsafe {
+            core::slice::from_raw_parts_mut(
+                alloc_pages!(size_of::<PortCommands>() / REGULAR_PAGE_SIZE)
+                    as *mut usize,
+                size_of::<PortCommands>() / size_of::<usize>(),
+            )
         };
-        unsafe {
-            core::ptr::write_volatile(
-                port_cmd_ptr,
-                PortCommands::<ENTRIES>::default(),
-            );
-            &mut *port_cmd_ptr
-        }
+        zeroed.fill(0);
+
+        let port_cmd_ptr =
+            zeroed.as_mut_ptr() as usize as *mut PortCommands<ENTRIES>;
+
+        unsafe { &mut *port_cmd_ptr }
     }
 }
 
@@ -1061,30 +1053,54 @@ impl HBAMemoryRegisters {
             panic!("There is no support for HBA's with more then 30 ports")
         }
 
+        Ok(hba)
+    }
+
+    /// Returns the amount of active devices found
+    pub fn probe(&self) -> usize {
         println!(
             "Detected {} implemented ports",
-            hba.ghc.cap.number_of_ports()
+            self.ghc.cap.number_of_ports()
         );
 
-        for port in 0..30 {
-            if hba.ghc.pi.is_port_implemented(port) {
-                let p = &hba.ports[port as usize];
-                if let Ok(power) = p.ssts.power()
-                    && let InterfacePowerManagement::Active = power
-                {
-                    println!("Detected device at port number: {}", port);
-                    println!("  Device Power: {:?}", power);
-                    println!("  Device Speed: {}", p.ssts.speed());
-                    println!("  Device type: {:?}", p.sig.device_type());
+        let mut count = 0;
+        for (i, port) in self.ports.iter().enumerate() {
+            if self.ghc.pi.is_port_implemented(i as u8)
+                && let Ok(power) = port.ssts.power()
+                && let InterfacePowerManagement::Active = power
+            {
+                count += 1;
+                println!("\nDetected device at port number: {}", i);
+                print!("  Device Power: ");
+                println!("{:?}", power ; color = ColorCode::new(Color::Green, Color::Black));
+                print!("  Device Speed: ");
+                println!("{}", port.ssts.speed() ; color = ColorCode::new(Color::Green, Color::Black));
+                print!("  Device type: ");
+                match port.sig.device_type() {
+                    Ok(t) => {
+                        println!("{:?}", t ; color = ColorCode::new(Color::Green, Color::Black) )
+                    }
+                    Err(e) => {
+                        println!("{:?}", e ; color = ColorCode::new(Color::Red, Color::Black) )
+                    }
                 }
             }
         }
+        count
+    }
 
-        Ok(hba)
+    pub fn map_device(
+        &'static mut self,
+        port_number: usize,
+    ) -> AhciDeviceController {
+        AhciDeviceController {
+            port: &mut self.ports[port_number],
+            port_commands: PortCommands::empty(),
+        }
     }
 }
 
 pub struct AhciDeviceController<const ENTRIES: usize = 14> {
     pub port: &'static mut PortControlRegisters,
-    pub port_commands: &'static mut PortCommands,
+    pub port_commands: &'static mut PortCommands<ENTRIES>,
 }

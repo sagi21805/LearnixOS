@@ -50,3 +50,9 @@ pub enum AhciError {
     #[error("The host bus adapter experienced an internal error")]
     InternalError = 1 << 11,
 }
+
+#[derive(Debug, Clone, Copy, Error)]
+pub enum HbaError {
+    #[error("Address is not aligned properly")]
+    AdressNotAligned,
+}
