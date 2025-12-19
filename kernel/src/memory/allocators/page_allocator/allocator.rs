@@ -194,32 +194,29 @@ unsafe impl Allocator for PhysicalPageAllocator {
         layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
         unsafe {
-            match layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize()) {
-                Ok(layout) => {
-                    match self
-                        .map()
-                        .find_free_block(layout.size() / REGULAR_PAGE_SIZE)
-                    {
-                        Some((p, block)) => {
-                            self.map_mut()
-                                .set_contiguous_block(&p, &block);
-                            Ok(NonNull::slice_from_raw_parts(
-                                NonNull::new_unchecked(
-                                    Self::resolve_position(&p)
-                                        .translate()
-                                        .as_mut_ptr::<u8>(),
-                                ),
-                                layout.size(),
-                            ))
-                        }
-                        None => Err(AllocError),
-                    }
+            if let Ok(layout) =
+                layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize())
+            {
+                if let Some((p, block)) = self
+                    .map()
+                    .find_free_block(layout.size() / REGULAR_PAGE_SIZE)
+                {
+                    self.map_mut().set_contiguous_block(&p, &block);
+                    return Ok(NonNull::slice_from_raw_parts(
+                        NonNull::new_unchecked(
+                            Self::resolve_position(&p)
+                                .translate()
+                                .as_mut_ptr::<u8>(),
+                        ),
+                        layout.size(),
+                    ));
                 }
-                Err(_) => Err(AllocError),
             }
+            Err(AllocError)
         }
     }
 
+    /// TODO USE INVAL PAGE HERE ON THE ADDRESS
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         if let Ok(layout) =
             layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize())
