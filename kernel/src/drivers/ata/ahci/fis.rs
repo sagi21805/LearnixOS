@@ -1,11 +1,11 @@
-use common::enums::FisType;
+use common::enums::{AtaCommand, FisType};
 
 #[repr(C, align(4))]
 #[derive(Clone, Copy, Debug)]
 pub struct RegisterH2D {
     fis_type: FisType,
     pm_flags: u8,
-    command: u8,
+    command: AtaCommand,
     features: u8,
     lba1: u8,
     lba2: u8,
@@ -145,4 +145,10 @@ pub union Fis {
     pub pio_setup: PioSetupD2H,
     pub set_device_bits: SetDeviceBits,
     pub raw: [u8; 64],
+}
+
+impl Default for Fis {
+    fn default() -> Self {
+        Fis { raw: [0; 64] }
+    }
 }
