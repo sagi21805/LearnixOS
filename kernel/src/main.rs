@@ -120,65 +120,9 @@ pub unsafe extern "C" fn _start() -> ! {
             };
 
             let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
-
-            println!("A: {:x?}, Aligned: {:x?}", aligned, a);
-
-            aligned.map(
-                aligned.as_usize().into(),
-                PageEntryFlags::regular_io_page_flags(),
-                PageSize::Regular,
-            );
-
-            let hba_ptr = unsafe {
-                &mut *aligned.as_mut_ptr::<HBAMemoryRegisters>()
-            };
-
-            println!("AE: {:?}", hba_ptr.ghc.ghc.is_ae());
-
-            println!(
-                "AHCI Mode Only: {:?}",
-                hba_ptr.ghc.cap.supports_sam()
-            );
-
-            println!(
-                "Port Implemented: {:?}, {:b}",
-                hba_ptr.ghc.cap.number_of_ports(),
-                hba_ptr.ghc.pi.0
-            );
-
-            println!(
-                "AHCI Version: {}.{}",
-                hba_ptr.ghc.vs.major_version(),
-                hba_ptr.ghc.vs.minor_version()
-            );
-            println!(
-                "Interface Speed: {}",
-                hba_ptr.ghc.cap.interface_speed()
-            );
-
-            let total_ports = hba_ptr.ghc.cap.number_of_ports() as usize;
-
-            for (i, p) in hba_ptr.ports[0..total_ports].iter().enumerate()
-            {
-                if let Ok(detection) = p.ssts.detection()
-                    && let DeviceDetection::Detected = detection
-                {
-                    println!(
-                        "Detected {:?} AHCI Disk at {} speed: {} \
-                         detection: {:?}",
-                        detection,
-                        i,
-                        p.ssts.speed(),
-                        p.ssts.detection()
-                    );
-
-                    println!("Device Type: {:?}", p.sig.device_type());
-
-                    println!(
-                        "ADO: {:?}",
-                        p.fbs.active_device_optimization()
-                    );
-                }
+            let hba = HBAMemoryRegisters::new(aligned);
+            if let Err(e) = hba {
+                println!("{}", e)
             }
         }
     }
