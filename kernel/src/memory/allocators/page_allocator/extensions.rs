@@ -11,6 +11,7 @@ use cpu_utils::structures::paging::{
     PageEntryFlags, PageTable, PageTableEntry,
 };
 use extend::ext;
+use strum::VariantArray;
 #[ext]
 pub impl PhysicalAddress {
     fn map(
@@ -73,7 +74,6 @@ pub impl VirtualAddress {
     /// - `address`: The physical address to map this to, this address is
     ///   needed
     /// - `page_size`: The size of the page from the [`PageSize`] enum
-    #[allow(static_mut_refs)]
     fn map(
         &self,
         address: PhysicalAddress,
@@ -84,16 +84,19 @@ pub impl VirtualAddress {
             && self.is_aligned(page_size.alignment())
         {
             let mut table = PageTable::current_table_mut();
-            for level in PageTableLevel::iterator_without_last() {
+            for level in
+                PageTableLevel::VARIANTS[0..=page_size as usize].iter()
+            {
                 let index = self.index_of(*level);
                 let entry = &mut table.entries[index];
                 let resolved_table = entry.force_resolve_table_mut();
                 table = resolved_table;
             }
             unsafe {
-                table.entries[self
-                    .index_of((3 - page_size as u8).try_into().unwrap())]
-                .map_unchecked(address, flags);
+                table.entries[self.index_of(
+                    PageTableLevel::VARIANTS[page_size as usize + 1],
+                )]
+                .map(address, flags);
             }
         } else {
             panic!(

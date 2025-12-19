@@ -1,4 +1,6 @@
 use core::{alloc::Layout, ptr::Alignment};
+use num_enum::TryFromPrimitive;
+use strum_macros::{EnumIter, VariantArray};
 
 use crate::{
     constants::{
@@ -7,7 +9,19 @@ use crate::{
     },
     error::{ConversionError, TableError},
 };
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+
+#[repr(u8)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    EnumIter,
+    TryFromPrimitive,
+    VariantArray,
+)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum PageTableLevel {
     PML4 = 4,
     PDPT = 3,
@@ -27,50 +41,12 @@ impl PageTableLevel {
             .then(|| unsafe { core::mem::transmute(n) })
             .ok_or(TableError::Full)
     }
-
-    pub const fn iterator<'a>() -> impl Iterator<Item = &'a PageTableLevel>
-    {
-        const VARIANTS: [PageTableLevel; 4] = [
-            PageTableLevel::PML4,
-            PageTableLevel::PDPT,
-            PageTableLevel::PD,
-            PageTableLevel::PT,
-        ];
-
-        // Convert the array slice into an iterator.
-        VARIANTS.iter()
-    }
-
-    pub const fn iterator_without_last<'a>()
-    -> impl Iterator<Item = &'a PageTableLevel> {
-        const VARIANTS: [PageTableLevel; 3] = [
-            PageTableLevel::PML4,
-            PageTableLevel::PDPT,
-            PageTableLevel::PD,
-        ];
-
-        // Convert the array slice into an iterator.
-        VARIANTS.iter()
-    }
 }
-
-impl TryFrom<u8> for PageTableLevel {
-    type Error = ConversionError<u8>;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if (1..=4).contains(&value) {
-            Ok(unsafe {
-                core::mem::transmute::<u8, PageTableLevel>(value)
-            })
-        } else {
-            Err(ConversionError::CantConvertFrom(value))
-        }
-    }
-}
-
-// impl const From<usize> for PageTableLevel {}
-
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+#[repr(u8)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, EnumIter, TryFromPrimitive,
+)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum PageSize {
     /// 4Kib pages
     Regular = 2,
