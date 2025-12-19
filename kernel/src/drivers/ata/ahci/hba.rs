@@ -1,25 +1,37 @@
 /// AHCI implementation for the learnix operating system
 ///
 /// Implemented directly from https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/serial-ata-ahci-spec-rev1-3-1.pdf
+extern crate alloc;
+
 use core::num::NonZero;
 
 use common::{
+    address_types::{PhysicalAddress, VirtualAddress},
+    constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
     enums::{
         DeviceDetection, DeviceType, InterfaceCommunicationControl,
         InterfaceInitialization, InterfacePowerManagement, InterfaceSpeed,
-        InterfaceSpeedRestriction,
+        InterfaceSpeedRestriction, PageSize, PicInterruptVectorOffset,
     },
     error::{AhciError, ConversionError, DiagnosticError, HbaError},
 };
+use cpu_utils::{instructions::port, structures::paging::PageEntryFlags};
 use learnix_macros::{flag, ro_flag, rw1_flag, rwc_flag};
 use num_enum::UnsafeFromPrimitive;
 use strum::IntoEnumIterator;
 
-use crate::drivers::ata::ahci::{
-    DmaSetup, Fis, PioSetupD2H, RegisterD2H, SetDeviceBits,
+use crate::{
+    alloc_pages,
+    drivers::ata::ahci::{
+        DmaSetup, Fis, PioSetupD2H, RegisterD2H, SetDeviceBits,
+    },
+    memory::allocators::page_allocator::{
+        allocator::PhysicalPageAllocator, extensions::PhysicalAddressExt,
+    },
+    println,
 };
 
-use crate::eprintln;
+use alloc::vec::Vec;
 
 #[derive(Copy, Clone)]
 pub struct AHCIBaseAddress(pub u32);
@@ -723,10 +735,11 @@ impl SataNotification {
 
     /// Get port multiplier notification
     pub fn get_pm_notif(&self, pm_port: u8) -> bool {
-        (0x0..0xf)
-            .contains(&pm_port)
-            .then(|| (self.0 & !0xffff) & (1 << pm_port) != 0)
-            .unwrap_or(false)
+        if (0x0..0xf).contains(&pm_port) {
+            (self.0 & !0xffff) & (1 << pm_port) != 0
+        } else {
+            false
+        }
     }
 }
 
@@ -836,16 +849,18 @@ pub struct PortControlRegisters {
 impl PortControlRegisters {
     /// Return the full command list address by combining the low and high
     /// 32bit parts
-    pub fn cmd_list_address(&self) -> usize {
-        ((self.clbu.0 as usize) << 32)
-            | (self.clb.0 as usize & !((1 << 10) - 1))
+    pub fn cmd_list(&mut self) -> &mut CommandList {
+        let cmd_list_addr = ((self.clbu.0 as usize) << 32)
+            | (self.clb.0 as usize & !((1 << 10) - 1));
+        unsafe { &mut *(cmd_list_addr as *mut CommandList) }
     }
 
     /// Return the full frame information structure address by combining
     /// the low and high 32bit parts
-    pub fn fis_address(&self) -> usize {
-        ((self.fbu.0 as usize) << 32)
-            | (self.fb.0 as usize & !((1 << 8) - 1))
+    pub fn received_fis(&self) -> &RecievedFis {
+        let rfis_addr = ((self.fbu.0 as usize) << 32)
+            | (self.fb.0 as usize & !((1 << 8) - 1));
+        unsafe { &*(rfis_addr as *const RecievedFis) }
     }
 
     pub fn set_status(&mut self, port: u8) {
@@ -879,6 +894,7 @@ pub struct RecievedFis {
     _reserved3: [u32; 24],
 }
 
+#[derive(Default)]
 pub struct CmdListDescriptionInfo(pub u32);
 
 impl CmdListDescriptionInfo {
@@ -919,7 +935,8 @@ impl CmdListDescriptionInfo {
 }
 
 #[repr(C)]
-pub struct CommandList {
+#[derive(Default)]
+pub struct CommandListEntry {
     info: CmdListDescriptionInfo,
     prdb_byte_count: u32,
     /// Command table descriptor base address
@@ -929,6 +946,22 @@ pub struct CommandList {
     _reserved: [u32; 4],
 }
 
+impl CommandListEntry {
+    pub fn cmd_table<const ENTRIES: usize>(
+        &mut self,
+    ) -> &mut CommandTable<ENTRIES> {
+        let cmd_table_addr =
+            ((self.ctbau as usize) << 32) | (self.ctba as usize);
+        unsafe { &mut *(cmd_table_addr as *mut CommandTable<ENTRIES>) }
+    }
+}
+
+#[derive(Default)]
+pub struct CommandList {
+    pub entries: [CommandListEntry; 32],
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct PrdtDescriptionInfo(pub u32);
 
 impl PrdtDescriptionInfo {
@@ -943,6 +976,7 @@ impl PrdtDescriptionInfo {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Default)]
 pub struct CommandTableEntry {
     /// Data base address buffer
     dba: u32,
@@ -954,12 +988,46 @@ pub struct CommandTableEntry {
 }
 
 #[repr(C)]
-pub struct CommandTable<const ENTRIES: usize> {
+pub struct CommandTable<const ENTRIES: usize = 14> {
     cfis: Fis,
     /// TODO
     acmd: [u8; 0x10],
     _reserved: [u8; 0x30],
     table: [CommandTableEntry; ENTRIES],
+}
+
+impl<const ENTRIES: usize> Default for CommandTable<ENTRIES> {
+    fn default() -> Self {
+        Self {
+            cfis: Fis::default(),
+            _reserved: [0; 0x30],
+            acmd: [0; 0x10],
+            table: [CommandTableEntry::default(); ENTRIES],
+        }
+    }
+}
+
+#[repr(align(4096))]
+#[derive(Default)]
+pub struct PortCommands<const ENTRIES: usize = 14> {
+    pub cmd_list: CommandList,
+    pub cmd_table: [CommandTable<ENTRIES>; 32],
+}
+
+impl<const ENTRIES: usize> PortCommands<ENTRIES> {
+    pub fn empty() -> &'static mut PortCommands<ENTRIES> {
+        let port_cmd_ptr = unsafe {
+            alloc_pages!(size_of::<PortCommands>() / REGULAR_PAGE_SIZE)
+                as *mut PortCommands<ENTRIES>
+        };
+        unsafe {
+            core::ptr::write_volatile(
+                port_cmd_ptr,
+                PortCommands::<ENTRIES>::default(),
+            );
+            &mut *port_cmd_ptr
+        }
+    }
 }
 
 #[repr(C)]
@@ -968,25 +1036,55 @@ pub struct HBAMemoryRegisters {
     pub ghc: GenericHostControl,
     pub _reserved: [u8; 0x60],
     pub vsr: VendorSpecificRegisters,
-    pub ports: [PortControlRegisters; 32],
+
+    // Not doing 32 ports on purporse!
+    // Because it makes this structure larger then a page
+    pub ports: [PortControlRegisters; 30],
 }
 
 impl HBAMemoryRegisters {
-    // pub fn new(a: PhysicalAddress) -> Result<&'static mut Self,
-    // HbaError> {     if a.is_aligned(REGULAR_PAGE_ALIGNMENT) {
-    //         return Err(HbaError::AdressNotAligned);
-    //     }
-    //     // TODO, SHOULD ALLOC MORE THEN A PAGE
-    //     a.map(
-    //         a.translate(),
-    //         PageEntryFlags::regular_io_page_flags(),
-    //         PageSize::Regular,
-    //     );
+    pub fn new(a: PhysicalAddress) -> Result<&'static mut Self, HbaError> {
+        if !a.is_aligned(REGULAR_PAGE_ALIGNMENT) {
+            return Err(HbaError::AdressNotAligned);
+        }
 
-    //     let hba =
+        a.map(
+            a.translate(),
+            PageEntryFlags::regular_io_page_flags(),
+            PageSize::Regular,
+        );
 
-    //     for port in 0..32 {
+        let hba: &'static mut HBAMemoryRegisters =
+            unsafe { &mut *a.translate().as_mut_ptr() };
 
-    //     }
-    // }
+        if hba.ghc.pi.0 >= (1 << 31) {
+            panic!("There is no support for HBA's with more then 30 ports")
+        }
+
+        println!(
+            "Detected {} implemented ports",
+            hba.ghc.cap.number_of_ports()
+        );
+
+        for port in 0..30 {
+            if hba.ghc.pi.is_port_implemented(port) {
+                let p = &hba.ports[port as usize];
+                if let Ok(power) = p.ssts.power()
+                    && let InterfacePowerManagement::Active = power
+                {
+                    println!("Detected device at port number: {}", port);
+                    println!("  Device Power: {:?}", power);
+                    println!("  Device Speed: {}", p.ssts.speed());
+                    println!("  Device type: {:?}", p.sig.device_type());
+                }
+            }
+        }
+
+        Ok(hba)
+    }
+}
+
+pub struct AhciDeviceController<const ENTRIES: usize = 14> {
+    pub port: &'static mut PortControlRegisters,
+    pub port_commands: &'static mut PortCommands,
 }
