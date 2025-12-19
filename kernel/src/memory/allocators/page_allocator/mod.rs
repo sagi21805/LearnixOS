@@ -8,8 +8,10 @@ pub static mut ALLOCATOR: MaybeUninit<PhysicalPageAllocator> =
     MaybeUninit::uninit();
 
 #[macro_export]
+/// Allocate the amout of pages specified, and return the address
 macro_rules! alloc_pages {
-    ($page_number: literal) => {{
+    ($page_number: expr) => {{
+        use core::alloc::{Allocator, Layout};
         use $crate::memory::allocators::page_allocator::ALLOCATOR;
         ALLOCATOR
             .assume_init_ref()
