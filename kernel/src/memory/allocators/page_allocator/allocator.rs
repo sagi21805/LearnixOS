@@ -196,21 +196,19 @@ unsafe impl Allocator for PhysicalPageAllocator {
         unsafe {
             if let Ok(layout) =
                 layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize())
-            {
-                if let Some((p, block)) = self
+                && let Some((p, block)) = self
                     .map()
                     .find_free_block(layout.size() / REGULAR_PAGE_SIZE)
-                {
-                    self.map_mut().set_contiguous_block(&p, &block);
-                    return Ok(NonNull::slice_from_raw_parts(
-                        NonNull::new_unchecked(
-                            Self::resolve_position(&p)
-                                .translate()
-                                .as_mut_ptr::<u8>(),
-                        ),
-                        layout.size(),
-                    ));
-                }
+            {
+                self.map_mut().set_contiguous_block(&p, &block);
+                return Ok(NonNull::slice_from_raw_parts(
+                    NonNull::new_unchecked(
+                        Self::resolve_position(&p)
+                            .translate()
+                            .as_mut_ptr::<u8>(),
+                    ),
+                    layout.size(),
+                ));
             }
             Err(AllocError)
         }
