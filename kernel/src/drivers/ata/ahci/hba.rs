@@ -24,7 +24,8 @@ use crate::{
     alloc_pages,
     drivers::{
         ata::ahci::{
-            DmaSetup, Fis, PioSetupD2H, RegisterD2H, SetDeviceBits,
+            DmaSetup, Fis, IdentityPacketData, PioSetupD2H, RegisterD2H,
+            SetDeviceBits,
         },
         vga_display::color_code::ColorCode,
     },
@@ -389,18 +390,6 @@ pub struct VendorSpecificRegisters {
     _reserved: [u8; 0x74],
 }
 
-/// Port X Command list base address low
-pub struct CmdListAddressLow(pub u32);
-
-/// Port X Command list base address high
-pub struct CmdListAddressHigh(pub u32);
-
-/// Port X Frame Information Structure base address low
-pub struct FisAddressLow(pub u32);
-
-/// Port X Frame Information Structure base address high
-pub struct FisAddressHigh(pub u32);
-
 /// Port X Interrupt status
 pub struct PortInterruptStatus(pub u32);
 
@@ -567,10 +556,10 @@ impl CmdStatus {
     // Mechanical Presence Switch State
     ro_flag!(mpss, 13);
 
-    /// If None is returned, invalid ccs has entered (Value should be
-    /// between 0x0 and 0x1f)
     pub fn set_current_cmd(&mut self, ccs: u8) {
-        self.set_st();
+        if !self.is_st() {
+            return;
+        }
         (0x0u8..=0x1fu8).contains(&ccs).then(|| {
             self.0 &= !(0x1f << 8);
             self.0 |= (ccs as u32) << 8;
@@ -591,6 +580,49 @@ impl CmdStatus {
 
     // Start
     flag!(st, 0);
+
+    pub fn start(&mut self) {
+        while self.is_cr() {}
+        self.set_fre();
+        self.set_st();
+    }
+
+    pub fn stop(&mut self) {
+        self.unset_st();
+        let mut timeout = 0xffffff;
+        loop {
+            core::hint::spin_loop();
+            timeout -= 1;
+            if timeout == 0 {
+                panic!("Timout ended on port stop");
+            }
+            if self.is_cr() {
+                if timeout % 1000000 == 0 {
+                    println!("fr: {}, cr: {}", self.is_fr(), self.is_cr())
+                }
+                continue;
+            } else {
+                break;
+            }
+        }
+        self.unset_fre();
+        let mut timeout = 0xffffff;
+        loop {
+            core::hint::spin_loop();
+            timeout -= 1;
+            if timeout == 0 {
+                panic!("Timout ended on port stop");
+            }
+            if self.is_fr() {
+                if timeout % 1000000 == 0 {
+                    println!("fr: {}, cr: {}", self.is_fr(), self.is_cr())
+                }
+                continue;
+            } else {
+                break;
+            }
+        }
+    }
 }
 
 /// Port x Task File Data
@@ -827,10 +859,14 @@ pub struct VendorSpecific(pub u32);
 
 #[repr(C)]
 pub struct PortControlRegisters {
-    pub clb: CmdListAddressLow,
-    pub clbu: CmdListAddressHigh,
-    pub fb: FisAddressLow,
-    pub fbu: FisAddressHigh,
+    /// Port X Command list base address low
+    pub clb: u32,
+    /// Port X Command list base address high
+    pub clbu: u32,
+    /// Port X frame information structure base address low
+    pub fb: u32,
+    /// Port X frame information structure base address high
+    pub fbu: u32,
     pub is: PortInterruptStatus,
     pub ie: InterruptEnable,
     pub cmd: CmdStatus,
@@ -853,17 +889,29 @@ impl PortControlRegisters {
     /// Return the full command list address by combining the low and high
     /// 32bit parts
     pub fn cmd_list(&mut self) -> &mut CommandList {
-        let cmd_list_addr = ((self.clbu.0 as usize) << 32)
-            | (self.clb.0 as usize & !((1 << 10) - 1));
+        let cmd_list_addr = ((self.clbu as usize) << 32)
+            | (self.clb as usize & !((1 << 10) - 1));
         unsafe { &mut *(cmd_list_addr as *mut CommandList) }
+    }
+
+    pub fn set_cmd_list(&mut self, clb: &CommandList) {
+        let ptr = clb as *const _ as usize;
+        self.clb = (ptr & 0xffffffff) as u32;
+        self.clbu = (ptr >> 32) as u32;
     }
 
     /// Return the full frame information structure address by combining
     /// the low and high 32bit parts
     pub fn received_fis(&self) -> &RecievedFis {
-        let rfis_addr = ((self.fbu.0 as usize) << 32)
-            | (self.fb.0 as usize & !((1 << 8) - 1));
+        let rfis_addr = ((self.fbu as usize) << 32)
+            | (self.fb as usize & !((1 << 8) - 1));
         unsafe { &*(rfis_addr as *const RecievedFis) }
+    }
+
+    pub fn set_received_fis(&mut self, fis: &RecievedFis) {
+        let ptr = fis as *const _ as usize;
+        self.fb = (ptr & 0xffffffff) as u32;
+        self.fbu = (ptr >> 32) as u32;
     }
 
     pub fn set_status(&mut self, port: u8) {
@@ -938,7 +986,7 @@ impl CmdListDescriptionInfo {
 }
 
 #[repr(C)]
-pub struct CommandListEntry {
+pub struct CommandHeader {
     info: CmdListDescriptionInfo,
     prdb_byte_count: u32,
     /// Command table descriptor base address
@@ -948,7 +996,7 @@ pub struct CommandListEntry {
     _reserved: [u32; 4],
 }
 
-impl CommandListEntry {
+impl CommandHeader {
     pub fn cmd_table<const ENTRIES: usize>(
         &mut self,
     ) -> &mut CommandTable<ENTRIES> {
@@ -956,10 +1004,19 @@ impl CommandListEntry {
             ((self.ctbau as usize) << 32) | (self.ctba as usize);
         unsafe { &mut *(cmd_table_addr as *mut CommandTable<ENTRIES>) }
     }
+
+    pub fn set_cmd_table<const ENTRIES: usize>(
+        &mut self,
+        table: &CommandTable<ENTRIES>,
+    ) {
+        let ptr = table as *const _ as usize;
+        self.ctba = (ptr & 0xffffffff) as u32;
+        self.ctbau = (ptr >> 32) as u32;
+    }
 }
 
 pub struct CommandList {
-    pub entries: [CommandListEntry; 32],
+    pub entries: [CommandHeader; 32],
 }
 
 pub struct PrdtDescriptionInfo(pub u32);
@@ -976,7 +1033,6 @@ impl PrdtDescriptionInfo {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
 pub struct CommandTableEntry {
     /// Data base address buffer
     dba: u32,
@@ -996,10 +1052,12 @@ pub struct CommandTable<const ENTRIES: usize = 14> {
     table: [CommandTableEntry; ENTRIES],
 }
 
-#[repr(align(4096))]
-pub struct PortCommands<const ENTRIES: usize = 14> {
+#[repr(C, align(4096))]
+pub struct PortCommands<const ENTRIES: usize = 13> {
+    pub fis: RecievedFis,
     pub cmd_list: CommandList,
     pub cmd_table: [CommandTable<ENTRIES>; 32],
+    _reserved: [u8; 0x100],
 }
 
 impl<const ENTRIES: usize> PortCommands<ENTRIES> {
@@ -1093,14 +1151,40 @@ impl HBAMemoryRegisters {
         &'static mut self,
         port_number: usize,
     ) -> AhciDeviceController {
-        AhciDeviceController {
-            port: &mut self.ports[port_number],
-            port_commands: PortCommands::empty(),
-        }
+        AhciDeviceController::new(
+            &mut self.ports[port_number],
+            PortCommands::empty(),
+        )
     }
 }
 
 pub struct AhciDeviceController<const ENTRIES: usize = 14> {
     pub port: &'static mut PortControlRegisters,
-    pub port_commands: &'static mut PortCommands<ENTRIES>,
+    pub port_cmds: &'static mut PortCommands<ENTRIES>,
+}
+
+impl<const ENTRIES: usize> AhciDeviceController<ENTRIES> {
+    pub fn new(
+        port: &'static mut PortControlRegisters,
+        port_cmds: &'static mut PortCommands<ENTRIES>,
+    ) -> AhciDeviceController<ENTRIES> {
+        println!("port address: {:x?}", port as *const _ as usize);
+        port.cmd.stop();
+        port.set_cmd_list(&port_cmds.cmd_list);
+        port.set_received_fis(&port_cmds.fis);
+        for (header, table) in port_cmds
+            .cmd_list
+            .entries
+            .iter_mut()
+            .zip(port_cmds.cmd_table.iter())
+        {
+            header.info.set_prdtl(ENTRIES as u16);
+            header.set_cmd_table(table);
+        }
+        port.cmd.start();
+
+        AhciDeviceController { port, port_cmds }
+    }
+
+    pub fn identity_packet(&mut self, buf: &mut IdentityPacketData) {}
 }

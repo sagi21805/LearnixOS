@@ -152,3 +152,7 @@ impl Default for Fis {
         Fis { raw: [0; 64] }
     }
 }
+
+pub struct IdentityPacketData {
+    data: [u16; 0x100],
+}
