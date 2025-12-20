@@ -124,12 +124,9 @@ pub unsafe extern "C" fn _start() -> ! {
 
             let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
             let hba = HBAMemoryRegisters::new(aligned).unwrap();
-            let active = hba.probe();
+            let _ = hba.probe();
             let controller = hba.map_device(0);
-            println!(
-                "{:x?}",
-                controller.port_commands as *const _ as usize
-            )
+            println!("{:x?}", controller.port_cmds as *const _ as usize)
         }
     }
     loop {

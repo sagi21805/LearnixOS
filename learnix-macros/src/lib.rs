@@ -134,7 +134,7 @@ pub fn ro_flag(input: TokenStream) -> TokenStream {
 
     // build identifiers
     let name_str = name.to_string();
-    let support_ident = format_ident!("supports_{}", name_str);
+    let support_ident = format_ident!("is_{}", name_str);
 
     let expanded = quote! {
         #[inline]
