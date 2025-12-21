@@ -9,8 +9,9 @@ use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
     enums::{
-        Color, DeviceDetection, DeviceType, InterfaceCommunicationControl,
-        InterfaceInitialization, InterfacePowerManagement, InterfaceSpeed,
+        AtaCommand, Color, DeviceDetection, DeviceType,
+        InterfaceCommunicationControl, InterfaceInitialization,
+        InterfacePowerManagement, InterfaceSpeed,
         InterfaceSpeedRestriction, PageSize, PicInterruptVectorOffset,
     },
     error::{AhciError, ConversionError, DiagnosticError, HbaError},
@@ -25,7 +26,7 @@ use crate::{
     drivers::{
         ata::ahci::{
             DmaSetup, Fis, IdentityPacketData, PioSetupD2H, RegisterD2H,
-            SetDeviceBits,
+            RegisterH2D, SetDeviceBits,
         },
         vga_display::color_code::ColorCode,
     },
@@ -444,6 +445,10 @@ impl PortInterruptStatus {
 
     // Device to Host Register FIS Interrupt
     rwc_flag!(dhrs, 0);
+
+    pub fn clear_pending_interrupts(&mut self) {
+        self.0 = 0;
+    }
 }
 
 /// Port X Interrupt Enable
@@ -589,34 +594,26 @@ impl CmdStatus {
 
     pub fn stop(&mut self) {
         self.unset_st();
-        let mut timeout = 0xffffffffu32;
+        let mut timeout = 0xfffff;
         loop {
-            core::hint::spin_loop();
             timeout -= 1;
             if timeout == 0 {
                 panic!("Timout ended on port stop");
             }
             if self.is_cr() {
-                if timeout.is_multiple_of(0xffffff) {
-                    println!("fr: {}, cr: {}", self.is_fr(), self.is_cr())
-                }
                 continue;
             } else {
                 break;
             }
         }
         self.unset_fre();
-        let mut timeout = 0xffffff;
+        let mut timeout = 0xfffff;
         loop {
-            core::hint::spin_loop();
             timeout -= 1;
             if timeout == 0 {
                 panic!("Timout ended on port stop");
             }
             if self.is_fr() {
-                if timeout % 1000000 == 0 {
-                    println!("fr: {}, cr: {}", self.is_fr(), self.is_cr())
-                }
                 continue;
             } else {
                 break;
@@ -922,26 +919,31 @@ impl PortControlRegisters {
         });
     }
 
-    pub fn send_command(&mut self, port: u8) {
-        self.cmd.set_st();
-        (0x0u8..=0x1fu8).contains(&port).then(|| {
-            self.ci.0 &= !(0x1f << 8);
-            self.ci.0 |= (port as u32) << 8;
-        });
+    /// Return the index of an available command slot if one exists
+    pub fn find_cmd_slot(&self) -> Option<usize> {
+        let mut slots = self.ci.0 | self.sact.0;
+        for i in 0usize..32 {
+            if slots & 1 == 0 {
+                return Some(i);
+            } else {
+                slots >>= 1
+            }
+        }
+        None
     }
 }
 
 /// TODO, DECIDE IF ITS OK THAT THIS IS ONE BYTE GREATER IN SIZE
 #[repr(C)]
 pub struct RecievedFis {
-    dsfis: DmaSetup,
+    pub dsfis: DmaSetup,
     _reserved0: u32,
-    psfis: PioSetupD2H,
+    pub psfis: PioSetupD2H,
     _reserved1: [u32; 3],
-    rfis: RegisterD2H,
+    pub rfis: RegisterD2H,
     _reserved2: u32,
-    sdbfis: SetDeviceBits,
-    ufis: [u8; 64],
+    pub sdbfis: SetDeviceBits,
+    pub ufis: [u8; 64],
     _reserved3: [u32; 24],
 }
 
@@ -1015,6 +1017,7 @@ impl CommandHeader {
     }
 }
 
+#[repr(C)]
 pub struct CommandList {
     pub entries: [CommandHeader; 32],
 }
@@ -1043,8 +1046,16 @@ pub struct CommandTableEntry {
     dbc: PrdtDescriptionInfo,
 }
 
+impl CommandTableEntry {
+    pub fn set_buffer<T>(&mut self, buf: &mut T) {
+        let ptr = buf as *const _ as usize;
+        self.dba = (ptr & 0xffffffff) as u32;
+        self.dbau = (ptr >> 32) as u32;
+    }
+}
+
 #[repr(C)]
-pub struct CommandTable<const ENTRIES: usize = 14> {
+pub struct CommandTable<const ENTRIES: usize> {
     cfis: Fis,
     /// TODO
     acmd: [u8; 0x10],
@@ -1053,7 +1064,7 @@ pub struct CommandTable<const ENTRIES: usize = 14> {
 }
 
 #[repr(C, align(4096))]
-pub struct PortCommands<const ENTRIES: usize = 13> {
+pub struct PortCommands<const ENTRIES: usize> {
     pub fis: RecievedFis,
     pub cmd_list: CommandList,
     pub cmd_table: [CommandTable<ENTRIES>; 32],
@@ -1066,9 +1077,11 @@ impl<const ENTRIES: usize> PortCommands<ENTRIES> {
         // TABLE CREATION
         let zeroed = unsafe {
             core::slice::from_raw_parts_mut(
-                alloc_pages!(size_of::<PortCommands>() / REGULAR_PAGE_SIZE)
-                    as *mut usize,
-                size_of::<PortCommands>() / size_of::<usize>(),
+                alloc_pages!(
+                    size_of::<PortCommands::<ENTRIES>>()
+                        / REGULAR_PAGE_SIZE
+                ) as *mut usize,
+                size_of::<PortCommands<ENTRIES>>() / size_of::<usize>(),
             )
         };
         zeroed.fill(0);
@@ -1147,18 +1160,18 @@ impl HBAMemoryRegisters {
         count
     }
 
-    pub fn map_device(
+    pub fn map_device<const ENTRIES: usize>(
         &'static mut self,
         port_number: usize,
-    ) -> AhciDeviceController {
-        AhciDeviceController::new(
+    ) -> AhciDeviceController<ENTRIES> {
+        AhciDeviceController::<ENTRIES>::new(
             &mut self.ports[port_number],
             PortCommands::empty(),
         )
     }
 }
 
-pub struct AhciDeviceController<const ENTRIES: usize = 14> {
+pub struct AhciDeviceController<const ENTRIES: usize> {
     pub port: &'static mut PortControlRegisters,
     pub port_cmds: &'static mut PortCommands<ENTRIES>,
 }
@@ -1186,5 +1199,56 @@ impl<const ENTRIES: usize> AhciDeviceController<ENTRIES> {
         AhciDeviceController { port, port_cmds }
     }
 
-    pub fn identity_packet(&mut self, buf: &mut IdentityPacketData) {}
+    pub fn identity_packet(
+        &mut self,
+        buf: &mut IdentityPacketData,
+    ) -> Option<()> {
+        self.port.is.clear_pending_interrupts();
+        let slot = self.port.find_cmd_slot()?;
+        let header = &mut self.port.cmd_list().entries[slot];
+        header.info.unset_w();
+        header.info.set_p();
+        header.info.set_prdtl(ENTRIES as u16);
+
+        let table = header.cmd_table::<ENTRIES>();
+        table.table[0].dbc.set_i();
+        table.table[0].dbc.set_dbc(511); // 256 words - 1
+        table.table[0].set_buffer(buf);
+
+        let fis = RegisterH2D::new(
+            0x80,
+            AtaCommand::IdentifyDevice,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
+        table.cfis = Fis { h2d: fis };
+        unsafe {
+            let v = core::ptr::read_volatile(&self.port.ci.0);
+            core::ptr::write_volatile(
+                &mut self.port.ci.0,
+                v | (1 << slot),
+            );
+
+            let mut timeout = 0xffffffu32;
+            loop {
+                let v = core::ptr::read_volatile(&self.port.ci.0);
+                if v & (1 << slot) == 0 {
+                    break;
+                }
+                timeout -= 1;
+                if timeout == 0 {
+                    panic!("TIME EXCEEDED ON IDENTITY READ")
+                }
+
+                if self.port.is.0 != 0 {
+                    panic!("ERROR ON IDENTITY READ, {}", self.port.is.0);
+                }
+            }
+        }
+
+        Some(())
+    }
 }

@@ -31,6 +31,7 @@ use crate::{
     drivers::{
         ata::ahci::{
             AhciDeviceController, GenericHostControl, HBAMemoryRegisters,
+            IdentityPacketData,
         },
         interrupt_handlers,
         keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
@@ -122,10 +123,26 @@ pub unsafe extern "C" fn _start() -> ! {
                 )
             };
 
+            println!(
+                "Bus Master: {}",
+                device.common().command.is_bus_master()
+            );
+
             let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
             let hba = HBAMemoryRegisters::new(aligned).unwrap();
             let _ = hba.probe();
-            let controller = hba.map_device(0);
+            let mut controller = hba.map_device::<13>(0);
+            let mut b = IdentityPacketData { data: [0; 0x100] };
+            println!("b: {:x?}", &b as *const _ as usize);
+            let rfis = controller.port_cmds.fis.rfis;
+            println!("rfis: {:?}", rfis);
+            controller.identity_packet(&mut b);
+
+            let rfis = controller.port_cmds.fis.rfis;
+            println!("rfis: {:?}", rfis);
+
+            println!("Data: {:?}", b.data);
+
             println!("{:x?}", controller.port_cmds as *const _ as usize)
         }
     }
