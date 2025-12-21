@@ -63,7 +63,7 @@ impl PageTableEntry {
     /// the entry was already mapped.
     // ANCHOR: page_table_entry_map_unchecked
     #[inline]
-    pub const unsafe fn map_unchecked(
+    pub unsafe fn map_unchecked(
         &mut self,
         frame: PhysicalAddress,
         flags: PageEntryFlags,
@@ -97,7 +97,7 @@ impl PageTableEntry {
     /// allocator
     // ANCHOR: page_table_entry_map
     #[inline]
-    pub const unsafe fn map(
+    pub unsafe fn map(
         &mut self,
         frame: PhysicalAddress,
         flags: PageEntryFlags,

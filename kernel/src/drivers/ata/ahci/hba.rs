@@ -589,7 +589,7 @@ impl CmdStatus {
 
     pub fn stop(&mut self) {
         self.unset_st();
-        let mut timeout = 0xffffff;
+        let mut timeout = 0xffffffffu32;
         loop {
             core::hint::spin_loop();
             timeout -= 1;
@@ -597,7 +597,7 @@ impl CmdStatus {
                 panic!("Timout ended on port stop");
             }
             if self.is_cr() {
-                if timeout % 1000000 == 0 {
+                if timeout.is_multiple_of(0xffffff) {
                     println!("fr: {}, cr: {}", self.is_fr(), self.is_cr())
                 }
                 continue;

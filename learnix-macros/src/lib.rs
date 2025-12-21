@@ -86,8 +86,17 @@ pub fn flag(input: TokenStream) -> TokenStream {
         #[allow(dead_code)]
         #[allow(unused_attributes)]
         /// Sets the corresponding flag
-        pub const fn #set_ident(&mut self) {
-            self.0 |= 1 << #bit;
+        pub fn #set_ident(&mut self) {
+            unsafe {
+                let val = core::ptr::read_volatile(
+                    self as *const _ as *mut usize
+                );
+
+                core::ptr::write_volatile(
+                    self as *const _ as *mut usize,
+                    val | (1 << #bit) as usize
+                )
+            }
         }
 
         #[inline]
@@ -110,8 +119,12 @@ pub fn flag(input: TokenStream) -> TokenStream {
         #[allow(dead_code)]
         #[allow(unused_attributes)]
         /// Checks if the corresponding flag is set
-        pub const fn #is_ident(&self) -> bool {
-            (self.0 & (1 << #bit)) != 0
+        pub fn #is_ident(&self) -> bool {
+            unsafe {
+                core::ptr::read_volatile(
+                    self as *const _ as *mut usize
+                ) & ((1<< #bit) as usize) != 0
+            }
         }
     };
 
@@ -141,8 +154,12 @@ pub fn ro_flag(input: TokenStream) -> TokenStream {
         #[allow(dead_code)]
         #[allow(unused_attributes)]
         /// Checks if the corresponding flag is set
-        pub const fn #support_ident(&self) -> bool {
-            (self.0 & (1 << #bit)) != 0
+        pub fn #support_ident(&self) -> bool {
+            unsafe {
+                core::ptr::read_volatile(
+                    self as *const _ as *mut usize
+                ) & ((1<< #bit) as usize) != 0
+            }
         }
     };
 
