@@ -22,7 +22,47 @@ pub struct RegisterH2D {
     _reserved1: [u8; 4],
 }
 
-impl RegisterH2D {}
+impl RegisterH2D {
+    pub fn new(
+        pm_flags: u8,
+        command: AtaCommand,
+        features: u16,
+        lba: u64,
+        device: u8,
+        sector_count: u16,
+        control: u8,
+    ) -> RegisterH2D {
+        let features_low = features as u8;
+        let features_ext = (features >> 8) as u8;
+        let lba1 = lba as u8;
+        let lba2 = (lba >> 8) as u8;
+        let lba3 = (lba >> 16) as u8;
+        let lba4 = (lba >> 24) as u8;
+        let lba5 = (lba >> 32) as u8;
+        let lba6 = (lba >> 40) as u8;
+        let sector_count_low = sector_count as u8;
+        let sector_count_ext = (sector_count >> 8) as u8;
+        RegisterH2D {
+            fis_type: FisType::RegisterFisHost2Device,
+            pm_flags,
+            command,
+            features: features_low,
+            lba1,
+            lba2,
+            lba3,
+            device,
+            lba4,
+            lba5,
+            lba6,
+            features_ext,
+            sector_count: sector_count_low,
+            sector_count_ext,
+            _resvered0: 0,
+            control,
+            _reserved1: [0; 4],
+        }
+    }
+}
 
 #[repr(C, align(4))]
 #[derive(Clone, Copy, Debug)]
@@ -153,6 +193,7 @@ impl Default for Fis {
     }
 }
 
+#[repr(C, align(512))]
 pub struct IdentityPacketData {
-    data: [u16; 0x100],
+    pub data: [u16; 0x100],
 }

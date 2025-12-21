@@ -72,6 +72,9 @@ impl PciConfigurationCycle {
                 uninit_ptr.byte_add(offset).write_volatile(header_data);
             }
         }
+        // uninit.bus = bus;
+        // uninit.device = device;
+        // uninit.function = function;
         uninit
     }
 
@@ -84,7 +87,7 @@ impl PciConfigurationCycle {
         let mut uninit = PciDevice { common };
         let uninit_ptr =
             &mut uninit as *mut PciDevice as usize as *mut u32;
-        for offset in (size_of::<PciCommonHeader>()
+        for offset in ((size_of::<PciCommonHeader>())
             ..size_of::<PciDevice>())
             .step_by(size_of::<u32>())
         {
@@ -189,6 +192,9 @@ pub struct PciCommonHeader {
     pub latency_timer: u8,
     pub header_type: HeaderType,
     pub bist: BISTRegister,
+    // pub bus: u8,
+    // pub device: u8,
+    // pub function: u8,
 }
 
 impl PciCommonHeader {
@@ -210,6 +216,9 @@ impl PciCommonHeader {
             latency_timer: 0,
             header_type: HeaderType::GeneralDevice,
             bist: BISTRegister(0),
+            // bus: 0xff,
+            // device: 0xff,
+            // function: 0xff,
         }
     }
 }
