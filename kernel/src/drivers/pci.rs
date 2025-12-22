@@ -9,8 +9,9 @@ use crate::{
 };
 use alloc::vec::Vec;
 use common::enums::{
-    ClassCode, DeviceID, HeaderType, PciDeviceType, Port,
-    ProgrammingInterface, SubClass, VendorDevice, VendorID,
+    CascadedPicInterruptLine, ClassCode, DeviceID, HeaderType,
+    PciDeviceType, PicInterruptLine, Port, ProgrammingInterface, SubClass,
+    VendorDevice, VendorID,
 };
 use cpu_utils::instructions::port::PortExt;
 use learnix_macros::flag;
@@ -78,17 +79,17 @@ impl PciConfigurationCycle {
         uninit
     }
 
-    pub fn read_pci_device_header(
+    pub fn read_pci_device(
         bus: u8,
         device: u8,
         function: u8,
         common: PciCommonHeader,
     ) -> PciDevice {
-        let mut uninit = PciDevice { common };
+        let mut uninit = PciDeviceHeader { common };
         let uninit_ptr =
-            &mut uninit as *mut PciDevice as usize as *mut u32;
+            &mut uninit as *mut PciDeviceHeader as usize as *mut u32;
         for offset in ((size_of::<PciCommonHeader>())
-            ..size_of::<PciDevice>())
+            ..size_of::<PciDeviceHeader>())
             .step_by(size_of::<u32>())
         {
             unsafe {
@@ -102,7 +103,12 @@ impl PciConfigurationCycle {
                 uninit_ptr.byte_add(offset).write_volatile(header_data);
             }
         }
-        uninit
+        PciDevice {
+            header: uninit,
+            bus,
+            device,
+            function,
+        }
     }
 }
 
@@ -192,9 +198,6 @@ pub struct PciCommonHeader {
     pub latency_timer: u8,
     pub header_type: HeaderType,
     pub bist: BISTRegister,
-    // pub bus: u8,
-    // pub device: u8,
-    // pub function: u8,
 }
 
 impl PciCommonHeader {
@@ -374,13 +377,13 @@ pub struct Pci2PciBridge {
     bridge_control: u16,
 }
 
-pub union PciDevice {
+pub union PciDeviceHeader {
     pub common: PciCommonHeader,
     pub general_device: GeneralDeviceHeader,
     pub pci2pci_bridge: Pci2PciBridge,
 }
 
-impl PciDevice {
+impl PciDeviceHeader {
     pub fn identify(&self) -> HeaderType {
         // Doesn't matter which one we choose, common is the
         // same for all of them in the same offset.
@@ -390,6 +393,17 @@ impl PciDevice {
     pub fn common(&self) -> &PciCommonHeader {
         unsafe { &self.common }
     }
+}
+
+pub struct PciDevice {
+    pub header: PciDeviceHeader,
+    pub bus: u8,
+    pub device: u8,
+    pub function: u8,
+}
+
+impl PciDevice {
+    pub fn enable_interrupts(&self, irq: CascadedPicInterruptLine) {}
 }
 
 pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
@@ -405,7 +419,7 @@ pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
                 continue;
             }
             v.push_within_capacity(
-                PciConfigurationCycle::read_pci_device_header(
+                PciConfigurationCycle::read_pci_device(
                     bus, device, 0, common,
                 ),
             )
@@ -424,7 +438,7 @@ pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
                     continue;
                 }
                 v.push_within_capacity(
-                    PciConfigurationCycle::read_pci_device_header(
+                    PciConfigurationCycle::read_pci_device(
                         bus, device, function, common,
                     ),
                 )
