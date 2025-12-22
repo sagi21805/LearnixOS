@@ -42,16 +42,17 @@ use crate::{
     memory::{
         allocators::page_allocator::{
             allocator::PhysicalPageAllocator,
-            extensions::PhysicalAddressExt,
+            extensions::{PhysicalAddressExt, VirtualAddressExt},
         },
         memory_map::{ParsedMapDisplay, parse_map},
     },
 };
 
 use common::{
-    address_types::PhysicalAddress,
+    address_types::{PhysicalAddress, VirtualAddress},
     constants::{
-        BIG_PAGE_ALIGNMENT, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+        BIG_PAGE_ALIGNMENT, PHYSICAL_MEMORY_OFFSET,
+        REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
     enums::{
         Color, DeviceDetection, DeviceType, InterfacePowerManagement,
@@ -116,16 +117,26 @@ pub unsafe extern "C" fn _start() -> ! {
         // println!("{:#?}", unsafe { device.common.header_type });
         // println!("{:#?}\n", unsafe { device.common.device_type });
 
-        if device.common().device_type.is_ahci() {
+        if device.header.common().device_type.is_ahci() {
             let a = unsafe {
                 PhysicalAddress::new_unchecked(
-                    device.general_device.bar5.address(),
+                    device.header.general_device.bar5.address(),
                 )
             };
 
             println!(
-                "Bus Master: {}",
-                device.common().command.is_bus_master()
+                "Bus Master: {}, Interrupts Disable {}, I/O Space: {}, \
+                 Memory Space: {}",
+                device.header.common().command.is_bus_master(),
+                device.header.common().command.is_interrupt_disable(),
+                device.header.common().command.is_io_space(),
+                device.header.common().command.is_memory_space()
+            );
+
+            println!(
+                "Interrupt Line: {}, Interrupt Pin: {}",
+                unsafe { device.header.general_device.interrupt_line },
+                unsafe { device.header.general_device.interrupt_pin }
             );
 
             let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
@@ -133,6 +144,7 @@ pub unsafe extern "C" fn _start() -> ! {
             let _ = hba.probe();
             let mut controller = hba.map_device::<13>(0);
             let mut b = IdentityPacketData { data: [0; 0x100] };
+
             println!("b: {:x?}", &b as *const _ as usize);
             let rfis = controller.port_cmds.fis.rfis;
             println!("rfis: {:?}", rfis);
@@ -141,9 +153,15 @@ pub unsafe extern "C" fn _start() -> ! {
             let rfis = controller.port_cmds.fis.rfis;
             println!("rfis: {:?}", rfis);
 
-            println!("Data: {:?}", b.data);
+            let d = unsafe {
+                core::ptr::read_volatile(&b as *const IdentityPacketData)
+            };
 
-            println!("{:x?}", controller.port_cmds as *const _ as usize)
+            println!("Data Address: {:x?}", &b as *const _ as usize);
+
+            println!("Data: {:?}", d.data);
+
+            // println!("{:x?}", controller.port_cmds as *const _ as usize)
         }
     }
     loop {
