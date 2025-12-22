@@ -111,8 +111,17 @@ pub fn flag(input: TokenStream) -> TokenStream {
         #[allow(dead_code)]
         #[allow(unused_attributes)]
         /// Unset the corresponding flag
-        pub const fn #unset_ident(&mut self) {
-            self.0 &= !(1 << #bit);
+        pub fn #unset_ident(&mut self) {
+            unsafe {
+                let val = core::ptr::read_volatile(
+                    self as *const _ as *mut usize
+                );
+
+                core::ptr::write_volatile(
+                    self as *const _ as *mut usize,
+                    val & !(1 << #bit) as usize
+                )
+            }
         }
 
         #[inline]
