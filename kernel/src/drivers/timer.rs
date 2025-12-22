@@ -8,7 +8,6 @@ pub extern "x86-interrupt" fn timer_handler(
 ) {
     // print!(".");
     unsafe {
-        PIC.assume_init_mut()
-            .end_of_interrupt(CascadedPicInterruptLine::Timer);
+        PIC.end_of_interrupt(CascadedPicInterruptLine::Timer);
     }
 }

@@ -1,5 +1,3 @@
-use core::mem::MaybeUninit;
-
 /// The code in this module is inspired from osdev
 /// 8259_PIC guide.
 use common::enums::{
@@ -8,8 +6,7 @@ use common::enums::{
 };
 use cpu_utils::instructions::port::PortExt;
 
-pub static mut PIC: MaybeUninit<CascadedPIC> =
-    MaybeUninit::new(CascadedPIC::default());
+pub static mut PIC: CascadedPIC = CascadedPIC::default();
 
 struct ProgrammableInterruptController {
     command: Port,
@@ -81,47 +78,43 @@ impl CascadedPIC {
         }
     }
 
-    pub fn init(uninit: &'static mut MaybeUninit<Self>) {
+    pub fn init(uninit: &'static mut Self) {
         unsafe {
-            let uninitialized = uninit.assume_init_mut();
             // Send initialize command to master
-            uninitialized.master.command.outb(
+            uninit.master.command.outb(
                 PicCommandCode::Initialize as u8
                     | PicCommandCode::CascadeMode as u8,
             );
             Port::iowait();
             // Send initialize command to slave
-            uninitialized.slave.command.outb(
+            uninit.slave.command.outb(
                 PicCommandCode::Initialize as u8
                     | PicCommandCode::CascadeMode as u8,
             );
             Port::iowait();
             // Send IVT offset to master
-            uninitialized
+            uninit
                 .master
                 .data
-                .outb(uninitialized.master.interrupt_offset as u8);
+                .outb(uninit.master.interrupt_offset as u8);
             Port::iowait();
             // Send IVT offset to slave
-            uninitialized
-                .slave
-                .data
-                .outb(uninitialized.slave.interrupt_offset as u8);
+            uninit.slave.data.outb(uninit.slave.interrupt_offset as u8);
             Port::iowait();
             // Tell master how it is connected to slave
-            uninitialized.master.data.outb(PicInterruptLine::Irq2 as u8);
+            uninit.master.data.outb(PicInterruptLine::Irq2 as u8);
             Port::iowait();
             // Tell slave how it is connected to master
-            uninitialized.slave.data.outb(PicInterruptLine::Irq1 as u8);
+            uninit.slave.data.outb(PicInterruptLine::Irq1 as u8);
             Port::iowait();
             // Set PIC mode of master
-            uninitialized.master.data.outb(PicMode::Mode8086 as u8);
+            uninit.master.data.outb(PicMode::Mode8086 as u8);
             Port::iowait();
             // Set PIC mode of slave
-            uninitialized.slave.data.outb(PicMode::Mode8086 as u8);
+            uninit.slave.data.outb(PicMode::Mode8086 as u8);
             Port::iowait();
-            uninitialized.master.enable();
-            uninitialized.slave.enable();
+            uninit.master.enable();
+            uninit.slave.enable();
         }
     }
 
