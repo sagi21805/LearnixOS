@@ -1,3 +1,5 @@
+use crate::panic;
+
 use super::ALLOCATOR;
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
@@ -6,12 +8,13 @@ use common::{
         PHYSICAL_MEMORY_OFFSET,
     },
     enums::{PageSize, PageTableLevel},
+    error::{EntryError, TableError},
 };
 use cpu_utils::structures::paging::{
     PageEntryFlags, PageTable, PageTableEntry,
 };
 use extend::ext;
-use strum::VariantArray;
+use strum::{IntoEnumIterator, VariantArray};
 #[ext]
 pub impl PhysicalAddress {
     fn map(
@@ -40,22 +43,28 @@ pub impl PageTableEntry {
     /// Else, it will override what is inside the entry and
     /// map a new table to it so valid table is guaranteed
     /// to be returned.
-    fn force_resolve_table_mut(&mut self) -> &mut PageTable {
-        if let Ok(table) = self.mapped_table_mut() {
-            table
-        } else {
-            let resolved_table =
-                unsafe { ALLOCATOR.assume_init_ref().alloc_table() };
-            unsafe {
-                self.map_unchecked(
-                    PhysicalAddress::new_unchecked(
-                        resolved_table.address().as_usize(),
-                    ),
-                    PageEntryFlags::table_flags(),
-                );
-            }
-            unsafe {
-                &mut *self.mapped_unchecked().as_mut_ptr::<PageTable>()
+    fn force_resolve_table_mut(&mut self) -> Option<&mut PageTable> {
+        match self.mapped_table_mut() {
+            Ok(table) => Some(table),
+            Err(EntryError::NotATable) => None,
+            Err(EntryError::NoMapping) => {
+                let resolved_table =
+                    unsafe { ALLOCATOR.assume_init_ref().alloc_table() };
+                unsafe {
+                    self.map_unchecked(
+                        PhysicalAddress::new_unchecked(
+                            resolved_table.address().as_usize(),
+                        ),
+                        PageEntryFlags::table_flags(),
+                    );
+                }
+                unsafe {
+                    Some(
+                        &mut *self
+                            .mapped_unchecked()
+                            .as_mut_ptr::<PageTable>(),
+                    )
+                }
             }
         }
     }
@@ -89,7 +98,8 @@ pub impl VirtualAddress {
             {
                 let index = self.index_of(*level);
                 let entry = &mut table.entries[index];
-                let resolved_table = entry.force_resolve_table_mut();
+                let resolved_table =
+                    entry.force_resolve_table_mut().unwrap();
                 table = resolved_table;
             }
             unsafe {
@@ -104,6 +114,24 @@ pub impl VirtualAddress {
                  todo! raise a page fault"
             )
         }
+    }
+
+    fn set_flags(&self, flags: PageEntryFlags) -> Result<(), EntryError> {
+        let page_size = PageSize::from_alignment(self.alignment())
+            .expect("self address is not aligned to a page size");
+
+        let mut table = PageTable::current_table_mut();
+
+        for level in PageTableLevel::VARIANTS[0..page_size as usize].iter()
+        {
+            let index = self.index_of(*level);
+            let entry = &mut table.entries[index];
+            table = entry.mapped_table_mut()?;
+        }
+        table.entries[self
+            .index_of(PageTableLevel::VARIANTS[page_size as usize + 1])]
+        .set_flags(flags);
+        Ok(())
     }
 
     fn translate(&self) -> PhysicalAddress {
@@ -133,12 +161,14 @@ pub impl PageTable {
         for forth_entry in &mut self.entries[(PAGE_DIRECTORY_ENTRIES / 2)
             ..(forth_level_entries_count + (PAGE_DIRECTORY_ENTRIES / 2))]
         {
-            let third_table = forth_entry.force_resolve_table_mut();
+            let third_table =
+                forth_entry.force_resolve_table_mut().unwrap();
 
             for third_entry in &mut third_table.entries
                 [0..third_level_entries_count.min(PAGE_DIRECTORY_ENTRIES)]
             {
-                let second_table = third_entry.force_resolve_table_mut();
+                let second_table =
+                    third_entry.force_resolve_table_mut().unwrap();
 
                 third_level_entries_count -= 1;
                 for second_entry in &mut second_table.entries[0
