@@ -7,7 +7,9 @@ use core::{mem::MaybeUninit, num::NonZero};
 
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
-    constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
+    constants::{
+        PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+    },
     enums::{
         AtaCommand, Color, DeviceDetection, DeviceType,
         InterfaceCommunicationControl, InterfaceInitialization,
@@ -934,7 +936,7 @@ impl PortControlRegisters {
 }
 
 /// TODO, DECIDE IF ITS OK THAT THIS IS ONE BYTE GREATER IN SIZE
-#[repr(C)]
+#[repr(C, align(256))]
 pub struct RecievedFis {
     pub dsfis: DmaSetup,
     _reserved0: u32,
@@ -1017,7 +1019,7 @@ impl CommandHeader {
     }
 }
 
-#[repr(C)]
+#[repr(C, align(1024))]
 pub struct CommandList {
     pub entries: [CommandHeader; 32],
 }
@@ -1035,7 +1037,7 @@ impl PrdtDescriptionInfo {
     }
 }
 
-#[repr(C)]
+#[repr(C, align(128))]
 pub struct CommandTableEntry {
     /// Data base address buffer
     dba: u32,
@@ -1086,8 +1088,10 @@ impl<const ENTRIES: usize> PortCommands<ENTRIES> {
         };
         zeroed.fill(0);
 
-        let port_cmd_ptr =
-            zeroed.as_mut_ptr() as usize as *mut PortCommands<ENTRIES>;
+        // TODO MAKE LESS SKEYTCHY
+        let port_cmd_ptr = (zeroed.as_mut_ptr() as usize
+            - PHYSICAL_MEMORY_OFFSET)
+            as *mut PortCommands<ENTRIES>;
 
         unsafe { &mut *port_cmd_ptr }
     }
@@ -1123,6 +1127,12 @@ impl HBAMemoryRegisters {
         if hba.ghc.pi.0 >= (1 << 31) {
             panic!("There is no support for HBA's with more then 30 ports")
         }
+
+        hba.ghc.ghc.set_ae();
+        hba.ghc.ghc.set_ie();
+
+        println!("BIOS / OS Handoff: {}", hba.ghc.cap_ext.is_boh());
+        println!("Interrupts: {}", hba.ghc.ghc.is_ie());
 
         Ok(hba)
     }
@@ -1182,6 +1192,11 @@ impl<const ENTRIES: usize> AhciDeviceController<ENTRIES> {
         port_cmds: &'static mut PortCommands<ENTRIES>,
     ) -> AhciDeviceController<ENTRIES> {
         println!("port address: {:x?}", port as *const _ as usize);
+        println!(
+            "Port commands address: {:x?}",
+            port_cmds as *const _ as usize
+        );
+
         port.cmd.stop();
         port.set_cmd_list(&port_cmds.cmd_list);
         port.set_received_fis(&port_cmds.fis);
