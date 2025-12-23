@@ -1049,8 +1049,8 @@ pub struct CommandTableEntry {
 }
 
 impl CommandTableEntry {
-    pub fn set_buffer<T>(&mut self, buf: &mut T) {
-        let ptr = buf as *const _ as usize;
+    pub fn set_buffer<T>(&mut self, buf: *mut T) {
+        let ptr = buf as usize;
         self.dba = (ptr & 0xffffffff) as u32;
         self.dbau = (ptr >> 32) as u32;
     }
@@ -1216,7 +1216,7 @@ impl<const ENTRIES: usize> AhciDeviceController<ENTRIES> {
 
     pub fn identity_packet(
         &mut self,
-        buf: &mut IdentityPacketData,
+        buf: *mut IdentityPacketData,
     ) -> Option<()> {
         self.port.is.clear_pending_interrupts();
         let slot = self.port.find_cmd_slot()?;

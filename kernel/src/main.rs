@@ -143,21 +143,21 @@ pub unsafe extern "C" fn _start() -> ! {
             let hba = HBAMemoryRegisters::new(aligned).unwrap();
             let _ = hba.probe();
             let mut controller = hba.map_device::<13>(0);
-            let mut b = IdentityPacketData { data: [0; 0x100] };
+            let b = unsafe { alloc_pages!(1) - PHYSICAL_MEMORY_OFFSET };
 
             println!("b: {:x?}", &b as *const _ as usize);
             let rfis = controller.port_cmds.fis.rfis;
             println!("rfis: {:?}", rfis);
-            controller.identity_packet(&mut b);
+            controller.identity_packet(b as *mut IdentityPacketData);
 
             let rfis = controller.port_cmds.fis.rfis;
             println!("rfis: {:?}", rfis);
 
             let d = unsafe {
-                core::ptr::read_volatile(&b as *const IdentityPacketData)
+                core::ptr::read_volatile(b as *const IdentityPacketData)
             };
 
-            println!("Data Address: {:x?}", &b as *const _ as usize);
+            println!("Data Address: {:x?}", b);
 
             println!("Data: {:?}", d.data);
 
