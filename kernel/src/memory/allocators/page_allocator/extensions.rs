@@ -13,6 +13,10 @@ use cpu_utils::structures::paging::{
 };
 use extend::ext;
 use strum::VariantArray;
+
+use common::error::TableError;
+use cpu_utils::structures::paging::EntryIndex;
+
 #[ext]
 pub impl PhysicalAddress {
     fn map(
@@ -139,6 +143,57 @@ pub impl VirtualAddress {
 
 #[ext]
 pub impl PageTable {
+    /// Find an avavilable page in the given size.
+    // ANCHOR: page_table_find_available_page
+    #[cfg(target_arch = "x86_64")]
+    fn find_available_page(
+        page_size: PageSize,
+    ) -> Result<VirtualAddress, TableError> {
+        const TOTAL_LEVELS: usize = PageTableLevel::VARIANTS.len();
+        let mut level_indices = [0usize; TOTAL_LEVELS];
+        let mut page_tables = [Self::current_table(); TOTAL_LEVELS];
+        let mut current_level = PageTableLevel::PML4;
+        loop {
+            let current_table =
+                page_tables[TOTAL_LEVELS - current_level as usize];
+
+            let ti = current_table.try_fetch_table(
+                level_indices[TOTAL_LEVELS - current_level as usize],
+                current_level,
+                page_size,
+            );
+
+            let next_table = match ti {
+                EntryIndex::OutOfEntries | EntryIndex::PageDoesNotFit => {
+                    current_level = current_level.prev()?;
+                    level_indices
+                        [TOTAL_LEVELS - current_level as usize] += 1;
+                    continue;
+                }
+                EntryIndex::Entry(entry) => {
+                    level_indices[TOTAL_LEVELS - current_level as usize] =
+                        entry.table_index();
+                    unsafe {
+                        &*entry.mapped_unchecked().as_ptr::<PageTable>()
+                    }
+                }
+                EntryIndex::Index(i) => {
+                    level_indices[TOTAL_LEVELS - current_level as usize] =
+                        i;
+                    return Ok(VirtualAddress::from_indices(
+                        level_indices,
+                    ));
+                }
+            };
+            let next_level = current_level
+                .next()
+                .expect("Can't go next on a first level table");
+            page_tables[TOTAL_LEVELS - next_level as usize] = next_table;
+            current_level = next_level;
+        }
+    }
+    // ANCHOR_END: page_table_find_available_page
+
     /// Map the region of memory from 0 to `mem_size_bytes`
     /// at the top of the page table so that ```rust
     /// VirtualAddress(0xffff800000000000) ->
