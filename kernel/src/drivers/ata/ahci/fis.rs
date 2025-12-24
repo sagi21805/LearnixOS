@@ -17,7 +17,7 @@ pub struct RegisterH2D {
     features_ext: u8,
     sector_count: u8,
     sector_count_ext: u8,
-    _resvered0: u8,
+    _reserved0: u8,
     control: u8,
     _reserved1: [u8; 4],
 }
@@ -57,7 +57,7 @@ impl RegisterH2D {
             features_ext,
             sector_count: sector_count_low,
             sector_count_ext,
-            _resvered0: 0,
+            _reserved0: 0,
             control,
             _reserved1: [0; 4],
         }
