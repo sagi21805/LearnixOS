@@ -67,7 +67,13 @@ impl PageSize {
         }
     }
 
-    pub fn exceeds(&self, table_level: PageTableLevel) -> bool {
+    /// Conclude if a page can be allocated in the give PageTableLevel
+    ///
+    /// # Example
+    /// A huge (2Mib) Page can be allocated on PML4, PDPT and PD so it will
+    /// return `true` for those, and it cannot be allocated on `PD` so for
+    /// it is will return `false`
+    pub fn allocatable_at(&self, table_level: PageTableLevel) -> bool {
         (3 - *self as usize) <= table_level as usize
     }
 
