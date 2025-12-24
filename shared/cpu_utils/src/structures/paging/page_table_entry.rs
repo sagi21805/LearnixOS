@@ -172,4 +172,9 @@ impl PageTableEntry {
         }
     }
     // ANCHOR_END: page_table_entry_mapped_table
+
+    pub fn table_index(&self) -> usize {
+        let table_offset = self as *const _ as usize & ((1 << 12) - 1);
+        table_offset / size_of::<PageTableEntry>()
+    }
 }
