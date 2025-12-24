@@ -600,7 +600,7 @@ impl CmdStatus {
         loop {
             timeout -= 1;
             if timeout == 0 {
-                panic!("Timout ended on port stop");
+                panic!("Timeout ended on port stop");
             }
             if self.is_cr() {
                 continue;
@@ -613,7 +613,7 @@ impl CmdStatus {
         loop {
             timeout -= 1;
             if timeout == 0 {
-                panic!("Timout ended on port stop");
+                panic!("Timeout ended on port stop");
             }
             if self.is_fr() {
                 continue;
@@ -792,7 +792,7 @@ impl FisSwitchControl {
         ((self.0 >> 12) & 0xf) as u8
     }
 
-    /// Set the port multiplier port number, that should recieve the next
+    /// Set the port multiplier port number, that should receive the next
     /// command
     pub fn device_to_issue(&mut self, dev_num: u8) {
         self.0 &= !(0xf << 8);
@@ -830,18 +830,18 @@ impl DeviceSleep {
         self.dito_ms() * (self.dito_multiplier() + 1) as u16
     }
 
-    /// Minimu device sleep assertion time
+    /// Minimum device sleep assertion time
     ///
-    /// TODO: currently only read only, if write needed, check documentatio
-    /// about extended cap and writing to this offset
+    /// TODO: currently only read only, if write needed, check
+    /// documentation about extended cap and writing to this offset
     pub fn mdat(&self) -> u8 {
         ((self.0 >> 10) & 0x1f) as u8
     }
 
     /// Device sleep exit timeout
     ///
-    /// TODO: currently only read only, if write needed, check documentatio
-    /// about extended cap and writing to this offset
+    /// TODO: currently only read only, if write needed, check
+    /// documentation about extended cap and writing to this offset
     pub fn deto_ms(&self) -> u8 {
         ((self.0 >> 2) & 0xff) as u8
     }
@@ -901,13 +901,13 @@ impl PortControlRegisters {
 
     /// Return the full frame information structure address by combining
     /// the low and high 32bit parts
-    pub fn received_fis(&self) -> &RecievedFis {
+    pub fn received_fis(&self) -> &ReceivedFis {
         let rfis_addr = ((self.fbu as usize) << 32)
             | (self.fb as usize & !((1 << 8) - 1));
-        unsafe { &*(rfis_addr as *const RecievedFis) }
+        unsafe { &*(rfis_addr as *const ReceivedFis) }
     }
 
-    pub fn set_received_fis(&mut self, fis: &RecievedFis) {
+    pub fn set_received_fis(&mut self, fis: &ReceivedFis) {
         let ptr = fis as *const _ as usize;
         self.fb = (ptr & 0xffffffff) as u32;
         self.fbu = (ptr >> 32) as u32;
@@ -937,7 +937,7 @@ impl PortControlRegisters {
 
 /// TODO, DECIDE IF ITS OK THAT THIS IS ONE BYTE GREATER IN SIZE
 #[repr(C, align(256))]
-pub struct RecievedFis {
+pub struct ReceivedFis {
     pub dsfis: DmaSetup,
     _reserved0: u32,
     pub psfis: PioSetupD2H,
@@ -1033,7 +1033,7 @@ impl PrdtDescriptionInfo {
     /// Set the data byte count of the buffer on the prdt
     pub fn set_dbc(&mut self, dbc: u32) {
         const MB: u32 = 1 << 20;
-        assert!(dbc < 4 * MB, "DBC should be smller then 4Mib");
+        assert!(dbc < 4 * MB, "DBC should be smaller then 4Mib");
     }
 }
 
@@ -1067,7 +1067,7 @@ pub struct CommandTable<const ENTRIES: usize> {
 
 #[repr(C, align(4096))]
 pub struct PortCommands<const ENTRIES: usize> {
-    pub fis: RecievedFis,
+    pub fis: ReceivedFis,
     pub cmd_list: CommandList,
     pub cmd_table: [CommandTable<ENTRIES>; 32],
     _reserved: [u8; 0x100],
@@ -1112,7 +1112,7 @@ pub struct HBAMemoryRegisters {
 impl HBAMemoryRegisters {
     pub fn new(a: PhysicalAddress) -> Result<&'static mut Self, HbaError> {
         if !a.is_aligned(REGULAR_PAGE_ALIGNMENT) {
-            return Err(HbaError::AdressNotAligned);
+            return Err(HbaError::AddressNotAligned);
         }
 
         a.map(

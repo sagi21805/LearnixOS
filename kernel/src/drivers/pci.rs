@@ -10,8 +10,8 @@ use crate::{
 use alloc::vec::Vec;
 use common::enums::{
     CascadedPicInterruptLine, ClassCode, DeviceID, HeaderType,
-    PciDeviceType, PicInterruptLine, Port, ProgrammingInterface, SubClass,
-    VendorDevice, VendorID,
+    PciDeviceType, Port, ProgrammingInterface, SubClass, VendorDevice,
+    VendorID,
 };
 use cpu_utils::instructions::port::PortExt;
 use learnix_macros::flag;

@@ -1,5 +1,3 @@
-use crate::panic;
-
 use super::ALLOCATOR;
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
@@ -8,13 +6,13 @@ use common::{
         PHYSICAL_MEMORY_OFFSET,
     },
     enums::{PageSize, PageTableLevel},
-    error::{EntryError, TableError},
+    error::EntryError,
 };
 use cpu_utils::structures::paging::{
     PageEntryFlags, PageTable, PageTableEntry,
 };
 use extend::ext;
-use strum::{IntoEnumIterator, VariantArray};
+use strum::VariantArray;
 #[ext]
 pub impl PhysicalAddress {
     fn map(
