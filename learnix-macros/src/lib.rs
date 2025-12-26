@@ -185,6 +185,7 @@ pub fn rwc_flag(input: TokenStream) -> TokenStream {
     // build identifiers
     let name_str = name.to_string();
     let clear_ident = format_ident!("clear_{}", name_str);
+    let support_ident = format_ident!("is_{}", name_str);
 
     let expanded = quote! {
         #[inline]
@@ -193,6 +194,19 @@ pub fn rwc_flag(input: TokenStream) -> TokenStream {
         /// Sets the corresponding flag
         pub const fn #clear_ident(&mut self) {
             self.0 |= 1 << #bit;
+        }
+
+
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Checks if the corresponding flag is set
+        pub fn #support_ident(&self) -> bool {
+            unsafe {
+                core::ptr::read_volatile(
+                    self as *const _ as *mut usize
+                ) & ((1<< #bit) as usize) != 0
+            }
         }
     };
 

@@ -3,10 +3,10 @@
 /// Implemented directly from https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/serial-ata-ahci-spec-rev1-3-1.pdf
 extern crate alloc;
 
-use core::{mem::MaybeUninit, num::NonZero};
+use core::{fmt::Debug, num::NonZero, panic};
 
 use common::{
-    address_types::{PhysicalAddress, VirtualAddress},
+    address_types::PhysicalAddress,
     constants::{
         PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
@@ -14,11 +14,14 @@ use common::{
         AtaCommand, Color, DeviceDetection, DeviceType,
         InterfaceCommunicationControl, InterfaceInitialization,
         InterfacePowerManagement, InterfaceSpeed,
-        InterfaceSpeedRestriction, PageSize, PicInterruptVectorOffset,
+        InterfaceSpeedRestriction, PageSize,
     },
     error::{AhciError, ConversionError, DiagnosticError, HbaError},
+    read_volatile,
+    volatile::Volatile,
+    write_volatile,
 };
-use cpu_utils::{instructions::port, structures::paging::PageEntryFlags};
+use cpu_utils::structures::paging::PageEntryFlags;
 use learnix_macros::{flag, ro_flag, rw1_flag, rwc_flag};
 use num_enum::UnsafeFromPrimitive;
 use strum::IntoEnumIterator;
@@ -32,18 +35,17 @@ use crate::{
         },
         vga_display::color_code::ColorCode,
     },
-    memory::allocators::page_allocator::{
-        allocator::PhysicalPageAllocator, extensions::PhysicalAddressExt,
-    },
+    eprintln,
+    memory::allocators::page_allocator::extensions::PhysicalAddressExt,
     print, println,
 };
 
-use alloc::vec::Vec;
-
+#[repr(transparent)]
 #[derive(Copy, Clone)]
 pub struct AHCIBaseAddress(pub u32);
 
 /// CAP
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct HBACapabilities(pub u32);
 
@@ -70,7 +72,11 @@ impl HBACapabilities {
     ro_flag!(sal, 25);
 
     pub fn interface_speed(&self) -> InterfaceSpeed {
-        unsafe { core::mem::transmute(((self.0 >> 20) & 0xf) as u8) }
+        unsafe {
+            core::mem::transmute(
+                (((read_volatile!(self.0)) >> 20) & 0xf) as u8,
+            )
+        }
     }
 
     // Support AHCI mode only
@@ -93,7 +99,7 @@ impl HBACapabilities {
 
     // This value is between 1 and 32
     pub fn number_of_commands(&self) -> u8 {
-        ((self.0 >> 8) & 0x1f) as u8
+        (((read_volatile!(self.0)) >> 8) & 0x1f) as u8
     }
 
     // Command completion coalescing supported
@@ -107,11 +113,12 @@ impl HBACapabilities {
 
     /// Returns the number of ports implemented
     pub fn number_of_ports(&self) -> u8 {
-        (self.0 & 0x1f) as u8
+        (read_volatile!(self.0) & 0x1f) as u8
     }
 }
 
 /// GHC
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct GlobalHostControl(pub u32);
 
@@ -131,6 +138,7 @@ impl GlobalHostControl {
 }
 
 /// IS
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct InterruptStatus(pub u32);
 
@@ -138,11 +146,15 @@ impl InterruptStatus {
     // Port Interrupt Pending Status. Corresponds to bits of the PI
     // register. Cleared by writing a '1' to the corresponding bit.
     pub fn is_port_pending(&self, port_num: u8) -> bool {
-        (self.0 & (1 << port_num)) != 0
+        (read_volatile!(self.0) & (1 << port_num)) != 0
     }
 
     pub fn clear(&mut self, port_num: u8) {
-        self.0 |= 1 << port_num;
+        write_volatile!(self.0, read_volatile!(self.0) | (1 << port_num));
+    }
+
+    pub fn clear_all(&mut self) {
+        write_volatile!(self.0, 0);
     }
 
     // RWC flag for Port 0 Interrupt Pending Status
@@ -180,59 +192,61 @@ impl InterruptStatus {
 }
 
 // PI
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct PortsImplemented(pub u32);
 
 impl PortsImplemented {
     // Port i is Implemented (P[i])
     pub fn is_port_implemented(&self, port_num: u8) -> bool {
-        (self.0 & (1 << port_num)) != 0
+        (read_volatile!(self.0) & (1 << port_num)) != 0
     }
 }
 
 // VS
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct Version(pub u32);
 
 impl Version {
     // Major Version Number (Bits 31:16)
     pub fn major_version(&self) -> u16 {
-        (self.0 >> 16) as u16
+        (read_volatile!(self.0) >> 16) as u16
     }
 
     // Minor Version Number (Bits 15:0)
     pub fn minor_version(&self) -> u16 {
-        (self.0 & 0xFFFF) as u16
+        (read_volatile!(self.0) & 0xffff) as u16
     }
 }
 
 /// CCC_CTL
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct CommandCompletionCoalescingControl(pub u32);
 
 impl CommandCompletionCoalescingControl {
     pub fn interrupt_time_ms(&self) -> u16 {
-        const MASK: u32 = 0xFFFF;
-        ((self.0 >> 16) & MASK) as u16
+        ((read_volatile!(self.0) >> 16) & 0xffff) as u16
     }
 
     // Command Completions (CC): Number of command completions necessary to
     // cause a CCC interrupt
     pub fn command_completions(&self) -> u8 {
-        const MASK: u32 = 0xFF;
-        ((self.0 >> 8) & MASK) as u8
+        ((read_volatile!(self.0) >> 8) & 0xff) as u8
     }
 
     flag!(enable, 0);
 }
 
 /// CCC_PORTS
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct CommandCompletionCoalescingPorts(pub u32);
 
 impl CommandCompletionCoalescingPorts {
     pub fn set_port(&mut self, port_num: u8) {
-        self.0 |= 1 << port_num
+        write_volatile!(self.0, read_volatile!(self.0) | (1 << port_num))
     }
 
     pub fn unset(&mut self, port_num: u8) {
@@ -273,22 +287,24 @@ impl CommandCompletionCoalescingPorts {
 }
 
 /// EM_LOC
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct EnclosureManagementLocation(pub u32);
 
 impl EnclosureManagementLocation {
     pub fn dword_offset_from_abar(&self) -> usize {
-        (self.0 >> 16) as usize
+        (read_volatile!(self.0) >> 16) as usize
     }
 
     /// ZERO is invalid
     /// TODO understand how to check if i have both receive and transmit
     pub fn buffet_size(&self) -> Option<NonZero<usize>> {
-        NonZero::new((self.0 & 0xffff) as usize)
+        NonZero::new((read_volatile!(self.0) & 0xffff) as usize)
     }
 }
 
 /// EM_CTL
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct EnclosureManagementControl(pub u32);
 
@@ -328,6 +344,7 @@ impl EnclosureManagementControl {
 }
 
 /// CAP2
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct HostCapabilitiesExtended(pub u32);
 
@@ -352,6 +369,7 @@ impl HostCapabilitiesExtended {
 }
 
 // BOHC
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct BiosOsControlStatus(pub u32);
 
@@ -394,6 +412,7 @@ pub struct VendorSpecificRegisters {
 }
 
 /// Port X Interrupt status
+#[repr(transparent)]
 pub struct PortInterruptStatus(pub u32);
 
 impl PortInterruptStatus {
@@ -449,11 +468,12 @@ impl PortInterruptStatus {
     rwc_flag!(dhrs, 0);
 
     pub fn clear_pending_interrupts(&mut self) {
-        self.0 = 0;
+        write_volatile!(self.0, u32::MAX);
     }
 }
 
 /// Port X Interrupt Enable
+#[repr(transparent)]
 pub struct InterruptEnable(pub u32);
 
 impl InterruptEnable {
@@ -510,12 +530,16 @@ impl InterruptEnable {
 }
 
 /// Port X Command and status
+#[repr(transparent)]
 pub struct CmdStatus(pub u32);
 
 impl CmdStatus {
     pub fn set_icc(&mut self, icc: InterfaceCommunicationControl) {
-        self.0 &= !(0xf << 28);
-        self.0 |= (icc as u32) << 28;
+        write_volatile!(self.0, read_volatile!(self.0) & !(0xf << 28));
+        write_volatile!(
+            self.0,
+            read_volatile!(self.0) | (icc as u32) << 28
+        );
     }
 
     // Aggressive Slumber / Partial
@@ -563,14 +587,11 @@ impl CmdStatus {
     // Mechanical Presence Switch State
     ro_flag!(mpss, 13);
 
-    pub fn set_current_cmd(&mut self, ccs: u8) {
+    pub fn get_current_cmd(&mut self) -> u32 {
         if !self.is_st() {
-            return;
+            return 0;
         }
-        (0x0u8..=0x1fu8).contains(&ccs).then(|| {
-            self.0 &= !(0x1f << 8);
-            self.0 |= (ccs as u32) << 8;
-        });
+        (read_volatile!(self.0) >> 8) & 0x1f
     }
 
     // FIS Receive Enable
@@ -625,6 +646,7 @@ impl CmdStatus {
 }
 
 /// Port x Task File Data
+#[repr(transparent)]
 pub struct TaskFileData(pub u32);
 
 impl TaskFileData {
@@ -638,7 +660,7 @@ impl TaskFileData {
     ro_flag!(bsy, 7);
 
     pub fn error(&self) -> u8 {
-        (self.0 >> 8) as u8
+        (read_volatile!(self.0) >> 8) as u8
     }
 }
 
@@ -663,39 +685,41 @@ impl Signature {
 }
 
 /// Port X SATA Status
+#[repr(transparent)]
 pub struct SataStatus(pub u32);
 
 impl SataStatus {
     pub fn power(
         &self,
     ) -> Result<InterfacePowerManagement, ConversionError<u8>> {
-        let power = ((self.0 >> 8) & 0xf) as u8;
+        let power = ((read_volatile!(self.0) >> 8) & 0xf) as u8;
         InterfacePowerManagement::try_from(power)
     }
 
     pub fn speed(&self) -> InterfaceSpeed {
-        let speed = ((self.0 >> 4) & 0xf) as u8;
+        let speed = ((read_volatile!(self.0) >> 4) & 0xf) as u8;
         unsafe { InterfaceSpeed::unchecked_transmute_from(speed) }
     }
 
     pub fn detection(
         &self,
     ) -> Result<DeviceDetection, ConversionError<u8>> {
-        let detection = (self.0 & 0xf) as u8;
+        let detection = (read_volatile!(self.0) & 0xf) as u8;
         DeviceDetection::try_from(detection)
     }
 }
 
 /// Port X SATA control
+#[repr(transparent)]
 pub struct SataControl(pub u32);
 
 impl SataControl {
     pub fn port_multiplier(&self) -> u8 {
-        ((self.0 >> 16) & 0xf) as u8
+        ((read_volatile!(self.0) >> 16) & 0xf) as u8
     }
 
     pub fn select_power_management(&self) -> u8 {
-        ((self.0 >> 12) & 0xf) as u8
+        ((read_volatile!(self.0) >> 12) & 0xf) as u8
     }
 
     flag!(devslp_disabled, 10);
@@ -703,7 +727,7 @@ impl SataControl {
     flag!(partial_disabled, 8);
 
     pub fn max_speed(&self) -> InterfaceSpeedRestriction {
-        let speed = ((self.0 >> 4) & 0xf) as u8;
+        let speed = ((read_volatile!(self.0) >> 4) & 0xf) as u8;
         unsafe {
             InterfaceSpeedRestriction::unchecked_transmute_from(speed)
         }
@@ -711,15 +735,20 @@ impl SataControl {
 
     pub fn set_max_speed(&mut self, speed: InterfaceSpeed) {
         if speed != InterfaceSpeed::DevNotPresent {
-            self.0 &= !(0xf << 4);
-            self.0 |= (speed as u32) << 4;
+            write_volatile!(self.0, read_volatile!(self.0) & !(0xf << 4));
+            write_volatile!(
+                self.0,
+                read_volatile!(self.0) | (speed as u32) << 4
+            );
         }
     }
 
     pub fn device_initialization(
         &self,
     ) -> Result<InterfaceInitialization, ConversionError<u8>> {
-        InterfaceInitialization::try_from((self.0 & 0xf) as u8)
+        InterfaceInitialization::try_from(
+            (read_volatile!(self.0) & 0xf) as u8,
+        )
     }
 
     // TODO THIS COMMAND ANY MAYBE OTHER SHOULD PROBABLY MOVE TO THE PORT
@@ -729,48 +758,66 @@ impl SataControl {
         &mut self,
         init: InterfaceInitialization,
     ) {
-        self.0 &= !0xf;
-        self.0 |= init as u32;
+        write_volatile!(self.0, read_volatile!(self.0) & !0xf);
+        write_volatile!(self.0, read_volatile!(self.0) | init as u32);
     }
 }
 
 /// Port X SATA error
+#[repr(transparent)]
 pub struct SataError(pub u32);
 
 impl SataError {
     pub fn diagnostic(&self) -> impl Iterator<Item = DiagnosticError> {
-        let diagnostic_errors = ((self.0 >> 16) & 0xffff) as u16;
+        let diagnostic_errors =
+            ((read_volatile!(self.0) >> 16) & 0xffff) as u16;
         DiagnosticError::iter()
             .filter(move |n| *n as u16 & diagnostic_errors != 0)
     }
 
     pub fn error(&self) -> impl Iterator<Item = AhciError> {
-        let ahci_error = (self.0 & 0xffff) as u16;
+        let ahci_error = (read_volatile!(self.0) & 0xffff) as u16;
         AhciError::iter().filter(move |n| *n as u16 & ahci_error != 0)
+    }
+
+    pub fn zero_error(&mut self) {
+        write_volatile!(self.0, read_volatile!(self.0) & !0xffff)
     }
 }
 
 /// Port X Sata Active
+#[repr(transparent)]
 pub struct SataActive(pub u32);
 
 /// Port X Command issue
-pub struct CmdIssue(pub u32);
+#[repr(transparent)]
+pub struct CmdIssue(pub Volatile<u32>);
+
+impl CmdIssue {
+    pub fn issue_cmd(&mut self, cmd: u8) {
+        self.0.write(self.0.read() | 1 << cmd);
+    }
+}
 
 /// Port X SATA Notification
+#[repr(transparent)]
 pub struct SataNotification(pub u32);
 
 impl SataNotification {
     /// Get port multiplier notification
     pub fn set_pm_notif(&mut self, pm_port: u8) {
-        (0x0..0xf)
-            .contains(&pm_port)
-            .then(|| self.0 |= pm_port as u32);
+        (0x0..0xf).contains(&pm_port).then(|| {
+            write_volatile!(
+                self.0,
+                read_volatile!(self.0) | pm_port as u32
+            )
+        });
     }
 
     /// Get port multiplier notification
     pub fn get_pm_notif(&self, pm_port: u8) -> bool {
         if (0x0..0xf).contains(&pm_port) {
-            (self.0 & !0xffff) & (1 << pm_port) != 0
+            (read_volatile!(self.0) & !0xffff) & (1 << pm_port) != 0
         } else {
             false
         }
@@ -778,25 +825,29 @@ impl SataNotification {
 }
 
 /// Port X Frame Information Structure based switching control
+#[repr(transparent)]
 pub struct FisSwitchControl(pub u32);
 
 impl FisSwitchControl {
     /// Port multiplier device that experienced fatal error
     pub fn device_with_error(&self) -> u8 {
-        ((self.0 >> 16) & 0xf) as u8
+        ((read_volatile!(self.0) >> 16) & 0xf) as u8
     }
 
     /// The number of devices that FIS-Based switching has been optimized
     /// for. The minimum value for this field should be 0x2.
     pub fn active_device_optimization(&self) -> u8 {
-        ((self.0 >> 12) & 0xf) as u8
+        ((read_volatile!(self.0) >> 12) & 0xf) as u8
     }
 
     /// Set the port multiplier port number, that should receive the next
     /// command
     pub fn device_to_issue(&mut self, dev_num: u8) {
-        self.0 &= !(0xf << 8);
-        self.0 |= (dev_num as u32) << 8;
+        write_volatile!(self.0, read_volatile!(self.0) & !(0xf << 8));
+        write_volatile!(
+            self.0,
+            read_volatile!(self.0) | (dev_num as u32) << 8
+        );
     }
 
     // Single device error
@@ -810,19 +861,20 @@ impl FisSwitchControl {
 }
 
 /// Port x Device sleep
+#[repr(transparent)]
 pub struct DeviceSleep(pub u32);
 
 impl DeviceSleep {
     /// Device Sleep Idle Timeout Multiplier
     pub fn dito_multiplier(&self) -> u8 {
-        ((self.0 >> 25) & 0xf) as u8
+        ((read_volatile!(self.0) >> 25) & 0xf) as u8
     }
 
     /// Raw dito value
     ///
     /// **Use [`dito_actual`] for the actual wait time**
     pub fn dito_ms(&self) -> u16 {
-        ((self.0 >> 15) & 0x3ff) as u16
+        ((read_volatile!(self.0) >> 15) & 0x3ff) as u16
     }
 
     /// The actual timeout, which is dito * (dito_multiplier + 1)
@@ -835,7 +887,7 @@ impl DeviceSleep {
     /// TODO: currently only read only, if write needed, check
     /// documentation about extended cap and writing to this offset
     pub fn mdat(&self) -> u8 {
-        ((self.0 >> 10) & 0x1f) as u8
+        ((read_volatile!(self.0) >> 10) & 0x1f) as u8
     }
 
     /// Device sleep exit timeout
@@ -843,7 +895,7 @@ impl DeviceSleep {
     /// TODO: currently only read only, if write needed, check
     /// documentation about extended cap and writing to this offset
     pub fn deto_ms(&self) -> u8 {
-        ((self.0 >> 2) & 0xff) as u8
+        ((read_volatile!(self.0) >> 2) & 0xff) as u8
     }
 
     // Device sleep present
@@ -854,18 +906,19 @@ impl DeviceSleep {
 }
 
 /// Port X Vendor specific
+#[repr(transparent)]
 pub struct VendorSpecific(pub u32);
 
 #[repr(C)]
 pub struct PortControlRegisters {
     /// Port X Command list base address low
-    pub clb: u32,
+    pub clb: Volatile<u32>,
     /// Port X Command list base address high
-    pub clbu: u32,
+    pub clbu: Volatile<u32>,
     /// Port X frame information structure base address low
-    pub fb: u32,
+    pub fb: Volatile<u32>,
     /// Port X frame information structure base address high
-    pub fbu: u32,
+    pub fbu: Volatile<u32>,
     pub is: PortInterruptStatus,
     pub ie: InterruptEnable,
     pub cmd: CmdStatus,
@@ -887,30 +940,30 @@ pub struct PortControlRegisters {
 impl PortControlRegisters {
     /// Return the full command list address by combining the low and high
     /// 32bit parts
-    pub fn cmd_list(&mut self) -> &mut CommandList {
-        let cmd_list_addr = ((self.clbu as usize) << 32)
-            | (self.clb as usize & !((1 << 10) - 1));
-        unsafe { &mut *(cmd_list_addr as *mut CommandList) }
+    pub fn cmd_list(&mut self) -> &mut CmdList {
+        let cmd_list_addr = ((self.clbu.read() as usize) << 32)
+            | (self.clb.read() as usize & !((1 << 10) - 1));
+        unsafe { &mut *(cmd_list_addr as *mut CmdList) }
     }
 
-    pub fn set_cmd_list(&mut self, clb: &CommandList) {
-        let ptr = clb as *const _ as usize;
-        self.clb = (ptr & 0xffffffff) as u32;
-        self.clbu = (ptr >> 32) as u32;
+    pub fn set_cmd_list_address(&mut self, ptr: usize) {
+        println!("CLB: {:x?}", ptr);
+        self.clb.write((ptr & 0xffffffff) as u32);
+        self.clbu.write((ptr >> 32) as u32);
     }
 
     /// Return the full frame information structure address by combining
     /// the low and high 32bit parts
     pub fn received_fis(&self) -> &ReceivedFis {
-        let rfis_addr = ((self.fbu as usize) << 32)
-            | (self.fb as usize & !((1 << 8) - 1));
+        let rfis_addr = ((self.fbu.read() as usize) << 32)
+            | (self.fb.read() as usize & !((1 << 8) - 1));
         unsafe { &*(rfis_addr as *const ReceivedFis) }
     }
 
-    pub fn set_received_fis(&mut self, fis: &ReceivedFis) {
-        let ptr = fis as *const _ as usize;
-        self.fb = (ptr & 0xffffffff) as u32;
-        self.fbu = (ptr >> 32) as u32;
+    pub fn set_received_fis_address(&mut self, ptr: usize) {
+        println!("FB: {:x?}", ptr);
+        self.fb.write((ptr & 0xffffffff) as u32);
+        self.fbu.write((ptr >> 32) as u32);
     }
 
     pub fn set_status(&mut self, port: u8) {
@@ -923,7 +976,7 @@ impl PortControlRegisters {
 
     /// Return the index of an available command slot if one exists
     pub fn find_cmd_slot(&self) -> Option<usize> {
-        let mut slots = self.ci.0 | self.sact.0;
+        let mut slots = self.ci.0.read() | self.sact.0;
         for i in 0usize..32 {
             if slots & 1 == 0 {
                 return Some(i);
@@ -933,19 +986,79 @@ impl PortControlRegisters {
         }
         None
     }
+
+    pub fn identity_packet(&mut self, buf: *mut IdentityPacketData) {
+        let fis = RegisterH2D::new(
+            1 << 7,
+            AtaCommand::IdentifyDevice,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
+        let cmd = &mut self.cmd_list().entries[0];
+        let cmd_table = &mut cmd.cmd_table::<8>();
+        let prdt_ent = &mut cmd_table.table[0];
+        write_volatile!(cmd_table.cfis, Fis { h2d: fis });
+        prdt_ent.set_buffer(buf);
+        prdt_ent.dbc.set_dbc(511);
+        cmd.info.set_command_fis_len(size_of::<RegisterH2D>());
+        cmd.info.set_prdtl(1);
+        println!("Sending command!");
+        self.ci.issue_cmd(0);
+
+        let mut timeout = 0xfffff;
+        loop {
+            if self.is.0 != 0 {
+                if self.is.is_tfes() {
+                    eprintln!("ERROR READING FROM DISK");
+                    for error in self.serr.error() {
+                        println!("{:?}", error);
+                    }
+                    if self.tfd.is_err() {
+                        println!(
+                            "TASK FILE DATA ERROR STATE\nERROR: {:08b}",
+                            self.tfd.error()
+                        );
+                    }
+                }
+                println!("Finished!");
+                println!("{:032b}", self.is.0);
+                break;
+            } else {
+                timeout -= 1
+            }
+
+            if timeout == 0 {
+                panic!("Timeout on identity packet read")
+            }
+        }
+        unsafe {
+            for w in (&mut *buf).serial_number.chunks_exact_mut(2) {
+                w.swap(0, 1);
+            }
+            for w in (&mut *buf).model_num.chunks_exact_mut(2) {
+                w.swap(0, 1);
+            }
+            for w in (&mut *buf).firmware_rev.chunks_exact_mut(2) {
+                w.swap(0, 1);
+            }
+        }
+    }
 }
 
 /// TODO, DECIDE IF ITS OK THAT THIS IS ONE BYTE GREATER IN SIZE
 #[repr(C, align(256))]
 pub struct ReceivedFis {
-    pub dsfis: DmaSetup,
+    pub dsfis: Volatile<DmaSetup>,
     _reserved0: u32,
-    pub psfis: PioSetupD2H,
+    pub psfis: Volatile<PioSetupD2H>,
     _reserved1: [u32; 3],
-    pub rfis: RegisterD2H,
+    pub rfis: Volatile<RegisterD2H>,
     _reserved2: u32,
-    pub sdbfis: SetDeviceBits,
-    pub ufis: [u8; 64],
+    pub sdbfis: Volatile<SetDeviceBits>,
+    pub ufis: Volatile<[u8; 64]>,
     _reserved3: [u32; 24],
 }
 
@@ -955,12 +1068,18 @@ pub struct CmdListDescriptionInfo(pub u32);
 impl CmdListDescriptionInfo {
     /// Set the Physical region descriptor table length
     pub fn set_prdtl(&mut self, size: u16) {
-        self.0 |= (size as u32) << 16;
+        write_volatile!(
+            self.0,
+            read_volatile!(self.0) | (size as u32) << 16
+        );
     }
 
     /// Set the port multiplier port
     pub fn set_pm_port(&mut self, pm_port: u8) {
-        self.0 |= ((pm_port & 0xf) as u32) << 12
+        write_volatile!(
+            self.0,
+            read_volatile!(self.0) | ((pm_port & 0xf) as u32) << 12
+        );
     }
 
     // Clear busy upon R_OK
@@ -981,47 +1100,47 @@ impl CmdListDescriptionInfo {
     // ATAPI
     flag!(a, 5);
 
-    /// Length of command FIS in dwords
-    pub fn set_command_fis_len_dw(&mut self, len: u8) {
-        assert!(len < 2, "Len must be smaller then 2");
-        assert!(len > 16, "Len must be greater then 16 ");
-        self.0 |= len as u32;
+    /// Length of command FIS len (internally converted to dw)
+    pub fn set_command_fis_len(&mut self, len: usize) {
+        assert!(len < 64, "Len must be smaller then 64");
+        assert!(len > 8, "Len must be greater then 8 ");
+        write_volatile!(
+            self.0,
+            read_volatile!(self.0) | (len / size_of::<u32>()) as u32
+        );
     }
 }
 
 #[repr(C)]
-pub struct CommandHeader {
+pub struct CmdHeader {
     info: CmdListDescriptionInfo,
-    prdb_byte_count: u32,
+    prdb_byte_count: Volatile<u32>,
     /// Command table descriptor base address
-    ctba: u32,
+    ctba: Volatile<u32>,
     /// Command table desciprtor base address upper
-    ctbau: u32,
+    ctbau: Volatile<u32>,
     _reserved: [u32; 4],
 }
 
-impl CommandHeader {
+impl CmdHeader {
     pub fn cmd_table<const ENTRIES: usize>(
         &mut self,
-    ) -> &mut CommandTable<ENTRIES> {
-        let cmd_table_addr =
-            ((self.ctbau as usize) << 32) | (self.ctba as usize);
-        unsafe { &mut *(cmd_table_addr as *mut CommandTable<ENTRIES>) }
+    ) -> &mut CmdTable<ENTRIES> {
+        let cmd_table_addr = ((self.ctbau.read() as usize) << 32)
+            | (self.ctba.read() as usize);
+        unsafe { &mut *(cmd_table_addr as *mut CmdTable<ENTRIES>) }
     }
 
-    pub fn set_cmd_table<const ENTRIES: usize>(
-        &mut self,
-        table: &CommandTable<ENTRIES>,
-    ) {
-        let ptr = table as *const _ as usize;
-        self.ctba = (ptr & 0xffffffff) as u32;
-        self.ctbau = (ptr >> 32) as u32;
+    pub fn set_cmd_table(&mut self, ptr: usize) {
+        println!("CMD TBL: {:x?}", ptr);
+        self.ctba.write((ptr & 0xffffffff) as u32);
+        self.ctbau.write((ptr >> 32) as u32);
     }
 }
 
 #[repr(C, align(1024))]
-pub struct CommandList {
-    pub entries: [CommandHeader; 32],
+pub struct CmdList {
+    pub entries: [CmdHeader; 32],
 }
 
 pub struct PrdtDescriptionInfo(pub u32);
@@ -1034,67 +1153,36 @@ impl PrdtDescriptionInfo {
     pub fn set_dbc(&mut self, dbc: u32) {
         const MB: u32 = 1 << 20;
         assert!(dbc < 4 * MB, "DBC should be smaller then 4Mib");
+        write_volatile!(self.0, read_volatile!(self.0) | dbc | 1);
     }
 }
 
-#[repr(C, align(128))]
-pub struct CommandTableEntry {
+#[repr(C)]
+pub struct CmdTableEntry {
     /// Data base address buffer
-    dba: u32,
+    dba: Volatile<u32>,
     /// Data base address buffer upper
-    dbau: u32,
+    dbau: Volatile<u32>,
     _reserved: u32,
     /// Data byte count (A maximum of 4mb is available)
     dbc: PrdtDescriptionInfo,
 }
 
-impl CommandTableEntry {
+impl CmdTableEntry {
     pub fn set_buffer<T>(&mut self, buf: *mut T) {
         let ptr = buf as usize;
-        self.dba = (ptr & 0xffffffff) as u32;
-        self.dbau = (ptr >> 32) as u32;
+        self.dba.write((ptr & 0xffffffff) as u32);
+        self.dbau.write((ptr >> 32) as u32);
     }
 }
 
-#[repr(C)]
-pub struct CommandTable<const ENTRIES: usize> {
+#[repr(C, align(256))]
+pub struct CmdTable<const ENTRIES: usize> {
     cfis: Fis,
     /// TODO
     acmd: [u8; 0x10],
     _reserved: [u8; 0x30],
-    table: [CommandTableEntry; ENTRIES],
-}
-
-#[repr(C, align(4096))]
-pub struct PortCommands<const ENTRIES: usize> {
-    pub fis: ReceivedFis,
-    pub cmd_list: CommandList,
-    pub cmd_table: [CommandTable<ENTRIES>; 32],
-    _reserved: [u8; 0x100],
-}
-
-impl<const ENTRIES: usize> PortCommands<ENTRIES> {
-    pub fn empty() -> &'static mut PortCommands<ENTRIES> {
-        // TODO CREATE EXTERNAL UTIL FUNCTION FOR THIS AND USE ALSO ON PAGE
-        // TABLE CREATION
-        let zeroed = unsafe {
-            core::slice::from_raw_parts_mut(
-                alloc_pages!(
-                    size_of::<PortCommands::<ENTRIES>>()
-                        / REGULAR_PAGE_SIZE
-                ) as *mut usize,
-                size_of::<PortCommands<ENTRIES>>() / size_of::<usize>(),
-            )
-        };
-        zeroed.fill(0);
-
-        // TODO MAKE LESS SKEYTCHY
-        let port_cmd_ptr = (zeroed.as_mut_ptr() as usize
-            - PHYSICAL_MEMORY_OFFSET)
-            as *mut PortCommands<ENTRIES>;
-
-        unsafe { &mut *port_cmd_ptr }
-    }
+    table: [CmdTableEntry; ENTRIES],
 }
 
 #[repr(C)]
@@ -1124,28 +1212,38 @@ impl HBAMemoryRegisters {
         let hba: &'static mut HBAMemoryRegisters =
             unsafe { &mut *a.translate().as_mut_ptr() };
 
+        hba.ghc.ghc.set_ae();
+        hba.ghc.ghc.set_ie();
+
         if hba.ghc.pi.0 >= (1 << 31) {
             panic!("There is no support for HBA's with more then 30 ports")
         }
 
-        hba.ghc.ghc.set_ae();
-        hba.ghc.ghc.set_ie();
-
         println!("BIOS / OS Handoff: {}", hba.ghc.cap_ext.is_boh());
-        println!("Interrupts: {}", hba.ghc.ghc.is_ie());
+
+        if hba.ghc.cap_ext.is_boh() {
+            unimplemented!("Didn't implement bios os handoff")
+        }
 
         Ok(hba)
     }
 
-    /// Returns the amount of active devices found
-    pub fn probe(&self) -> usize {
+    /// Returns the amount of active devices found and set them into idle
+    /// state.
+    pub fn probe_init(&mut self) -> usize {
         println!(
             "Detected {} implemented ports",
             self.ghc.cap.number_of_ports()
         );
 
+        println!(
+            "Supported command slots: {}, Supported 64bit addresses: {}",
+            self.ghc.cap.number_of_commands(),
+            self.ghc.cap.is_s64a()
+        );
+
         let mut count = 0;
-        for (i, port) in self.ports.iter().enumerate() {
+        for (i, port) in self.ports.iter_mut().enumerate() {
             if self.ghc.pi.is_port_implemented(i as u8)
                 && let Ok(power) = port.ssts.power()
                 && let InterfacePowerManagement::Active = power
@@ -1165,105 +1263,62 @@ impl HBAMemoryRegisters {
                         println!("{:?}", e ; color = ColorCode::new(Color::Red, Color::Black) )
                     }
                 }
+                port.cmd.stop();
+
+                let clb_fbu_table = unsafe { alloc_pages!(1) };
+                for i in (0..4096).step_by(size_of::<usize>()) {
+                    unsafe {
+                        core::ptr::write_volatile(
+                            ((clb_fbu_table + i) + PHYSICAL_MEMORY_OFFSET)
+                                as *mut usize,
+                            0,
+                        );
+                    }
+                }
+
+                port.set_cmd_list_address(clb_fbu_table);
+                port.set_received_fis_address(
+                    clb_fbu_table + size_of::<CmdList>(),
+                );
+
+                // MAPPING the first header with 8 entries (0x100 in total
+                // table size)
+                let cmd_list = port.cmd_list();
+                cmd_list.entries[0].set_cmd_table(
+                    clb_fbu_table
+                        + size_of::<CmdList>()
+                        + size_of::<ReceivedFis>(),
+                );
+
+                port.cmd.set_fre();
+                port.serr.zero_error();
+                // port.ie.set_dhre();
+                // port.ie.set_pse();
+                // port.ie.set_dse();
+                // port.ie.set_tfee();
+                port.is.clear_pending_interrupts();
+                self.ghc.is.clear_all();
+
+                port.cmd.set_sud();
+                port.cmd.set_pod();
+                port.cmd.set_icc(InterfaceCommunicationControl::Active);
+
+                loop {
+                    if !port.tfd.is_bsy()
+                        && !port.tfd.is_drq()
+                        && matches!(
+                            port.ssts.power().unwrap(),
+                            InterfacePowerManagement::Active
+                        )
+                    {
+                        break;
+                    }
+                }
+                port.cmd.start();
+                println!("Started port number: {}", i)
             }
         }
+
         count
-    }
-
-    pub fn map_device<const ENTRIES: usize>(
-        &'static mut self,
-        port_number: usize,
-    ) -> AhciDeviceController<ENTRIES> {
-        AhciDeviceController::<ENTRIES>::new(
-            &mut self.ports[port_number],
-            PortCommands::empty(),
-        )
-    }
-}
-
-pub struct AhciDeviceController<const ENTRIES: usize> {
-    pub port: &'static mut PortControlRegisters,
-    pub port_cmds: &'static mut PortCommands<ENTRIES>,
-}
-
-impl<const ENTRIES: usize> AhciDeviceController<ENTRIES> {
-    pub fn new(
-        port: &'static mut PortControlRegisters,
-        port_cmds: &'static mut PortCommands<ENTRIES>,
-    ) -> AhciDeviceController<ENTRIES> {
-        println!("port address: {:x?}", port as *const _ as usize);
-        println!(
-            "Port commands address: {:x?}",
-            port_cmds as *const _ as usize
-        );
-
-        port.cmd.stop();
-        port.set_cmd_list(&port_cmds.cmd_list);
-        port.set_received_fis(&port_cmds.fis);
-        for (header, table) in port_cmds
-            .cmd_list
-            .entries
-            .iter_mut()
-            .zip(port_cmds.cmd_table.iter())
-        {
-            header.info.set_prdtl(ENTRIES as u16);
-            header.set_cmd_table(table);
-        }
-        port.cmd.start();
-
-        AhciDeviceController { port, port_cmds }
-    }
-
-    pub fn identity_packet(
-        &mut self,
-        buf: *mut IdentityPacketData,
-    ) -> Option<()> {
-        self.port.is.clear_pending_interrupts();
-        let slot = self.port.find_cmd_slot()?;
-        let header = &mut self.port.cmd_list().entries[slot];
-        header.info.unset_w();
-        header.info.set_p();
-        header.info.set_prdtl(ENTRIES as u16);
-
-        let table = header.cmd_table::<ENTRIES>();
-        table.table[0].dbc.set_i();
-        table.table[0].dbc.set_dbc(511); // 256 words - 1
-        table.table[0].set_buffer(buf);
-
-        let fis = RegisterH2D::new(
-            0x80,
-            AtaCommand::IdentifyDevice,
-            0,
-            0,
-            0,
-            0,
-            0,
-        );
-        table.cfis = Fis { h2d: fis };
-        unsafe {
-            let v = core::ptr::read_volatile(&self.port.ci.0);
-            core::ptr::write_volatile(
-                &mut self.port.ci.0,
-                v | (1 << slot),
-            );
-
-            let mut timeout = 0xffffffu32;
-            loop {
-                let v = core::ptr::read_volatile(&self.port.ci.0);
-                if v & (1 << slot) == 0 {
-                    break;
-                }
-                timeout -= 1;
-                if timeout == 0 {
-                    panic!("TIME EXCEEDED ON IDENTITY READ")
-                }
-
-                if self.port.is.0 != 0 {
-                    panic!("ERROR ON IDENTITY READ, {}", self.port.is.0);
-                }
-            }
-        }
-
-        Some(())
     }
 }

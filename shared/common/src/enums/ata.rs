@@ -8,5 +8,6 @@ use crate::error::ConversionError;
 pub enum AtaCommand {
     Nop = 0,
     ReadDmaExt = 0x25,
+    IdentifyPacketDevice = 0xa1,
     IdentifyDevice = 0xec,
 }

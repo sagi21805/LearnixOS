@@ -9,8 +9,8 @@ use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     bitmap::{BitMap, ContiguousBlockLayout, Position},
     constants::{
-        FIRST_STAGE_OFFSET, PAGE_ALLOCATOR_OFFSET, PHYSICAL_MEMORY_OFFSET,
-        REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+        FIRST_STAGE_OFFSET, PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_ALIGNMENT,
+        REGULAR_PAGE_SIZE,
     },
     enums::MemoryRegionType,
 };
@@ -71,7 +71,7 @@ impl PhysicalPageAllocator {
     }
 
     #[allow(clippy::mut_from_ref)]
-    unsafe fn map_mut(&self) -> &mut BitMap {
+    pub unsafe fn map_mut(&self) -> &mut BitMap {
         unsafe { self.0.as_mut_unchecked() }
     }
 
@@ -203,9 +203,7 @@ unsafe impl Allocator for PhysicalPageAllocator {
                 self.map_mut().set_contiguous_block(&p, &block);
                 return Ok(NonNull::slice_from_raw_parts(
                     NonNull::new_unchecked(
-                        Self::resolve_position(&p)
-                            .translate()
-                            .as_mut_ptr::<u8>(),
+                        Self::resolve_position(&p).as_mut_ptr::<u8>(),
                     ),
                     layout.size(),
                 ));
@@ -219,10 +217,9 @@ unsafe impl Allocator for PhysicalPageAllocator {
         if let Ok(layout) =
             layout.align_to(REGULAR_PAGE_ALIGNMENT.as_usize())
         {
-            let start_position =
-                Self::resolve_address(PhysicalAddress::new_unchecked(
-                    ptr.as_ptr() as usize - PHYSICAL_MEMORY_OFFSET,
-                ));
+            let start_position = Self::resolve_address(
+                PhysicalAddress::new_unchecked(ptr.as_ptr() as usize),
+            );
             let block = ContiguousBlockLayout::from_start_size(
                 &start_position,
                 layout.size() / REGULAR_PAGE_SIZE,
