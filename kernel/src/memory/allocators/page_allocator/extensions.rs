@@ -100,8 +100,9 @@ pub impl VirtualAddress {
             {
                 let index = self.index_of(*level);
                 let entry = &mut table.entries[index];
-                let resolved_table =
-                    entry.force_resolve_table_mut().unwrap();
+                let resolved_table = entry
+                    .force_resolve_table_mut()
+                    .expect("Tried to create table on a mapped entry");
                 table = resolved_table;
             }
             unsafe {

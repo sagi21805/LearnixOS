@@ -14,6 +14,8 @@ pub mod constants;
 pub mod enums;
 pub mod error;
 pub mod ring_buffer;
+pub mod volatile;
+
 struct FakeAllocator;
 
 unsafe impl core::alloc::GlobalAlloc for FakeAllocator {

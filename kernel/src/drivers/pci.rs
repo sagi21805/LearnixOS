@@ -430,7 +430,6 @@ pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
                 continue;
             }
             for function in 1..8 {
-                println!("{}", function);
                 let common = PciConfigurationCycle::read_common_header(
                     bus, device, function,
                 );

@@ -30,8 +30,7 @@ use core::{
 use crate::{
     drivers::{
         ata::ahci::{
-            AhciDeviceController, GenericHostControl, HBAMemoryRegisters,
-            IdentityPacketData,
+            GenericHostControl, HBAMemoryRegisters, IdentityPacketData,
         },
         interrupt_handlers,
         keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
@@ -40,30 +39,23 @@ use crate::{
         vga_display::color_code::ColorCode,
     },
     memory::{
-        allocators::page_allocator::{
-            allocator::PhysicalPageAllocator,
-            extensions::{PhysicalAddressExt, VirtualAddressExt},
-        },
+        allocators::page_allocator::allocator::PhysicalPageAllocator,
         memory_map::{ParsedMapDisplay, parse_map},
     },
 };
 
 use common::{
-    address_types::{PhysicalAddress, VirtualAddress},
+    address_types::PhysicalAddress,
     constants::{
-        BIG_PAGE_ALIGNMENT, PHYSICAL_MEMORY_OFFSET,
-        REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+        PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
-    enums::{
-        Color, DeviceDetection, DeviceType, InterfacePowerManagement,
-        PS2ScanCode, PageSize, PciDeviceType,
-    },
+    enums::{CascadedPicInterruptLine, Color, PS2ScanCode},
 };
 use cpu_utils::{
     instructions::interrupts::{self},
     structures::{
         interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
-        paging::PageEntryFlags,
+        paging::{PageEntryFlags, PageTable},
     },
 };
 
@@ -80,6 +72,9 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Obtained Memory Map");
     println!("{}", ParsedMapDisplay(parsed_memory_map!()));
     PhysicalPageAllocator::init(unsafe { &mut ALLOCATOR });
+    println!("ALLOCATOR MAP LEN: {}", unsafe {
+        ALLOCATOR.assume_init_mut().map_mut().map.len()
+    });
     okprintln!("Allocator Initialized");
     unsafe {
         let idt_address = alloc_pages!(1).into();
@@ -112,58 +107,63 @@ pub unsafe extern "C" fn _start() -> ! {
         }
     }
 
-    for device in pci_devices.iter_mut() {
-        // println!("{:#?}", unsafe { device.common.vendor_device });
-        // println!("{:#?}", unsafe { device.common.header_type });
-        // println!("{:#?}\n", unsafe { device.common.device_type });
+    unsafe { PIC.enable_irq(CascadedPicInterruptLine::Ahci) };
+    // for device in pci_devices.iter_mut() {
+    //     // println!("{:#?}", unsafe { device.common.vendor_device });
+    //     // println!("{:#?}", unsafe { device.common.header_type });
+    //     // println!("{:#?}\n", unsafe { device.common.device_type });
 
-        if device.header.common().device_type.is_ahci() {
-            let a = unsafe {
-                PhysicalAddress::new_unchecked(
-                    device.header.general_device.bar5.address(),
-                )
-            };
+    //     if device.header.common().device_type.is_ahci() {
+    //         let a = unsafe {
+    //             PhysicalAddress::new_unchecked(
+    //                 device.header.general_device.bar5.address(),
+    //             )
+    //         };
 
-            println!(
-                "Bus Master: {}, Interrupts Disable {}, I/O Space: {}, \
-                 Memory Space: {}",
-                device.header.common().command.is_bus_master(),
-                device.header.common().command.is_interrupt_disable(),
-                device.header.common().command.is_io_space(),
-                device.header.common().command.is_memory_space()
-            );
+    //         println!(
+    //             "Bus Master: {}, Interrupts Disable {}, I/O Space: {}, \
+    //              Memory Space: {}",
+    //             device.header.common().command.is_bus_master(),
+    //             device.header.common().command.is_interrupt_disable(),
+    //             device.header.common().command.is_io_space(),
+    //             device.header.common().command.is_memory_space()
+    //         );
 
-            println!(
-                "Interrupt Line: {}, Interrupt Pin: {}",
-                unsafe { device.header.general_device.interrupt_line },
-                unsafe { device.header.general_device.interrupt_pin }
-            );
+    //         println!(
+    //             "Interrupt Line: {}, Interrupt Pin: {}",
+    //             unsafe { device.header.general_device.interrupt_line },
+    //             unsafe { device.header.general_device.interrupt_pin }
+    //         );
 
-            let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
-            let hba = HBAMemoryRegisters::new(aligned).unwrap();
-            let _ = hba.probe();
-            let mut controller = hba.map_device::<13>(0);
-            let b = unsafe { alloc_pages!(1) - PHYSICAL_MEMORY_OFFSET };
+    //         let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
+    //         let hba = HBAMemoryRegisters::new(aligned).unwrap();
+    //         let _ = hba.probe_init();
+    //         let p = &mut hba.ports[0];
 
-            println!("b: {:x?}", &b as *const _ as usize);
-            let rfis = controller.port_cmds.fis.rfis;
-            println!("rfis: {:?}", rfis);
-            controller.identity_packet(b as *mut IdentityPacketData);
+    //         let buf =
+    //             unsafe { alloc_pages!(1) as *mut IdentityPacketData };
 
-            let rfis = controller.port_cmds.fis.rfis;
-            println!("rfis: {:?}", rfis);
+    //         p.identity_packet(buf);
 
-            let d = unsafe {
-                core::ptr::read_volatile(b as *const IdentityPacketData)
-            };
+    //         let id = unsafe {
+    //             core::ptr::read_volatile(
+    //                 (buf as usize + PHYSICAL_MEMORY_OFFSET)
+    //                     as *mut IdentityPacketData,
+    //             )
+    //         };
 
-            println!("Data Address: {:x?}", b);
+    //         println!("{:?}", id);
 
-            println!("Data: {:?}", d.data);
+    //         println!("Cylinders: {}", id.cylinders);
+    //         println!("Heads: {}", id.heads);
+    //         println!("Sectors: {}", id.sectors);
 
-            // println!("{:x?}", controller.port_cmds as *const _ as usize)
-        }
-    }
+    //         println!("Serial: {:?}", &id.serial_number);
+    //         println!("Model: {:?}", &id.model_num);
+    //         println!("Firmware: {:?}", &id.firmware_rev);
+    //     }
+    // }
+
     loop {
         unsafe {
             print!("{}", KEYBOARD.assume_init_mut().read_char() ; color = ColorCode::new(Color::Green, Color::Black));

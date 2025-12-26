@@ -157,6 +157,7 @@
         "tfee",
         "tfes",
         "thiserror",
+        "udma",
         "ufis",
         "UHCI",
         "Uninit",
@@ -171,7 +172,7 @@
     ],
     "rust-analyzer.inlayHints.chainingHints.enable": true,
     "rust-analyzer.check.command": "clippy",
-    "rust-analyzer.cargo.extraArgs": [
+    "rust-analyzer.check.extraArgs": [
         "--release"
     ],
     "rust-analyzer.cargo.extraEnv": {
