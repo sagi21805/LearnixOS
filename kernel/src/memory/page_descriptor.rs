@@ -1,4 +1,4 @@
-use core::{intrinsics::size_of, mem::MaybeUninit};
+use core::{array, intrinsics::size_of, mem::MaybeUninit};
 
 use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
 
@@ -23,9 +23,19 @@ impl UnassignedPage {
 pub static PAGES: MaybeUninit<&'static mut [UnassignedPage]> =
     MaybeUninit::uninit();
 
+pub struct BuddyBlockMeta {
+    next: Option<&'static UnassignedPage>,
+}
+
+pub const BUDDY_MAX_ORDER: usize = 10;
+
+pub struct BuddyAllocator {
+    freelist: [BuddyBlockMeta; BUDDY_MAX_ORDER],
+}
+
 pub struct Page<T: 'static> {
     pub owner: Option<&'static SlabCache<T>>,
-    pub counter: u64,
+    pub block: BuddyBlockMeta,
 }
 
 pub fn pages_init(usable_mem: usize) {
