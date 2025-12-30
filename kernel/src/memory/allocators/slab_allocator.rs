@@ -1,12 +1,7 @@
-use common::address_types::PhysicalAddress;
+use core::alloc::Layout;
 
-
-
-pub struct Block {
-    address: [PhysicalAddress], // address of the page.
-    next: Option<&'static Block>
-}
-
-pub struct SlabAllocator {
-    pages: [&]
+pub struct SlabCache<T: 'static> {
+    // TODO ADD LOCK
+    pub layout: Layout,
+    pub objects: &'static mut [T],
 }
