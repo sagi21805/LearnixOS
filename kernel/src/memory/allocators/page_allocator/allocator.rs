@@ -9,8 +9,7 @@ use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     bitmap::{BitMap, ContiguousBlockLayout, Position},
     constants::{
-        FIRST_STAGE_OFFSET, PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_ALIGNMENT,
-        REGULAR_PAGE_SIZE,
+        PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
     enums::MemoryRegionType,
 };
@@ -88,15 +87,7 @@ impl PhysicalPageAllocator {
             ));
             let initialized = uninit.assume_init_mut();
 
-            // Set the null page
-            initialized
-                .map_mut()
-                .set_bit(&Position::new_unchecked(0, 0));
-
-            let start_address = const {
-                PhysicalAddress::new_unchecked(FIRST_STAGE_OFFSET as usize)
-                    .align_down(REGULAR_PAGE_ALIGNMENT)
-            };
+            let start_address = PhysicalAddress::new_unchecked(0);
             let start_position =
                 Self::address_position(start_address).unwrap();
             // Allocate the addresses that are used for the

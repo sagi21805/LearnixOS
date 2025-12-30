@@ -17,21 +17,15 @@
 #![feature(ascii_char_variants)]
 #![feature(ascii_char)]
 #![feature(const_convert)]
+#![feature(core_intrinsics)]
 #![deny(clippy::all)]
 mod drivers;
 mod memory;
-use core::{
-    alloc::{Allocator, Layout},
-    mem::MaybeUninit,
-    num::NonZero,
-    panic::PanicInfo,
-};
+use core::{num::NonZero, panic::PanicInfo};
 
 use crate::{
     drivers::{
-        ata::ahci::{
-            GenericHostControl, HBAMemoryRegisters, IdentityPacketData,
-        },
+        ata::ahci::{HBAMemoryRegisters, IdentityPacketData},
         interrupt_handlers,
         keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
         pci::{self},
@@ -53,9 +47,8 @@ use common::{
 };
 use cpu_utils::{
     instructions::interrupts::{self},
-    structures::{
-        interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
-        paging::{PageEntryFlags, PageTable},
+    structures::interrupt_descriptor_table::{
+        IDT, InterruptDescriptorTable,
     },
 };
 
@@ -108,61 +101,61 @@ pub unsafe extern "C" fn _start() -> ! {
     }
 
     unsafe { PIC.enable_irq(CascadedPicInterruptLine::Ahci) };
-    // for device in pci_devices.iter_mut() {
-    //     // println!("{:#?}", unsafe { device.common.vendor_device });
-    //     // println!("{:#?}", unsafe { device.common.header_type });
-    //     // println!("{:#?}\n", unsafe { device.common.device_type });
+    for device in pci_devices.iter_mut() {
+        // println!("{:#?}", unsafe { device.common.vendor_device });
+        // println!("{:#?}", unsafe { device.common.header_type });
+        // println!("{:#?}\n", unsafe { device.common.device_type });
 
-    //     if device.header.common().device_type.is_ahci() {
-    //         let a = unsafe {
-    //             PhysicalAddress::new_unchecked(
-    //                 device.header.general_device.bar5.address(),
-    //             )
-    //         };
+        if device.header.common().device_type.is_ahci() {
+            let a = unsafe {
+                PhysicalAddress::new_unchecked(
+                    device.header.general_device.bar5.address(),
+                )
+            };
 
-    //         println!(
-    //             "Bus Master: {}, Interrupts Disable {}, I/O Space: {}, \
-    //              Memory Space: {}",
-    //             device.header.common().command.is_bus_master(),
-    //             device.header.common().command.is_interrupt_disable(),
-    //             device.header.common().command.is_io_space(),
-    //             device.header.common().command.is_memory_space()
-    //         );
+            println!(
+                "Bus Master: {}, Interrupts Disable {}, I/O Space: {}, \
+                 Memory Space: {}",
+                device.header.common().command.is_bus_master(),
+                device.header.common().command.is_interrupt_disable(),
+                device.header.common().command.is_io_space(),
+                device.header.common().command.is_memory_space()
+            );
 
-    //         println!(
-    //             "Interrupt Line: {}, Interrupt Pin: {}",
-    //             unsafe { device.header.general_device.interrupt_line },
-    //             unsafe { device.header.general_device.interrupt_pin }
-    //         );
+            println!(
+                "Interrupt Line: {}, Interrupt Pin: {}",
+                unsafe { device.header.general_device.interrupt_line },
+                unsafe { device.header.general_device.interrupt_pin }
+            );
 
-    //         let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
-    //         let hba = HBAMemoryRegisters::new(aligned).unwrap();
-    //         let _ = hba.probe_init();
-    //         let p = &mut hba.ports[0];
+            let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
+            let hba = HBAMemoryRegisters::new(aligned).unwrap();
+            let _ = hba.probe_init();
+            let p = &mut hba.ports[0];
 
-    //         let buf =
-    //             unsafe { alloc_pages!(1) as *mut IdentityPacketData };
+            let buf =
+                unsafe { alloc_pages!(1) as *mut IdentityPacketData };
 
-    //         p.identity_packet(buf);
+            p.identity_packet(buf);
 
-    //         let id = unsafe {
-    //             core::ptr::read_volatile(
-    //                 (buf as usize + PHYSICAL_MEMORY_OFFSET)
-    //                     as *mut IdentityPacketData,
-    //             )
-    //         };
+            let id = unsafe {
+                core::ptr::read_volatile(
+                    (buf as usize + PHYSICAL_MEMORY_OFFSET)
+                        as *mut IdentityPacketData,
+                )
+            };
 
-    //         println!("{:?}", id);
+            println!("{:?}", id);
 
-    //         println!("Cylinders: {}", id.cylinders);
-    //         println!("Heads: {}", id.heads);
-    //         println!("Sectors: {}", id.sectors);
+            println!("Cylinders: {}", id.cylinders);
+            println!("Heads: {}", id.heads);
+            println!("Sectors: {}", id.sectors);
 
-    //         println!("Serial: {:?}", &id.serial_number);
-    //         println!("Model: {:?}", &id.model_num);
-    //         println!("Firmware: {:?}", &id.firmware_rev);
-    //     }
-    // }
+            println!("Serial: {:?}", &id.serial_number);
+            println!("Model: {:?}", &id.model_num);
+            println!("Firmware: {:?}", &id.firmware_rev);
+        }
+    }
 
     loop {
         unsafe {
