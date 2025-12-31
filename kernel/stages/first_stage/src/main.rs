@@ -79,7 +79,7 @@ pub fn first_stage() -> ! {
         // segment to the new ones from our GDT.
         //
         // The segment is the offset in the GDT.
-        // (KernelCode = 0x10 which is the code segment)
+        // (KernelCode = 0x8 which is the code segment)
         asm!(
             "ljmp ${segment}, ${next_stage_address}",
             segment = const Sections::KernelCode as u8,
