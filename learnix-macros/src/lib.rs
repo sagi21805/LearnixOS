@@ -47,9 +47,12 @@ pub fn common_address_functions(input: TokenStream) -> TokenStream {
             }
             pub const fn alignment(&self) -> core::ptr::Alignment {
                 unsafe {
-                    core::ptr::Alignment::new_unchecked(
-                        1 << self.0.trailing_zeros(),
-                    )
+                    if self.0 == 0 {
+                        // Address 0 is aligned to any alignment; return max representable.
+                        core::ptr::Alignment::new_unchecked(1 << (usize::BITS - 1))
+                    } else {
+                        core::ptr::Alignment::new_unchecked(1 << self.0.trailing_zeros())
+                    }
                 }
             }
         }
