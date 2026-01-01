@@ -1,14 +1,17 @@
-use crate::{
-    alloc_pages,
-    memory::{
-        allocators::slab_allocator::SlabCache, memory_map::MemoryRegion,
-    },
+use crate::memory::{
+    allocators::slab_allocator::SlabCache, memory_map::ParsedMemoryMap,
 };
-use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
-use core::{intrinsics::size_of, mem::MaybeUninit};
+use common::constants::{
+    PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+};
+use core::{
+    mem::MaybeUninit,
+    ops::{Deref, DerefMut},
+};
 use strum::VariantArray;
 use strum_macros::VariantArray;
 
+#[derive(Default)]
 pub struct Unassigned;
 
 pub type UnassignedPage = Page<Unassigned>;
@@ -25,14 +28,14 @@ impl UnassignedPage {
     }
 }
 
-pub static PAGES: MaybeUninit<&'static mut [UnassignedPage]> =
-    MaybeUninit::uninit();
+pub static mut PAGES: LateInit<&'static mut [UnassignedPage]> =
+    LateInit::uninit();
 
 #[derive(Default)]
 pub struct BuddyBlockMeta {
     next: Option<&'static UnassignedPage>,
     prev: Option<&'static UnassignedPage>,
-    order: BuddyOrder,
+    order: Option<BuddyOrder>,
 }
 
 pub const BUDDY_MAX_ORDER: usize = BuddyOrder::VARIANTS.len();
@@ -51,17 +54,6 @@ pub enum BuddyOrder {
     Order9 = 9,
 }
 
-impl BuddyOrder {
-    pub const MAX: BuddyOrder = BuddyOrder::Order9;
-    pub const MIN: BuddyOrder = BuddyOrder::Order0;
-}
-
-impl Default for BuddyOrder {
-    fn default() -> Self {
-        BuddyOrder::MAX
-    }
-}
-
 #[derive(Default)]
 pub struct BuddyAllocator {
     freelist: [BuddyBlockMeta; BUDDY_MAX_ORDER],
@@ -73,17 +65,55 @@ impl BuddyAllocator {
     }
 }
 
+#[derive(Default)]
 pub struct Page<T: 'static> {
     pub owner: Option<&'static SlabCache<T>>,
     pub buddy: BuddyBlockMeta,
 }
 
-pub fn pages_init(map: &mut [MemoryRegion]) {
-    // let num_pages = usable_mem / REGULAR_PAGE_SIZE;
+pub struct LateInit<T>(MaybeUninit<T>);
 
-    // let capacity = (num_pages * size_of::<UnassignedPage>())
-    //     .next_multiple_of(REGULAR_PAGE_SIZE);
+impl<T> LateInit<T> {
+    pub const fn uninit() -> LateInit<T> {
+        LateInit::<T>(MaybeUninit::uninit())
+    }
 
-    // let array_address =
-    //     unsafe { alloc_pages!(capacity / REGULAR_PAGE_SIZE) };
+    pub const fn write(&mut self, val: T) {
+        self.0.write(val);
+    }
+}
+
+impl<T> Deref for LateInit<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { self.0.assume_init_ref() }
+    }
+}
+
+impl<T> DerefMut for LateInit<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { self.0.assume_init_mut() }
+    }
+}
+
+pub fn pages_init(map: &ParsedMemoryMap) -> usize {
+    let last = map.last().unwrap();
+    let last_page = (last.base_address + last.length) as usize
+        & REGULAR_PAGE_ALIGNMENT.as_usize();
+
+    let total_pages = last_page / REGULAR_PAGE_SIZE;
+
+    unsafe {
+        PAGES.write(core::slice::from_raw_parts_mut(
+            PAGE_ALLOCATOR_OFFSET as *mut UnassignedPage,
+            total_pages,
+        ));
+
+        PAGES
+            .iter_mut()
+            .for_each(|p| *p = UnassignedPage::default());
+
+        PAGES.as_ptr_range().end as usize
+    }
 }
