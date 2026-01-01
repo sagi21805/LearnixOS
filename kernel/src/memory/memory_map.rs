@@ -3,6 +3,7 @@ use common::{
     enums::MemoryRegionType,
 };
 use core::fmt::{self, Display, Formatter};
+use derive_more::{Deref, DerefMut};
 
 #[macro_export]
 macro_rules! parsed_memory_map {
@@ -104,11 +105,13 @@ impl MemoryRegionTrait for MemoryRegionExtended {
     }
 }
 
-pub struct ParsedMapDisplay<T: MemoryRegionTrait + 'static>(
-    pub &'static [T],
-);
+#[derive(Deref, DerefMut)]
+pub struct MemoryMap<T: MemoryRegionTrait + 'static>(pub &'static [T]);
 
-impl<T: MemoryRegionTrait> Display for ParsedMapDisplay<T> {
+pub type RawMemoryMap = MemoryMap<MemoryRegionExtended>;
+pub type ParsedMemoryMap = MemoryMap<MemoryRegion>;
+
+impl<T: MemoryRegionTrait> Display for MemoryMap<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut usable = 0u64;
         let mut reserved = 0u64;
@@ -120,10 +123,10 @@ impl<T: MemoryRegionTrait> Display for ParsedMapDisplay<T> {
 
             write!(
                 f,
-                "[0x{:0>9x} - 0x{:0>9x}]: type: {}",
+                "[0x{:0>9x} - 0x{:0>9x}]: type: {:?}",
                 entry.base_address(),
                 entry.base_address() + entry.length(),
-                entry.region_type() as u32
+                entry.region_type()
             )?;
 
             match entry.region_type() {
