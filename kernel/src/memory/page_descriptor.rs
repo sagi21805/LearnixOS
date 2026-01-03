@@ -1,5 +1,8 @@
-use crate::memory::{
-    allocators::slab_allocator::SlabCache, memory_map::ParsedMemoryMap,
+use crate::{
+    memory::{
+        allocators::slab_allocator::SlabCache, memory_map::ParsedMemoryMap,
+    },
+    println,
 };
 use common::constants::{
     PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
@@ -31,10 +34,10 @@ impl UnassignedPage {
 pub static mut PAGES: LateInit<&'static mut [UnassignedPage]> =
     LateInit::uninit();
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct BuddyBlockMeta {
-    next: Option<&'static UnassignedPage>,
-    prev: Option<&'static UnassignedPage>,
+    next: Option<*mut UnassignedPage>,
+    prev: Option<*mut UnassignedPage>,
     order: Option<BuddyOrder>,
 }
 
@@ -60,15 +63,36 @@ pub struct BuddyAllocator {
 }
 
 impl BuddyAllocator {
-    pub fn alloc_pages() -> usize {
-        unimplemented!()
+    pub fn alloc_pages(&self, num_pages: usize) -> usize {
+        assert!(
+            num_pages < (1 << BUDDY_MAX_ORDER),
+            "Size cannot be greater then: {}",
+            1 << BUDDY_MAX_ORDER
+        );
+        let order = num_pages.next_power_of_two().leading_zeros();
+    }
+
+    pub fn init(&'static mut self) {
+        self.freelist[BUDDY_MAX_ORDER - 1] =
+            unsafe { PAGES[0].buddy_meta };
+
+        let mut iter = unsafe { PAGES.iter_mut().peekable() };
+        let mut prev = None;
+
+        while let Some(curr) = iter.next() {
+            curr.buddy_meta.next = iter.peek().map(|v| {
+                *v as *const UnassignedPage as *mut UnassignedPage
+            });
+            curr.buddy_meta.prev = prev;
+            prev = Some(curr)
+        }
     }
 }
 
 #[derive(Default)]
 pub struct Page<T: 'static> {
     pub owner: Option<&'static SlabCache<T>>,
-    pub buddy: BuddyBlockMeta,
+    pub buddy_meta: BuddyBlockMeta,
 }
 
 pub struct LateInit<T>(MaybeUninit<T>);
@@ -100,9 +124,9 @@ impl<T> DerefMut for LateInit<T> {
 pub fn pages_init(map: &ParsedMemoryMap) -> usize {
     let last = map.last().unwrap();
     let last_page = (last.base_address + last.length) as usize
-        & REGULAR_PAGE_ALIGNMENT.as_usize();
-
+        & !REGULAR_PAGE_ALIGNMENT.as_usize();
     let total_pages = last_page / REGULAR_PAGE_SIZE;
+    println!("Last Page: {}, Total Pages: {}", last_page, total_pages);
 
     unsafe {
         PAGES.write(core::slice::from_raw_parts_mut(
