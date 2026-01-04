@@ -61,7 +61,7 @@ pub struct BuddyAllocator {
 }
 
 impl BuddyAllocator {
-    pub fn alloc_pages(&self, num_pages: usize) -> usize {
+    pub fn alloc_pages(&mut self, num_pages: usize) -> usize {
         assert!(
             num_pages < (1 << BUDDY_MAX_ORDER),
             "Size cannot be greater then: {}",
@@ -84,56 +84,32 @@ impl BuddyAllocator {
     /// This function assumes that `wanted_order` is empty, and won't check
     /// it.
     pub fn split_until(
-        &self,
+        &mut self,
         wanted_order: usize,
     ) -> Option<*mut UnassignedPage> {
-        let closet_order = ((wanted_order + 1)..BUDDY_MAX_ORDER)
+        let mut closet_order = ((wanted_order + 1)..BUDDY_MAX_ORDER)
             .find(|i| self.freelist[*i].next.is_some())?;
 
-        let mut next_split = &self.freelist[closet_order];
+        let initial_page = unsafe {
+            &mut *self.freelist[closet_order]
+                .detach::<Unassigned>()
+                .unwrap()
+        };
 
-        // for current_split in
-        //     ((wanted_order + 1)..closet_order).rev().peekable()
-        // {
-        //     let page = self.freelist[current_split]
-        //         .detach::<Unassigned>()
-        //         .expect("Error in logic");
-        // }
-        None
-    }
+        let (mut lhs, mut rhs) = unsafe { initial_page.split() }.unwrap();
 
-    /// TODO: Make an unsafe split if relevant
-    ///
-    /// # Safety
-    /// This function does not attach the new references!
-    pub unsafe fn split(
-        &mut self,
-        order: usize,
-    ) -> Option<(&mut UnassignedPage, &mut UnassignedPage)> {
-        let meta = &mut self.freelist[order];
+        while closet_order != wanted_order {
+            closet_order -= 1;
 
-        // Detach the page from it's order list.
-        if let Some(page) = meta.detach::<Unassigned>() {
-            let page_ref = unsafe { &mut (*page) };
+            self.freelist[closet_order].attach(rhs);
 
-            // Reduce it's order to find it's order.
-            let prev_order =
-                BuddyOrder::try_from(order as u8 - 1).unwrap();
-            page_ref.buddy_meta.order = Some(prev_order);
+            let split_ref = unsafe { &mut *lhs };
 
-            // Find it's buddy new buddy.
-            let buddy = unsafe {
-                &mut (*page_ref
-                    .get_buddy()
-                    .expect("Buddy order given is the max order"))
-            };
-
-            // Set the order of the buddy.
-            buddy.buddy_meta.order = Some(prev_order);
-
-            return Some((page_ref, buddy));
+            (lhs, rhs) = unsafe { split_ref.split().unwrap() };
         }
-        None
+
+        self.freelist[closet_order].attach(rhs);
+        Some(lhs)
     }
 
     pub fn merge(&self) {
@@ -192,6 +168,33 @@ impl<T: 'static> Page<T> {
             }
         }
         None
+    }
+
+    /// TODO: Make an unsafe split if relevant
+    ///
+    /// # Safety
+    /// This function does not attach the new references!
+    pub unsafe fn split(
+        &mut self,
+    ) -> Option<(*mut Page<T>, *mut Page<T>)> {
+        // Reduce it's order to find it's order.
+        let prev_order =
+            BuddyOrder::try_from(self.buddy_meta.order? as u8 - 1)
+                .unwrap();
+
+        self.buddy_meta.order = Some(prev_order);
+
+        // Find it's buddy new buddy.
+        let buddy = unsafe {
+            &mut (*self
+                .get_buddy()
+                .expect("Buddy order given is the max order"))
+        };
+
+        // Set the order of the buddy.
+        buddy.buddy_meta.order = Some(prev_order);
+
+        Some((self as *mut Page<T>, buddy as *mut Page<T>))
     }
 }
 
