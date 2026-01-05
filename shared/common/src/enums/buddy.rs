@@ -11,6 +11,7 @@ pub const BUDDY_MAX_ORDER: usize = BuddyOrder::VARIANTS.len();
     Clone,
     Copy,
     PartialEq,
+    Debug,
     Eq,
     TryFromPrimitive,
     UnsafeFromPrimitive,

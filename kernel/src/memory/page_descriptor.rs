@@ -13,7 +13,15 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-#[derive(Default)]
+pub static mut BUDDY_ALLOCATOR: BuddyAllocator = BuddyAllocator {
+    freelist: [BuddyBlockMeta {
+        next: None,
+        prev: None,
+        order: None,
+    }; BUDDY_MAX_ORDER],
+};
+
+#[derive(Default, Debug)]
 pub struct Unassigned;
 
 pub type UnassignedPage = Page<Unassigned>;
@@ -33,7 +41,7 @@ impl UnassignedPage {
 pub static mut PAGES: LateInit<&'static mut [UnassignedPage]> =
     LateInit::uninit();
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct BuddyBlockMeta {
     next: Option<*mut UnassignedPage>,
     prev: Option<*mut UnassignedPage>,
@@ -55,7 +63,6 @@ impl BuddyBlockMeta {
     }
 }
 
-#[derive(Default)]
 pub struct BuddyAllocator {
     freelist: [BuddyBlockMeta; BUDDY_MAX_ORDER],
 }
@@ -67,14 +74,17 @@ impl BuddyAllocator {
             "Size cannot be greater then: {}",
             1 << BUDDY_MAX_ORDER
         );
-        let order = num_pages.next_power_of_two().leading_zeros() as usize;
+        let order = (usize::BITS
+            - 1
+            - num_pages.next_power_of_two().leading_zeros())
+            as usize;
 
         let page = self.freelist[order].next.unwrap_or_else(|| {
             self.split_until(order)
                 .expect("Out of memory, swap is not implemented")
         });
 
-        get_page_address(page)
+        (unsafe { &*page }).physical_address()
     }
 
     pub fn free_pages(&self, address: usize) {
@@ -88,7 +98,10 @@ impl BuddyAllocator {
         wanted_order: usize,
     ) -> Option<*mut UnassignedPage> {
         let mut closet_order = ((wanted_order + 1)..BUDDY_MAX_ORDER)
-            .find(|i| self.freelist[*i].next.is_some())?;
+            .find(|i| self.freelist[*i].next.is_some())
+            .unwrap();
+
+        println!("closet: {}, wanted: {}", closet_order, wanted_order);
 
         let initial_page = unsafe {
             &mut *self.freelist[closet_order]
@@ -117,15 +130,13 @@ impl BuddyAllocator {
     }
 
     pub fn init(&'static mut self) {
-        self.freelist[BUDDY_MAX_ORDER - 1] =
-            unsafe { PAGES[0].buddy_meta };
-
         let mut iter = unsafe {
             PAGES
                 .iter_mut()
                 .step_by(BuddyOrder::MAX as usize)
                 .peekable()
         };
+
         let mut prev = None;
 
         while let Some(curr) = iter.next() {
@@ -136,10 +147,12 @@ impl BuddyAllocator {
             curr.buddy_meta.order = Some(BuddyOrder::MAX);
             prev = Some(curr)
         }
+        self.freelist[BUDDY_MAX_ORDER - 1] =
+            unsafe { PAGES[0].buddy_meta };
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Page<T: 'static> {
     pub owner: Option<&'static SlabCache<T>>,
     pub buddy_meta: BuddyBlockMeta,
@@ -154,6 +167,13 @@ impl<T: 'static> Page<T> {
     pub fn as_unassigned_mut(&mut self) -> &mut UnassignedPage {
         let ptr = self as *const _ as usize;
         unsafe { &mut *(ptr as *mut UnassignedPage) }
+    }
+
+    pub fn physical_address(&self) -> usize {
+        let index = unsafe {
+            PAGES.as_ptr().offset_from(self.as_unassigned()) as usize
+        };
+        index * REGULAR_PAGE_SIZE
     }
 
     pub fn get_buddy(&self) -> Option<*mut Page<T>> {
@@ -224,30 +244,27 @@ impl<T> DerefMut for LateInit<T> {
     }
 }
 
-pub fn get_page_address<T>(page: *const Page<T>) -> usize {
-    let index = unsafe {
-        PAGES.as_ptr().offset_from((&*page).as_unassigned()) as usize
-    };
-    index * REGULAR_PAGE_SIZE
-}
-
 pub fn pages_init(map: &ParsedMemoryMap) -> usize {
     let last = map.last().unwrap();
     let last_page = (last.base_address + last.length) as usize
         & !REGULAR_PAGE_ALIGNMENT.as_usize();
     let total_pages = last_page / REGULAR_PAGE_SIZE;
-    println!("Last Page: {}, Total Pages: {}", last_page, total_pages);
 
+    println!(
+        "Last Page: {}, Total Pages: {}, size_of_array: {:x?} Kib",
+        last_page,
+        total_pages,
+        total_pages * size_of::<Page<Unassigned>>() / 1024
+    );
     unsafe {
         PAGES.write(core::slice::from_raw_parts_mut(
             PAGE_ALLOCATOR_OFFSET as *mut UnassignedPage,
             total_pages,
         ));
 
-        PAGES
-            .iter_mut()
-            .for_each(|p| *p = UnassignedPage::default());
-
+        for p in PAGES.iter_mut() {
+            *p = UnassignedPage::default();
+        }
         PAGES.as_ptr_range().end as usize
     }
 }
