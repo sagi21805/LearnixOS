@@ -7,6 +7,7 @@ use common::{
         PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
     enums::{BUDDY_MAX_ORDER, BuddyOrder},
+    write_volatile,
 };
 use core::{
     mem::MaybeUninit,
@@ -79,7 +80,7 @@ impl BuddyAllocator {
             - num_pages.next_power_of_two().leading_zeros())
             as usize;
 
-        let page = self.freelist[order].next.unwrap_or_else(|| {
+        let page = self.freelist[order].detach().unwrap_or_else(|| {
             self.split_until(order)
                 .expect("Out of memory, swap is not implemented")
         });
@@ -109,18 +110,23 @@ impl BuddyAllocator {
                 .unwrap()
         };
 
+        println!("Initial Page: {:?}", initial_page);
+
         let (mut lhs, mut rhs) = unsafe { initial_page.split() }.unwrap();
 
-        while closet_order != wanted_order {
-            closet_order -= 1;
+        closet_order -= 1;
 
+        while closet_order != wanted_order {
+            println!("Left address: {:?}, right address: {:?}", lhs, rhs);
             self.freelist[closet_order].attach(rhs);
 
             let split_ref = unsafe { &mut *lhs };
 
             (lhs, rhs) = unsafe { split_ref.split().unwrap() };
+            closet_order -= 1;
         }
 
+        println!("Left address: {:?}, right address: {:?}", lhs, rhs);
         self.freelist[closet_order].attach(rhs);
         Some(lhs)
     }
@@ -133,7 +139,7 @@ impl BuddyAllocator {
         let mut iter = unsafe {
             PAGES
                 .iter_mut()
-                .step_by(BuddyOrder::MAX as usize)
+                .step_by(1 << BuddyOrder::MAX as usize)
                 .peekable()
         };
 
@@ -147,12 +153,15 @@ impl BuddyAllocator {
             curr.buddy_meta.order = Some(BuddyOrder::MAX);
             prev = Some(curr)
         }
-        self.freelist[BUDDY_MAX_ORDER - 1] =
-            unsafe { PAGES[0].buddy_meta };
+        self.freelist[BUDDY_MAX_ORDER - 1] = BuddyBlockMeta {
+            next: Some(unsafe { (&mut PAGES[0]) as *mut UnassignedPage }),
+            prev: None,
+            order: Some(BuddyOrder::MAX),
+        };
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct Page<T: 'static> {
     pub owner: Option<&'static SlabCache<T>>,
     pub buddy_meta: BuddyBlockMeta,
@@ -171,7 +180,8 @@ impl<T: 'static> Page<T> {
 
     pub fn physical_address(&self) -> usize {
         let index = unsafe {
-            PAGES.as_ptr().offset_from(self.as_unassigned()) as usize
+            (self.as_unassigned() as *const UnassignedPage)
+                .offset_from(PAGES.as_ptr()) as usize
         };
         index * REGULAR_PAGE_SIZE
     }
@@ -182,7 +192,9 @@ impl<T: 'static> Page<T> {
                 return None;
             } else {
                 return Some(
-                    (self as *const _ as usize ^ (1 << order as usize))
+                    (self as *const _ as usize
+                        ^ ((1 << order as usize)
+                            * size_of::<UnassignedPage>()))
                         as *mut Page<T>,
                 );
             }
@@ -198,11 +210,12 @@ impl<T: 'static> Page<T> {
         &mut self,
     ) -> Option<(*mut Page<T>, *mut Page<T>)> {
         // Reduce it's order to find it's order.
+
         let prev_order =
             BuddyOrder::try_from(self.buddy_meta.order? as u8 - 1)
                 .unwrap();
 
-        self.buddy_meta.order = Some(prev_order);
+        write_volatile!(self.buddy_meta.order, Some(prev_order));
 
         // Find it's buddy new buddy.
         let buddy = unsafe {
@@ -212,7 +225,7 @@ impl<T: 'static> Page<T> {
         };
 
         // Set the order of the buddy.
-        buddy.buddy_meta.order = Some(prev_order);
+        write_volatile!(buddy.buddy_meta.order, Some(prev_order));
 
         Some((self as *mut Page<T>, buddy as *mut Page<T>))
     }
@@ -263,7 +276,17 @@ pub fn pages_init(map: &ParsedMemoryMap) -> usize {
         ));
 
         for p in PAGES.iter_mut() {
-            *p = UnassignedPage::default();
+            core::ptr::write_volatile(
+                p as *mut UnassignedPage,
+                UnassignedPage {
+                    buddy_meta: BuddyBlockMeta {
+                        next: None,
+                        order: None,
+                        prev: None,
+                    },
+                    owner: None,
+                },
+            );
         }
         PAGES.as_ptr_range().end as usize
     }
