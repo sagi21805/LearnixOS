@@ -89,7 +89,7 @@ impl BuddyAllocator {
     }
 
     pub fn free_pages(&self, address: usize) {
-        unimplemented!()
+        let page_index = address / REGULAR_PAGE_SIZE;
     }
 
     /// This function assumes that `wanted_order` is empty, and won't check
@@ -102,22 +102,17 @@ impl BuddyAllocator {
             .find(|i| self.freelist[*i].next.is_some())
             .unwrap();
 
-        println!("closet: {}, wanted: {}", closet_order, wanted_order);
-
         let initial_page = unsafe {
             &mut *self.freelist[closet_order]
                 .detach::<Unassigned>()
                 .unwrap()
         };
 
-        println!("Initial Page: {:?}", initial_page);
-
         let (mut lhs, mut rhs) = unsafe { initial_page.split() }.unwrap();
 
         closet_order -= 1;
 
         while closet_order != wanted_order {
-            println!("Left address: {:?}, right address: {:?}", lhs, rhs);
             self.freelist[closet_order].attach(rhs);
 
             let split_ref = unsafe { &mut *lhs };
@@ -126,7 +121,6 @@ impl BuddyAllocator {
             closet_order -= 1;
         }
 
-        println!("Left address: {:?}, right address: {:?}", lhs, rhs);
         self.freelist[closet_order].attach(rhs);
         Some(lhs)
     }
@@ -179,10 +173,10 @@ impl<T: 'static> Page<T> {
     }
 
     pub fn physical_address(&self) -> usize {
-        let index = unsafe {
-            (self.as_unassigned() as *const UnassignedPage)
-                .offset_from(PAGES.as_ptr()) as usize
-        };
+        let index = (self.as_unassigned() as *const _ as usize
+            - PAGE_ALLOCATOR_OFFSET)
+            / size_of::<UnassignedPage>();
+
         index * REGULAR_PAGE_SIZE
     }
 
