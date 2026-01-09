@@ -1,4 +1,3 @@
-use super::ALLOCATOR;
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     constants::{
@@ -16,6 +15,8 @@ use strum::VariantArray;
 
 use common::error::TableError;
 use cpu_utils::structures::paging::EntryIndex;
+
+use crate::memory::allocators::page_allocator::buddy::BUDDY_ALLOCATOR;
 
 #[ext]
 pub impl PhysicalAddress {
@@ -49,25 +50,20 @@ pub impl PageTableEntry {
         match self.mapped_table_mut() {
             Ok(table) => Some(table),
             Err(EntryError::NotATable) => None,
-            Err(EntryError::NoMapping) => {
-                let resolved_table =
-                    unsafe { ALLOCATOR.assume_init_ref().alloc_table() };
-                unsafe {
-                    self.map_unchecked(
-                        PhysicalAddress::new_unchecked(
-                            resolved_table.address().as_usize(),
-                        ),
-                        PageEntryFlags::table_flags(),
-                    );
-                }
-                unsafe {
-                    Some(
-                        &mut *self
-                            .mapped_unchecked()
-                            .as_mut_ptr::<PageTable>(),
-                    )
-                }
-            }
+            Err(EntryError::NoMapping) => unsafe {
+                let resolved_table = BUDDY_ALLOCATOR.alloc_table();
+                self.map_unchecked(
+                    PhysicalAddress::new_unchecked(
+                        resolved_table.address().as_usize(),
+                    ),
+                    PageEntryFlags::table_flags(),
+                );
+                Some(
+                    &mut *self
+                        .mapped_unchecked()
+                        .as_mut_ptr::<PageTable>(),
+                )
+            },
         }
     }
 }
