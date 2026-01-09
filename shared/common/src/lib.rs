@@ -13,6 +13,7 @@ pub mod bitmap;
 pub mod constants;
 pub mod enums;
 pub mod error;
+pub mod late_init;
 pub mod ring_buffer;
 pub mod volatile;
 
