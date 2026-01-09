@@ -71,9 +71,9 @@ pub struct BuddyAllocator {
 impl BuddyAllocator {
     pub fn alloc_pages(&mut self, num_pages: usize) -> usize {
         assert!(
-            num_pages < (1 << BUDDY_MAX_ORDER),
+            num_pages <= (1 << BuddyOrder::MAX as usize),
             "Size cannot be greater then: {}",
-            1 << BUDDY_MAX_ORDER
+            1 << BuddyOrder::MAX as usize
         );
         let order = (usize::BITS
             - 1
@@ -99,8 +99,7 @@ impl BuddyAllocator {
         wanted_order: usize,
     ) -> Option<*mut UnassignedPage> {
         let mut closet_order = ((wanted_order + 1)..BUDDY_MAX_ORDER)
-            .find(|i| self.freelist[*i].next.is_some())
-            .unwrap();
+            .find(|i| self.freelist[*i].next.is_some())?;
 
         let initial_page = unsafe {
             &mut *self.freelist[closet_order]
@@ -109,7 +108,6 @@ impl BuddyAllocator {
         };
 
         let (mut lhs, mut rhs) = unsafe { initial_page.split() }.unwrap();
-
         closet_order -= 1;
 
         while closet_order != wanted_order {
@@ -181,19 +179,17 @@ impl<T: 'static> Page<T> {
     }
 
     pub fn get_buddy(&self) -> Option<*mut Page<T>> {
-        if let Some(order) = self.buddy_meta.order {
-            if let BuddyOrder::MAX = order {
-                return None;
-            } else {
-                return Some(
-                    (self as *const _ as usize
-                        ^ ((1 << order as usize)
-                            * size_of::<UnassignedPage>()))
-                        as *mut Page<T>,
-                );
-            }
+        let order = self.buddy_meta.order?;
+        if let BuddyOrder::MAX = order {
+            None
+        } else {
+            Some(
+                (self as *const _ as usize
+                    ^ ((1 << order as usize)
+                        * size_of::<UnassignedPage>()))
+                    as *mut Page<T>,
+            )
         }
-        None
     }
 
     /// TODO: Make an unsafe split if relevant
@@ -210,13 +206,13 @@ impl<T: 'static> Page<T> {
                 .unwrap();
 
         write_volatile!(self.buddy_meta.order, Some(prev_order));
+        let index = ((self.as_unassigned() as *const _ as usize
+            - PAGE_ALLOCATOR_OFFSET)
+            / size_of::<UnassignedPage>())
+            + (1 << prev_order as usize);
 
-        // Find it's buddy new buddy.
-        let buddy = unsafe {
-            &mut (*self
-                .get_buddy()
-                .expect("Buddy order given is the max order"))
-        };
+        // Find it's half
+        let buddy = unsafe { PAGES[index].assign_mut::<T>() };
 
         // Set the order of the buddy.
         write_volatile!(buddy.buddy_meta.order, Some(prev_order));
