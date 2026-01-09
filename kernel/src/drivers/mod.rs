@@ -1,4 +1,4 @@
-pub mod disk;
+pub mod ata;
 pub mod interrupt_handlers;
 pub mod keyboard;
 pub mod pci;

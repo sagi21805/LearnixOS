@@ -54,7 +54,8 @@ pub fn enable() -> Option<()> {
         );
         identity_page_table_l2.entries[0].map_unchecked(
             PhysicalAddress::new_unchecked(0),
-            PageEntryFlags::huge_page_flags(),
+            /// TODO PATCH REMOVE LATER
+            PageEntryFlags::huge_io_page_flags(),
         );
     }
     // ANCHOR_END: setup_page_tables
@@ -81,7 +82,7 @@ pub fn enable() -> Option<()> {
         );
         top_identity_page_table_l2.entries[0].map_unchecked(
             PhysicalAddress::new_unchecked(0),
-            PageEntryFlags::huge_page_flags(),
+            PageEntryFlags::huge_io_page_flags(),
         );
     }
     // ANCHOR_END: setup_top_page_tables

@@ -1,4 +1,5 @@
 #[repr(u16)]
+#[non_exhaustive]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum VendorID {
     Intel = 0x8086,
@@ -13,12 +14,13 @@ pub enum VendorID {
 #[repr(u16)]
 pub enum IntelDeviceID {
     HostBridge = 0x1237,
-    PIIX3ISA = 0x700,
-    PIIX3IDE = 0x701,
-    PIIX3USB = 0x702,
-    PIIX3ACPI = 0x703,
+    PIIX3ISA = 0x7000,
+    PIIX3IDE = 0x7010,
+    PIIX3USB = 0x7020,
+    PIIX3ACPI = 0x7113,
     ExpressDramController = 0x29C0,
-    NetworkController = 0x100E, // e1000 again
+    ICH9SataController = 0x2922,
+    NetworkController = 0x100E,
     LPCInterface82801IB = 0x2410,
     SataControllerAHCI = 0x2822,
     NonExistent = 0xFFFF,
@@ -68,6 +70,7 @@ pub union DeviceID {
 }
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct VendorDevice {
     pub vendor: VendorID,
     pub device: DeviceID,
@@ -76,16 +79,29 @@ pub struct VendorDevice {
 impl core::fmt::Debug for VendorDevice {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Vendor: {:?} ", self.vendor)?;
-        write!(f, "Device: 0x{:x?}", unsafe { self.device.num })
+        write!(f, "Device: ")?;
+        match self.vendor {
+            VendorID::Intel => {
+                write!(f, "{:?}", unsafe { self.device.intel })
+            }
+            VendorID::Nvidia => {
+                write!(f, "{:?}", unsafe { self.device.nvidia })
+            }
+            VendorID::QEMU => {
+                write!(f, "{:?}", unsafe { self.device.qemu })
+            }
+            VendorID::Realtek => {
+                write!(f, "{:?}", unsafe { self.device.realtek })
+            }
+            VendorID::VirtIO => {
+                write!(f, "{:?}", unsafe { self.device.virtio })
+            }
+            VendorID::NonExistent => {
+                write!(f, "NonExistent")
+            }
+        }
     }
 }
-
-impl core::fmt::Debug for DeviceID {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Device: 0x{:x?}", unsafe { self.num })
-    }
-}
-
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClassCode {
@@ -533,6 +549,7 @@ impl core::fmt::Debug for ProgrammingInterface {
     }
 }
 
+#[repr(C, packed)]
 #[derive(Clone, Copy)]
 pub struct PciDeviceType {
     pub prog_if: ProgrammingInterface,
@@ -711,6 +728,16 @@ impl core::fmt::Debug for PciDeviceType {
                 write!(f, "{:?} ", unsafe { self.subclass.none })?;
                 write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
             }
+        }
+    }
+}
+
+impl PciDeviceType {
+    pub fn is_ahci(&self) -> bool {
+        unsafe {
+            self.class == ClassCode::MassStorageController
+                && self.subclass.storage == MassStorageSubClass::SATA
+                && self.prog_if.sata == SATAControllerPI::AHCI1
         }
     }
 }

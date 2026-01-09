@@ -1,3 +1,5 @@
+pub mod ahci;
+pub mod ata;
 pub mod bios_interrupts;
 pub mod cpuid;
 pub mod general;
@@ -11,6 +13,8 @@ pub mod pic8259;
 pub mod ports;
 pub mod vga;
 
+pub use ahci::*;
+pub use ata::*;
 pub use bios_interrupts::*;
 pub use cpuid::*;
 pub use general::*;

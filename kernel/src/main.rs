@@ -22,12 +22,17 @@ mod drivers;
 mod memory;
 use core::{
     alloc::{Allocator, Layout},
+    mem::MaybeUninit,
     num::NonZero,
     panic::PanicInfo,
 };
 
 use crate::{
     drivers::{
+        ata::ahci::{
+            AhciDeviceController, GenericHostControl, HBAMemoryRegisters,
+            IdentityPacketData,
+        },
         interrupt_handlers,
         keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
         pci::{self},
@@ -35,19 +40,30 @@ use crate::{
         vga_display::color_code::ColorCode,
     },
     memory::{
-        allocators::page_allocator::allocator::PhysicalPageAllocator,
+        allocators::page_allocator::{
+            allocator::PhysicalPageAllocator,
+            extensions::{PhysicalAddressExt, VirtualAddressExt},
+        },
         memory_map::{ParsedMapDisplay, parse_map},
     },
 };
 
 use common::{
-    constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
-    enums::{Color, HeaderType},
+    address_types::{PhysicalAddress, VirtualAddress},
+    constants::{
+        BIG_PAGE_ALIGNMENT, PHYSICAL_MEMORY_OFFSET,
+        REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+    },
+    enums::{
+        Color, DeviceDetection, DeviceType, InterfacePowerManagement,
+        PS2ScanCode, PageSize, PciDeviceType,
+    },
 };
 use cpu_utils::{
     instructions::interrupts::{self},
-    structures::interrupt_descriptor_table::{
-        IDT, InterruptDescriptorTable,
+    structures::{
+        interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
+        paging::PageEntryFlags,
     },
 };
 
@@ -82,26 +98,70 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
-    let pci_devices = pci::scan_pci();
+    let mut pci_devices = pci::scan_pci();
     println!("Press ENTER to enumerate PCI devices!");
     let a = pci_devices.as_ptr() as usize;
     println!("pci_devices address: {:x}", a);
-    for device in pci_devices.iter() {
-        loop {
-            unsafe {
-                let c = KEYBOARD.assume_init_mut().read_char();
-                if c == "\n" {
-                    break;
-                }
-            }
+
+    loop {
+        let c = unsafe { KEYBOARD.assume_init_mut().read_raw_scancode() };
+        if let Some(e) = c
+            && PS2ScanCode::from_scancode(e) == PS2ScanCode::Enter
+        {
+            break;
         }
-        match device.identify() {
-            HeaderType::GeneralDevice => {
-                println!("{:#?}", unsafe { device.common })
-            }
-            _ => {
-                println!("{:#?}", unsafe { device.common })
-            }
+    }
+
+    for device in pci_devices.iter_mut() {
+        // println!("{:#?}", unsafe { device.common.vendor_device });
+        // println!("{:#?}", unsafe { device.common.header_type });
+        // println!("{:#?}\n", unsafe { device.common.device_type });
+
+        if device.header.common().device_type.is_ahci() {
+            let a = unsafe {
+                PhysicalAddress::new_unchecked(
+                    device.header.general_device.bar5.address(),
+                )
+            };
+
+            println!(
+                "Bus Master: {}, Interrupts Disable {}, I/O Space: {}, \
+                 Memory Space: {}",
+                device.header.common().command.is_bus_master(),
+                device.header.common().command.is_interrupt_disable(),
+                device.header.common().command.is_io_space(),
+                device.header.common().command.is_memory_space()
+            );
+
+            println!(
+                "Interrupt Line: {}, Interrupt Pin: {}",
+                unsafe { device.header.general_device.interrupt_line },
+                unsafe { device.header.general_device.interrupt_pin }
+            );
+
+            let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
+            let hba = HBAMemoryRegisters::new(aligned).unwrap();
+            let _ = hba.probe();
+            let mut controller = hba.map_device::<13>(0);
+            let b = unsafe { alloc_pages!(1) - PHYSICAL_MEMORY_OFFSET };
+
+            println!("b: {:x?}", &b as *const _ as usize);
+            let rfis = controller.port_cmds.fis.rfis;
+            println!("rfis: {:?}", rfis);
+            controller.identity_packet(b as *mut IdentityPacketData);
+
+            let rfis = controller.port_cmds.fis.rfis;
+            println!("rfis: {:?}", rfis);
+
+            let d = unsafe {
+                core::ptr::read_volatile(b as *const IdentityPacketData)
+            };
+
+            println!("Data Address: {:x?}", b);
+
+            println!("Data: {:?}", d.data);
+
+            // println!("{:x?}", controller.port_cmds as *const _ as usize)
         }
     }
     loop {

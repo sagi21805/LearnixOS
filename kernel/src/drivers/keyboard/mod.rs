@@ -45,7 +45,6 @@ pub extern "x86-interrupt" fn keyboard_handler(
             }
             _ => {}
         }
-        PIC.assume_init_mut()
-            .end_of_interrupt(CascadedPicInterruptLine::Keyboard);
+        PIC.end_of_interrupt(CascadedPicInterruptLine::Keyboard);
     }
 }
