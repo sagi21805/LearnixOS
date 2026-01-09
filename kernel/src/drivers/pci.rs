@@ -2,10 +2,7 @@ extern crate alloc;
 
 use crate::{
     drivers::ata::ahci::AHCIBaseAddress,
-    memory::allocators::page_allocator::{
-        ALLOCATOR, allocator::PhysicalPageAllocator,
-    },
-    println,
+    memory::allocators::page_allocator::allocator::PhysicalPageAllocator,
 };
 use alloc::vec::Vec;
 use common::enums::{
@@ -406,46 +403,46 @@ impl PciDevice {
     pub fn enable_interrupts(&self, irq: CascadedPicInterruptLine) {}
 }
 
-pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
-    let mut v: Vec<PciDevice, PhysicalPageAllocator> =
-        Vec::with_capacity_in(64, unsafe {
-            ALLOCATOR.assume_init_ref().clone()
-        });
-    for bus in 0..=255 {
-        for device in 0..32 {
-            let common =
-                PciConfigurationCycle::read_common_header(bus, device, 0);
-            if common.vendor_device.vendor == VendorID::NonExistent {
-                continue;
-            }
-            v.push_within_capacity(
-                PciConfigurationCycle::read_pci_device(
-                    bus, device, 0, common,
-                ),
-            )
-            .unwrap_or_else(|_| {
-                panic!("PCI Vec cannot push any more items")
-            });
-            if !common.header_type.is_multifunction() {
-                continue;
-            }
-            for function in 1..8 {
-                let common = PciConfigurationCycle::read_common_header(
-                    bus, device, function,
-                );
-                if common.vendor_device.vendor == VendorID::NonExistent {
-                    continue;
-                }
-                v.push_within_capacity(
-                    PciConfigurationCycle::read_pci_device(
-                        bus, device, function, common,
-                    ),
-                )
-                .unwrap_or_else(|_| {
-                    panic!("PCI Vec cannot push any more items")
-                });
-            }
-        }
-    }
-    v
-}
+// pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
+//     let mut v: Vec<PciDevice, PhysicalPageAllocator> =
+//         Vec::with_capacity_in(64, unsafe {
+//             ALLOCATOR.assume_init_ref().clone()
+//         });
+//     for bus in 0..=255 {
+//         for device in 0..32 {
+//             let common =
+//                 PciConfigurationCycle::read_common_header(bus, device,
+// 0);             if common.vendor_device.vendor == VendorID::NonExistent
+// {                 continue;
+//             }
+//             v.push_within_capacity(
+//                 PciConfigurationCycle::read_pci_device(
+//                     bus, device, 0, common,
+//                 ),
+//             )
+//             .unwrap_or_else(|_| {
+//                 panic!("PCI Vec cannot push any more items")
+//             });
+//             if !common.header_type.is_multifunction() {
+//                 continue;
+//             }
+//             for function in 1..8 {
+//                 let common = PciConfigurationCycle::read_common_header(
+//                     bus, device, function,
+//                 );
+//                 if common.vendor_device.vendor == VendorID::NonExistent
+// {                     continue;
+//                 }
+//                 v.push_within_capacity(
+//                     PciConfigurationCycle::read_pci_device(
+//                         bus, device, function, common,
+//                     ),
+//                 )
+//                 .unwrap_or_else(|_| {
+//                     panic!("PCI Vec cannot push any more items")
+//                 });
+//             }
+//         }
+//     }
+//     v
+// }
