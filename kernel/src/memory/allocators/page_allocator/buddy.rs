@@ -20,6 +20,7 @@ pub static mut BUDDY_ALLOCATOR: BuddyAllocator = BuddyAllocator {
 
 #[derive(Default, Clone, Copy, Debug)]
 pub struct BuddyBlockMeta {
+    // TODO CHANGE INTO REF BECAUSE IT CONSUMES LESS MEMORY
     pub next: Option<*mut UnassignedPage>,
     pub prev: Option<*mut UnassignedPage>,
     pub order: Option<BuddyOrder>,
