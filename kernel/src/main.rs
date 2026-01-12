@@ -18,6 +18,7 @@
 #![feature(ascii_char)]
 #![feature(const_convert)]
 #![feature(core_intrinsics)]
+#![feature(min_specialization)]
 #![deny(clippy::all)]
 mod drivers;
 mod memory;
@@ -66,46 +67,27 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Obtained Memory Map");
     println!("{}", MemoryMap(parsed_memory_map!()));
 
-    // loop {}
-    // PhysicalPageAllocator::init(unsafe { &mut ALLOCATOR });
-    // println!("ALLOCATOR MAP LEN: {}", unsafe {
-    //     ALLOCATOR.assume_init_mut().map_mut().map.len()
-    // });
-    // okprintln!("Allocator Initialized");
+    pages_init(&MemoryMap(parsed_memory_map!()));
+    unsafe { BUDDY_ALLOCATOR.init() };
+
+    okprintln!("Allocator Initialized");
     unsafe {
-        // let idt_address = alloc_pages!(1).into();
-        InterruptDescriptorTable::init(&mut IDT, 0xc0000.into());
+        InterruptDescriptorTable::init(&mut IDT, alloc_pages!(1).into());
         okprintln!("Initialized interrupt descriptor table");
         interrupt_handlers::init(IDT.assume_init_mut());
         okprintln!("Initialized interrupts handlers");
         CascadedPIC::init(&mut PIC);
         okprintln!("Initialized Programmable Interrupt Controller");
-        // let keyboard_buffer_address = alloc_pages!(1).into();
-        // Keyboard::init(
-        //     &mut KEYBOARD,
-        //     keyboard_buffer_address,
-        //     NonZero::new(REGULAR_PAGE_SIZE).unwrap(),
-        // );
-        // okprintln!("Initialized Keyboard");
-        //     interrupts::enable();
+        let keyboard_buffer_address = alloc_pages!(1).into();
+        Keyboard::init(
+            &mut KEYBOARD,
+            keyboard_buffer_address,
+            NonZero::new(REGULAR_PAGE_SIZE).unwrap(),
+        );
+        okprintln!("Initialized Keyboard");
+        interrupts::enable();
     }
-    pages_init(&MemoryMap(parsed_memory_map!()));
-    unsafe { BUDDY_ALLOCATOR.init() };
-    let a = unsafe { BUDDY_ALLOCATOR.alloc_pages(2) };
-    println!("{:x?}", a);
-    let a = unsafe { BUDDY_ALLOCATOR.alloc_pages(2) };
-    println!("{:x?}", a);
-    let a = unsafe { BUDDY_ALLOCATOR.alloc_pages(2) };
-    println!("{:x?}", a);
-    let a = unsafe { BUDDY_ALLOCATOR.alloc_pages(2) };
-    println!("{:x?}", a);
-    let a = unsafe { BUDDY_ALLOCATOR.alloc_pages(2) };
-    println!("{:x?}", a);
-    let b = unsafe { BUDDY_ALLOCATOR.alloc_pages(2) };
-    println!("{:x?}", b);
-    let c = unsafe { BUDDY_ALLOCATOR.alloc_pages(32) };
-    println!("{:x?}", c);
-    panic!("")
+    // panic!("")
     // let mut pci_devices = pci::scan_pci();
     // println!("Press ENTER to enumerate PCI devices!");
     // let a = pci_devices.as_ptr() as usize;
@@ -177,11 +159,12 @@ pub unsafe extern "C" fn _start() -> ! {
     //     }
     // }
 
-    // loop {
-    //     unsafe {
-    //         print!("{}", KEYBOARD.assume_init_mut().read_char() ; color
-    // = ColorCode::new(Color::Green, Color::Black));     }
-    // }
+    loop {
+        unsafe {
+            print!("{}", KEYBOARD.assume_init_mut().read_char() ; color
+    = ColorCode::new(Color::Green, Color::Black));
+        }
+    }
 }
 
 /// This function is called on panic.
