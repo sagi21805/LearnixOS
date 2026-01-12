@@ -16,7 +16,7 @@ use common::{
     write_volatile,
 };
 
-#[derive(Default, Debug)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct Unassigned;
 
 pub type UnassignedPage = Page<Unassigned>;
