@@ -1,22 +1,22 @@
-use core::{fmt::Debug, mem::ManuallyDrop};
+use core::{
+    fmt::Debug,
+    mem::ManuallyDrop,
+    num::{NonZeroIsize, NonZeroUsize},
+    ptr::NonNull,
+};
 
-use common::{constants::REGULAR_PAGE_SIZE, write_volatile};
+use common::{
+    constants::REGULAR_PAGE_SIZE, enums::ProcessorSubClass, write_volatile,
+};
 
 use nonmax::NonMaxU16;
 
 use crate::{alloc_pages, memory::page_descriptor::Unassigned};
 
-trait SlabConstructor<T> {
-    fn new(
+impl<T> SlabDescriptor<T> {
+    pub fn new(
         order: usize,
-        next: Option<&'static mut SlabDescriptor<T>>,
-    ) -> Self;
-}
-
-impl<T> SlabConstructor<T> for SlabDescriptor<T> {
-    default fn new(
-        order: usize,
-        next: Option<&'static mut SlabDescriptor<T>>,
+        next: Option<NonNull<SlabDescriptor<T>>>,
     ) -> SlabDescriptor<T> {
         let address = unsafe { alloc_pages!(1 << order) };
         let objects = unsafe {
@@ -38,22 +38,48 @@ impl<T> SlabConstructor<T> for SlabDescriptor<T> {
 
         SlabDescriptor {
             next_free_idx: Some(unsafe { NonMaxU16::new_unchecked(0) }),
-            objects,
+            objects: NonNull::from_mut(objects.first_mut().unwrap()),
+            size: unsafe { NonZeroUsize::new_unchecked(objects.len()) },
             next,
+        }
+    }
+
+    pub fn as_unassigned(&self) -> &SlabDescriptor<Unassigned> {
+        unsafe {
+            &*(self as *const _ as *const SlabDescriptor<Unassigned>)
+        }
+    }
+
+    pub fn as_unassigned_mut(
+        &mut self,
+    ) -> &mut SlabDescriptor<Unassigned> {
+        unsafe {
+            &mut *(self as *mut _ as *mut SlabDescriptor<Unassigned>)
         }
     }
 }
 
-impl SlabConstructor<SlabDescriptor<Unassigned>>
-    for SlabDescriptor<Unassigned>
-{
-    fn new(
-        _order: usize,
-        _next: Option<
-            &'static mut SlabDescriptor<SlabDescriptor<Unassigned>>,
-        >,
-    ) -> Self {
-        unimplemented!()
+impl SlabDescriptor<Unassigned> {
+    pub fn assign<T>(&self) -> &SlabDescriptor<T> {
+        unsafe { &*(self as *const _ as *const SlabDescriptor<T>) }
+    }
+
+    pub fn assign_mut<T>(&mut self) -> &mut SlabDescriptor<T> {
+        unsafe { &mut *(self as *mut _ as *mut SlabDescriptor<T>) }
+    }
+}
+
+impl SlabDescriptor<SlabDescriptor<Unassigned>> {
+    pub fn initial(
+        order: usize,
+    ) -> &'static mut SlabDescriptor<SlabDescriptor<Unassigned>> {
+        let mut descriptor =
+            SlabDescriptor::<SlabDescriptor<Unassigned>>::new(order, None);
+
+        let mut d =
+            descriptor.alloc_obj(descriptor.as_unassigned().clone());
+
+        unsafe { d.as_mut().assign_mut::<SlabDescriptor<Unassigned>>() }
     }
 }
 
@@ -84,46 +110,58 @@ impl<T> Debug for PreallocatedObject<T> {
     }
 }
 
-impl SlabDescriptor<SlabDescriptor<Unassigned>> {
-    pub fn new() {}
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SlabDescriptor<T: 'static + Sized> {
     /// The index in the objects array of the next free objet
     pub next_free_idx: Option<NonMaxU16>,
-    pub objects: &'static mut [PreallocatedObject<T>],
-    pub next: Option<&'static mut SlabDescriptor<T>>,
+    pub objects: NonNull<PreallocatedObject<T>>,
+    pub size: NonZeroUsize,
+    pub next: Option<NonNull<SlabDescriptor<T>>>,
 }
 
 impl<T> SlabDescriptor<T> {
-    pub fn alloc_obj(&mut self, obj: T) -> &mut T {
+    pub fn object_at(&self, idx: usize) -> NonNull<PreallocatedObject<T>> {
+        if idx * size_of::<T>() > self.size.get() {
+            panic!("Out of bounds");
+        }
+
+        unsafe { self.objects.add(idx) }
+    }
+
+    pub fn alloc_obj(&mut self, obj: T) -> NonNull<T> {
         debug_assert!(
             self.next_free_idx.is_some(),
             "Should always be some, because if not, slab is full"
         );
 
-        let preallocated =
-            &mut self.objects[self.next_free_idx.unwrap().get() as usize];
+        let preallocated = unsafe {
+            self.object_at(self.next_free_idx.unwrap().get() as usize)
+                .as_mut()
+        };
+
         self.next_free_idx = unsafe { preallocated.next_free_idx };
 
         write_volatile!(preallocated.allocated, ManuallyDrop::new(obj));
 
-        unsafe { &mut preallocated.allocated }
+        unsafe { NonNull::from_mut(&mut preallocated.allocated) }
     }
 
     /// Deallocate an object from this slab
     ///
     /// # Safety
     /// This function assumes that the object address is in this slab.
-    pub unsafe fn dealloc_obj(&mut self, obj: &T) {
+    pub unsafe fn dealloc_obj(&mut self, obj: *const T) {
         let freed_index = unsafe {
-            self.objects.as_ptr().offset_from(
-                obj as *const _ as *const PreallocatedObject<T>,
-            ) as usize
+            self.objects
+                .as_ptr()
+                .offset_from(obj as *const PreallocatedObject<T>)
+                as usize
         };
 
-        self.objects[freed_index].next_free_idx = self.next_free_idx;
+        unsafe {
+            self.object_at(freed_index).as_mut().next_free_idx =
+                self.next_free_idx
+        };
 
         self.next_free_idx =
             unsafe { Some(NonMaxU16::new_unchecked(freed_index as u16)) };
@@ -139,25 +177,38 @@ pub struct SlabCache<T: 'static + Sized> {
     pub full: Option<&'static mut SlabDescriptor<T>>,
 }
 
-impl<T> SlabCache<T> {
-    pub const fn new() -> SlabCache<T> {
+impl<T> SlabCacheConstructor for SlabCache<T> {
+    default fn new(buddy_order: usize) -> SlabCache<T> {
         unimplemented!()
     }
 }
 
-impl SlabCache<SlabCache<Unassigned>> {
-    pub fn initial(
-        buddy_order: usize,
-    ) -> SlabCache<SlabCache<Unassigned>> {
-        let partial = SlabDescriptor::<SlabCache<Unassigned>>::new(
-            buddy_order,
-            None,
-        );
-        let full = SlabDescriptor::<SlabCache<Unassigned>>::new(
-            buddy_order,
-            None,
-        );
+impl SlabCacheConstructor for SlabCache<SlabCache<Unassigned>> {
+    fn new(buddy_order: usize) -> SlabCache<SlabCache<Unassigned>> {
+        unimplemented!()
     }
+}
+
+impl SlabCache<SlabDescriptor<Unassigned>> {
+    pub fn initial_cache(
+        buddy_order: usize,
+    ) -> SlabCache<SlabDescriptor<Unassigned>> {
+        let partial =
+            SlabDescriptor::<SlabDescriptor<Unassigned>>::initial(
+                buddy_order,
+            );
+
+        SlabCache {
+            buddy_order,
+            free: None,
+            partial: Some(partial),
+            full: None,
+        }
+    }
+}
+
+trait SlabCacheConstructor {
+    fn new(buddy_order: usize) -> Self;
 }
 
 const trait SlabPosition {
