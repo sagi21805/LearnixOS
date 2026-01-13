@@ -93,14 +93,6 @@ impl SlabDescriptor<SlabDescriptor<Unassigned>> {
     }
 }
 
-pub union SlabCaches {
-    pub generic4: ManuallyDrop<SlabCache<u32>>,
-    pub slab_descriptor:
-        ManuallyDrop<SlabCache<SlabDescriptor<Unassigned>>>,
-    pub slab_cache: ManuallyDrop<SlabCache<SlabCache<Unassigned>>>,
-    pub uninit: (),
-}
-
 macro_rules! define_slab_system {
     ($($t:ty),* $(,)?) => {
         // 1. Implement the trait for each type
@@ -110,13 +102,13 @@ macro_rules! define_slab_system {
         const COUNT: usize = [$(stringify!($t)),*].len();
 
         // 3. Create the static array
-        pub static SLABS: [SlabCaches; COUNT] = [
+        pub static mut SLABS: [LateInit<SlabCache<Unassigned>>; COUNT] = [
             $(
                 // We mention $t inside a block but don't actually use it.
                 // This tells Rust: "Repeat this block for every type in $t"
                 {
                     stringify!($t);
-                    SlabCaches { uninit: () }
+                    LateInit::uninit()
                 }
             ),*
         ];
@@ -152,8 +144,8 @@ define_slab_system!(SlabDescriptor<Unassigned>,);
 unsafe impl<T> Send for SlabDescriptor<T> {}
 unsafe impl<T> Sync for SlabDescriptor<T> {}
 
-unsafe impl Send for SlabCaches {}
-unsafe impl Sync for SlabCaches {}
+unsafe impl<T> Send for SlabCache<T> {}
+unsafe impl<T> Sync for SlabCache<T> {}
 
 /// Preallocated object in the slab allocator.
 ///
@@ -225,22 +217,34 @@ pub struct SlabCache<T: 'static + Sized> {
     pub full: Option<NonNull<SlabDescriptor<T>>>,
 }
 
+impl<T> SlabCache<T> {
+    pub fn as_unassigned(&self) -> &SlabCache<Unassigned> {
+        unsafe { &*(self as *const _ as *const SlabCache<Unassigned>) }
+    }
+
+    pub fn as_unassigned_mut(&mut self) -> &mut SlabCache<Unassigned> {
+        unsafe { &mut *(self as *mut _ as *mut SlabCache<Unassigned>) }
+    }
+}
+
+impl SlabCache<Unassigned> {
+    pub fn assign<T>(&self) -> &SlabCache<T> {
+        unsafe { &*(self as *const _ as *const SlabCache<T>) }
+    }
+
+    pub fn assign_mut<T>(&mut self) -> &mut SlabCache<T> {
+        unsafe { &mut *(self as *mut _ as *mut SlabCache<T>) }
+    }
+}
+
 impl<T> SlabCacheConstructor for SlabCache<T> {
     default fn new(buddy_order: usize) -> SlabCache<T> {
         unimplemented!()
     }
 }
 
-impl SlabCacheConstructor for SlabCache<SlabCache<Unassigned>> {
-    fn new(buddy_order: usize) -> SlabCache<SlabCache<Unassigned>> {
-        unimplemented!()
-    }
-}
-
-impl SlabCache<SlabDescriptor<Unassigned>> {
-    pub fn initial_cache(
-        buddy_order: usize,
-    ) -> SlabCache<SlabDescriptor<Unassigned>> {
+impl SlabCacheConstructor for SlabCache<SlabDescriptor<Unassigned>> {
+    fn new(buddy_order: usize) -> SlabCache<SlabDescriptor<Unassigned>> {
         let partial =
             SlabDescriptor::<SlabDescriptor<Unassigned>>::initial_descriptor(
                 buddy_order,
@@ -265,4 +269,8 @@ trait SlabCacheConstructor {
 /// with a macro.
 pub const trait SlabPosition {
     const POSITION: usize;
+}
+
+pub fn slab_of<T: SlabPosition>() -> &'static mut SlabCache<T> {
+    unsafe { SLABS[T::POSITION].assign_mut() }
 }
