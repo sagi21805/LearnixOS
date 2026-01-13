@@ -6,7 +6,8 @@ use core::{
 };
 
 use common::{
-    constants::REGULAR_PAGE_SIZE, enums::ProcessorSubClass, write_volatile,
+    constants::REGULAR_PAGE_SIZE, enums::ProcessorSubClass,
+    late_init::LateInit, write_volatile,
 };
 
 use nonmax::NonMaxU16;
@@ -19,14 +20,18 @@ impl<T> SlabDescriptor<T> {
         next: Option<NonNull<SlabDescriptor<T>>>,
     ) -> SlabDescriptor<T> {
         let address = unsafe { alloc_pages!(1 << order) };
-        let objects = unsafe {
-            core::slice::from_raw_parts_mut(
-                address as *mut PreallocatedObject<T>,
+        let mut objects = unsafe {
+            NonNull::slice_from_raw_parts(
+                NonNull::new_unchecked(
+                    address as *mut PreallocatedObject<T>,
+                ),
                 ((1 << order) * REGULAR_PAGE_SIZE) / size_of::<T>(),
             )
         };
 
-        for (i, object) in objects.iter_mut().enumerate() {
+        for (i, object) in
+            unsafe { objects.as_mut() }.iter_mut().enumerate()
+        {
             *object = PreallocatedObject {
                 next_free_idx: Some(unsafe {
                     NonMaxU16::new_unchecked(i as u16 + 1)
@@ -34,12 +39,13 @@ impl<T> SlabDescriptor<T> {
             }
         }
 
-        objects.last_mut().unwrap().next_free_idx = None;
+        unsafe {
+            objects.as_mut().last_mut().unwrap().next_free_idx = None
+        };
 
         SlabDescriptor {
             next_free_idx: Some(unsafe { NonMaxU16::new_unchecked(0) }),
-            objects: NonNull::from_mut(objects.first_mut().unwrap()),
-            size: unsafe { NonZeroUsize::new_unchecked(objects.len()) },
+            objects,
             next,
         }
     }
@@ -70,29 +76,84 @@ impl SlabDescriptor<Unassigned> {
 }
 
 impl SlabDescriptor<SlabDescriptor<Unassigned>> {
-    pub fn initial(
+    pub fn initial_descriptor(
         order: usize,
-    ) -> &'static mut SlabDescriptor<SlabDescriptor<Unassigned>> {
+    ) -> NonNull<SlabDescriptor<SlabDescriptor<Unassigned>>> {
         let mut descriptor =
             SlabDescriptor::<SlabDescriptor<Unassigned>>::new(order, None);
 
         let mut d =
             descriptor.alloc_obj(descriptor.as_unassigned().clone());
 
-        unsafe { d.as_mut().assign_mut::<SlabDescriptor<Unassigned>>() }
+        unsafe {
+            NonNull::from_mut(
+                d.as_mut().assign_mut::<SlabDescriptor<Unassigned>>(),
+            )
+        }
     }
 }
 
 pub union SlabCaches {
     pub generic4: ManuallyDrop<SlabCache<u32>>,
     pub slab_descriptor:
-        ManuallyDrop<SlabDescriptor<SlabDescriptor<Unassigned>>>,
+        ManuallyDrop<SlabCache<SlabDescriptor<Unassigned>>>,
     pub slab_cache: ManuallyDrop<SlabCache<SlabCache<Unassigned>>>,
+    pub uninit: (),
 }
 
-pub static SLABS: [SlabCaches; 1] = [SlabCaches {
-    slab_descriptor: ManuallyDrop::new(SlabCache::new()),
-}];
+macro_rules! define_slab_system {
+    ($($t:ty),* $(,)?) => {
+        // 1. Implement the trait for each type
+        register_slabs!($($t),*);
+
+        // 2. Calculate count
+        const COUNT: usize = [$(stringify!($t)),*].len();
+
+        // 3. Create the static array
+        pub static SLABS: [SlabCaches; COUNT] = [
+            $(
+                // We mention $t inside a block but don't actually use it.
+                // This tells Rust: "Repeat this block for every type in $t"
+                {
+                    stringify!($t);
+                    SlabCaches { uninit: () }
+                }
+            ),*
+        ];
+    }
+}
+
+macro_rules! register_slabs {
+    // 1. Entry point: handle trailing commas by calling the internal @step
+    ($($t:ty),* $(,)?) => {
+        register_slabs!(@step 0; $($t),*);
+    };
+
+    // 2. The recursive step: Matches a type, a comma, and at least one more type
+    (@step $idx:expr; $head:ty, $($tail:ty),+) => {
+        impl SlabPosition for $head {
+            const POSITION: usize = $idx;
+        }
+        register_slabs!(@step $idx + 1; $($tail),*);
+    };
+
+    // 3. The base case: Matches exactly one last type (no trailing comma)
+    (@step $idx:expr; $head:ty) => {
+        impl SlabPosition for $head {
+            const POSITION: usize = $idx;
+        }
+    };
+
+    // 4. The empty case: If someone calls it with nothing
+    (@step $idx:expr; ) => {};
+}
+define_slab_system!(SlabDescriptor<Unassigned>,);
+
+unsafe impl<T> Send for SlabDescriptor<T> {}
+unsafe impl<T> Sync for SlabDescriptor<T> {}
+
+unsafe impl Send for SlabCaches {}
+unsafe impl Sync for SlabCaches {}
 
 /// Preallocated object in the slab allocator.
 ///
@@ -114,20 +175,11 @@ impl<T> Debug for PreallocatedObject<T> {
 pub struct SlabDescriptor<T: 'static + Sized> {
     /// The index in the objects array of the next free objet
     pub next_free_idx: Option<NonMaxU16>,
-    pub objects: NonNull<PreallocatedObject<T>>,
-    pub size: NonZeroUsize,
+    pub objects: NonNull<[PreallocatedObject<T>]>,
     pub next: Option<NonNull<SlabDescriptor<T>>>,
 }
 
 impl<T> SlabDescriptor<T> {
-    pub fn object_at(&self, idx: usize) -> NonNull<PreallocatedObject<T>> {
-        if idx * size_of::<T>() > self.size.get() {
-            panic!("Out of bounds");
-        }
-
-        unsafe { self.objects.add(idx) }
-    }
-
     pub fn alloc_obj(&mut self, obj: T) -> NonNull<T> {
         debug_assert!(
             self.next_free_idx.is_some(),
@@ -135,8 +187,8 @@ impl<T> SlabDescriptor<T> {
         );
 
         let preallocated = unsafe {
-            self.object_at(self.next_free_idx.unwrap().get() as usize)
-                .as_mut()
+            &mut self.objects.as_mut()
+                [self.next_free_idx.unwrap().get() as usize]
         };
 
         self.next_free_idx = unsafe { preallocated.next_free_idx };
@@ -151,15 +203,11 @@ impl<T> SlabDescriptor<T> {
     /// # Safety
     /// This function assumes that the object address is in this slab.
     pub unsafe fn dealloc_obj(&mut self, obj: *const T) {
-        let freed_index = unsafe {
-            self.objects
-                .as_ptr()
-                .offset_from(obj as *const PreallocatedObject<T>)
-                as usize
-        };
+        let freed_index =
+            (obj.addr() - self.objects.as_ptr().addr()) / size_of::<T>();
 
         unsafe {
-            self.object_at(freed_index).as_mut().next_free_idx =
+            self.objects.as_mut()[freed_index].next_free_idx =
                 self.next_free_idx
         };
 
@@ -172,9 +220,9 @@ impl<T> SlabDescriptor<T> {
 pub struct SlabCache<T: 'static + Sized> {
     // TODO ADD LOCK
     pub buddy_order: usize,
-    pub free: Option<&'static mut SlabDescriptor<T>>,
-    pub partial: Option<&'static mut SlabDescriptor<T>>,
-    pub full: Option<&'static mut SlabDescriptor<T>>,
+    pub free: Option<NonNull<SlabDescriptor<T>>>,
+    pub partial: Option<NonNull<SlabDescriptor<T>>>,
+    pub full: Option<NonNull<SlabDescriptor<T>>>,
 }
 
 impl<T> SlabCacheConstructor for SlabCache<T> {
@@ -194,7 +242,7 @@ impl SlabCache<SlabDescriptor<Unassigned>> {
         buddy_order: usize,
     ) -> SlabCache<SlabDescriptor<Unassigned>> {
         let partial =
-            SlabDescriptor::<SlabDescriptor<Unassigned>>::initial(
+            SlabDescriptor::<SlabDescriptor<Unassigned>>::initial_descriptor(
                 buddy_order,
             );
 
@@ -211,6 +259,10 @@ trait SlabCacheConstructor {
     fn new(buddy_order: usize) -> Self;
 }
 
-const trait SlabPosition {
-    fn get_position() -> usize;
+/// Get the position on the slab array, for a slab of the given type.
+///
+/// Shouldn't implement this trait manually, and it is implemented once
+/// with a macro.
+pub const trait SlabPosition {
+    const POSITION: usize;
 }
