@@ -4,7 +4,7 @@ use crate::{
     memory::{
         allocators::{
             page_allocator::buddy::BuddyBlockMeta,
-            slab::{SlabCache, SlabPosition},
+            slab::{cache::SlabCache, traits::SlabPosition},
         },
         memory_map::ParsedMemoryMap,
     },

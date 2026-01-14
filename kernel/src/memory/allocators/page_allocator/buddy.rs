@@ -7,7 +7,7 @@ use common::{
 use cpu_utils::structures::paging::PageTable;
 
 use crate::memory::{
-    allocators::slab::SlabPosition,
+    allocators::slab::traits::SlabPosition,
     page_descriptor::{PAGES, Page, Unassigned, UnassignedPage},
 };
 
