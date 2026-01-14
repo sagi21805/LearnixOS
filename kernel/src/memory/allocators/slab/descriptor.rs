@@ -65,7 +65,10 @@ impl<T: SlabPosition> SlabDescriptor<T> {
     }
 
     pub fn alloc_obj(&mut self, obj: T) -> NonNull<T> {
-        debug_assert!(self.next_free_idx.is_some(), "Slab is full");
+        debug_assert!(
+            self.next_free_idx.is_some(),
+            "Called allocate on a full slab"
+        );
 
         let idx = self.next_free_idx.unwrap().get() as usize;
         let preallocated = unsafe { &mut self.objects.as_mut()[idx] };
