@@ -1,7 +1,10 @@
+use core::ptr::NonNull;
+
 use crate::{
     memory::{
         allocators::{
-            page_allocator::buddy::BuddyBlockMeta, slab::SlabCache,
+            page_allocator::buddy::BuddyBlockMeta,
+            slab::{SlabCache, SlabPosition},
         },
         memory_map::ParsedMemoryMap,
     },
@@ -22,12 +25,12 @@ pub struct Unassigned;
 pub type UnassignedPage = Page<Unassigned>;
 
 impl UnassignedPage {
-    pub fn assign<T>(&self) -> &Page<T> {
+    pub fn assign<T: SlabPosition>(&self) -> &Page<T> {
         let ptr = self as *const _ as usize;
         unsafe { &*(ptr as *const Page<T>) }
     }
 
-    pub fn assign_mut<T>(&mut self) -> &mut Page<T> {
+    pub fn assign_mut<T: SlabPosition>(&mut self) -> &mut Page<T> {
         let ptr = self as *const _ as usize;
         unsafe { &mut *(ptr as *mut Page<T>) }
     }
@@ -37,12 +40,12 @@ pub static mut PAGES: LateInit<&'static mut [UnassignedPage]> =
     LateInit::uninit();
 
 #[derive(Debug)]
-pub struct Page<T: 'static> {
-    pub owner: Option<&'static SlabCache<T>>,
+pub struct Page<T: 'static + SlabPosition> {
+    pub owner: Option<NonNull<SlabCache<T>>>,
     pub buddy_meta: BuddyBlockMeta,
 }
 
-impl<T: 'static> Page<T> {
+impl<T: 'static + SlabPosition> Page<T> {
     pub fn as_unassigned(&self) -> &UnassignedPage {
         let ptr = self as *const _ as usize;
         unsafe { &*(ptr as *const UnassignedPage) }
