@@ -1,10 +1,12 @@
+use common::enums::ProgrammingInterface;
+
 use super::descriptor::SlabDescriptor;
-use super::slab_of;
 use super::traits::{SlabCacheConstructor, SlabPosition};
+use crate::memory::allocators::slab::SLAB_ALLOCATOR;
 use crate::memory::page_descriptor::Unassigned;
 use core::ptr::NonNull;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SlabCache<T: 'static + Sized + SlabPosition> {
     pub buddy_order: usize,
     pub free: Option<NonNull<SlabDescriptor<T>>>,
@@ -21,28 +23,57 @@ impl<T: SlabPosition> SlabCache<T> {
         unsafe { &mut *(self as *mut _ as *mut SlabCache<Unassigned>) }
     }
 
-    pub fn alloc(&self, _obj: T) -> NonNull<T> {
-        unimplemented!()
+    pub fn alloc(&mut self, obj: T) -> NonNull<T> {
+        if let Some(mut partial) = self.partial {
+            let partial = unsafe { partial.as_mut() };
+
+            let allocation = partial.alloc_obj(obj);
+
+            if partial.next_free_idx.is_none() {
+                self.partial = partial.next;
+                partial.next = self.full;
+                self.full = Some(NonNull::from_mut(partial));
+            }
+            return allocation;
+        }
+        if let Some(mut free) = self.free {
+            let free = unsafe { free.as_mut() };
+
+            let allocation = free.alloc_obj(obj);
+
+            self.free = free.next;
+            free.next = self.partial;
+            self.partial = Some(NonNull::from_mut(free));
+
+            return allocation;
+        }
+
+        todo!(
+            "Handle cases where partial and free are full, and \
+             allocation from the page allocator is needed."
+        )
     }
-    pub fn dealloc(&self, _obj: NonNull<T>) {
-        unimplemented!()
+    pub fn dealloc(&self, ptr: NonNull<T>) {
+        todo!()
     }
 }
 
 impl SlabCache<Unassigned> {
-    pub fn assign<T: SlabPosition>(&self) -> &SlabCache<T> {
-        unsafe { &*(self as *const _ as *const SlabCache<T>) }
-    }
-
-    pub fn assign_mut<T: SlabPosition>(&mut self) -> &mut SlabCache<T> {
-        unsafe { &mut *(self as *mut _ as *mut SlabCache<T>) }
+    pub fn assign<T: SlabPosition>(&self) -> NonNull<SlabCache<T>> {
+        unsafe {
+            NonNull::new_unchecked(self as *const _ as *mut SlabCache<T>)
+        }
     }
 }
 
 impl<T: SlabPosition> SlabCacheConstructor for SlabCache<T> {
     default fn new(buddy_order: usize) -> SlabCache<T> {
-        let free = slab_of::<SlabDescriptor<Unassigned>>()
-            .alloc(SlabDescriptor::new(buddy_order, None));
+        let free = unsafe {
+            SLAB_ALLOCATOR
+                .slab_of::<SlabDescriptor<Unassigned>>()
+                .as_mut()
+                .alloc(SlabDescriptor::new(buddy_order, None))
+        };
 
         SlabCache {
             buddy_order,
