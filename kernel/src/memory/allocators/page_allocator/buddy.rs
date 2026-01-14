@@ -6,8 +6,9 @@ use common::{
 };
 use cpu_utils::structures::paging::PageTable;
 
-use crate::memory::page_descriptor::{
-    PAGES, Page, Unassigned, UnassignedPage,
+use crate::memory::{
+    allocators::slab::SlabPosition,
+    page_descriptor::{PAGES, Page, Unassigned, UnassignedPage},
 };
 
 pub static mut BUDDY_ALLOCATOR: BuddyAllocator = BuddyAllocator {
@@ -27,13 +28,13 @@ pub struct BuddyBlockMeta {
 }
 
 impl BuddyBlockMeta {
-    pub fn detach<T>(&mut self) -> Option<*mut Page<T>> {
+    pub fn detach<T: SlabPosition>(&mut self) -> Option<*mut Page<T>> {
         let detached = self.next? as *mut Page<T>; // None if there is no page to detach
         self.next = unsafe { (*detached).buddy_meta.next };
         Some(detached)
     }
 
-    pub fn attach<T>(&mut self, attachment: *mut Page<T>) {
+    pub fn attach<T: SlabPosition>(&mut self, attachment: *mut Page<T>) {
         let attachment_ref =
             unsafe { &mut *attachment }.as_unassigned_mut();
         attachment_ref.buddy_meta.next = self.next;
