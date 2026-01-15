@@ -1,6 +1,6 @@
 use super::traits::SlabPosition;
 use crate::{alloc_pages, memory::page_descriptor::Unassigned};
-use common::{constants::REGULAR_PAGE_SIZE, write_volatile};
+use common::constants::REGULAR_PAGE_SIZE;
 use core::{
     fmt::Debug,
     mem::{ManuallyDrop, size_of},
@@ -64,7 +64,7 @@ impl<T: SlabPosition> SlabDescriptor<T> {
         }
     }
 
-    pub fn alloc_obj(&mut self, obj: T) -> NonNull<T> {
+    pub fn alloc(&mut self) -> NonNull<T> {
         debug_assert!(
             self.next_free_idx.is_some(),
             "Called allocate on a full slab"
@@ -74,13 +74,12 @@ impl<T: SlabPosition> SlabDescriptor<T> {
         let preallocated = unsafe { &mut self.objects.as_mut()[idx] };
 
         self.next_free_idx = unsafe { preallocated.next_free_idx };
-        write_volatile!(preallocated.allocated, ManuallyDrop::new(obj));
 
         unsafe { NonNull::from_mut(&mut preallocated.allocated) }
     }
 
-    pub unsafe fn dealloc_obj(&mut self, obj: *const T) {
-        let freed_index = (obj.addr() - self.objects.as_ptr().addr())
+    pub unsafe fn dealloc(&mut self, ptr: *const T) {
+        let freed_index = (ptr.addr() - self.objects.as_ptr().addr())
             / size_of::<PreallocatedObject<T>>();
 
         unsafe {
@@ -122,7 +121,11 @@ impl SlabDescriptor<SlabDescriptor<Unassigned>> {
     ) -> NonNull<SlabDescriptor<SlabDescriptor<Unassigned>>> {
         let mut descriptor =
             SlabDescriptor::<SlabDescriptor<Unassigned>>::new(order, None);
-        let d = descriptor.alloc_obj(descriptor.as_unassigned().clone());
-        unsafe { d.as_ref().assign::<SlabDescriptor<Unassigned>>() }
+
+        let mut ptr = descriptor.alloc();
+
+        unsafe { *ptr.as_mut() = descriptor.as_unassigned().clone() }
+
+        unsafe { ptr.as_ref().assign::<SlabDescriptor<Unassigned>>() }
     }
 }

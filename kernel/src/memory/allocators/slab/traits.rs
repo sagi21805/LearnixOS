@@ -4,7 +4,7 @@ use crate::memory::page_descriptor::Unassigned;
 ///
 /// Shouldn't implement this trait manually; it is implemented
 /// via the `define_slab_system` macro.
-pub trait SlabPosition {
+pub trait SlabPosition: 'static + Sized {
     const POSITION: usize;
 }
 

@@ -16,18 +16,31 @@ use crate::{
 };
 use core::ptr::NonNull;
 
+#[derive(Debug)]
 pub struct Generic8(pub usize);
+#[derive(Debug)]
 pub struct Generic16(pub [usize; 2]);
+#[derive(Debug)]
 pub struct Generic32(pub [usize; 4]);
+#[derive(Debug)]
 pub struct Generic64(pub [usize; 8]);
+#[derive(Debug)]
 pub struct Generic96(pub [usize; 12]);
+#[derive(Debug)]
 pub struct Generic128(pub [usize; 16]);
+#[derive(Debug)]
 pub struct Generic192(pub [usize; 24]);
+#[derive(Debug)]
 pub struct Generic256(pub [usize; 32]);
+#[derive(Debug)]
 pub struct Generic512(pub [usize; 64]);
+#[derive(Debug)]
 pub struct Generic1024(pub [usize; 128]);
+#[derive(Debug)]
 pub struct Generic2048(pub [usize; 256]);
+#[derive(Debug)]
 pub struct Generic4096(pub [usize; 512]);
+#[derive(Debug)]
 pub struct Generic8192(pub [usize; 1024]);
 
 define_slab_system!(
@@ -52,6 +65,11 @@ pub static mut SLAB_ALLOCATOR: SlabAllocator = SlabAllocator::new();
 impl SlabAllocator {
     pub fn slab_of<T: SlabPosition>(&self) -> NonNull<SlabCache<T>> {
         self.slabs[T::POSITION].assign::<T>()
+    }
+
+    pub fn kmalloc<T: SlabPosition>(&self) -> NonNull<T> {
+        let mut slab = self.slab_of::<T>();
+        unsafe { slab.as_mut().alloc() }
     }
 }
 
