@@ -1,5 +1,3 @@
-use common::enums::ProgrammingInterface;
-
 use super::descriptor::SlabDescriptor;
 use super::traits::{SlabCacheConstructor, SlabPosition};
 use crate::memory::allocators::slab::SLAB_ALLOCATOR;
@@ -23,11 +21,11 @@ impl<T: SlabPosition> SlabCache<T> {
         unsafe { &mut *(self as *mut _ as *mut SlabCache<Unassigned>) }
     }
 
-    pub fn alloc(&mut self, obj: T) -> NonNull<T> {
+    pub fn alloc(&mut self) -> NonNull<T> {
         if let Some(mut partial) = self.partial {
             let partial = unsafe { partial.as_mut() };
 
-            let allocation = partial.alloc_obj(obj);
+            let allocation = partial.alloc();
 
             if partial.next_free_idx.is_none() {
                 self.partial = partial.next;
@@ -39,7 +37,7 @@ impl<T: SlabPosition> SlabCache<T> {
         if let Some(mut free) = self.free {
             let free = unsafe { free.as_mut() };
 
-            let allocation = free.alloc_obj(obj);
+            let allocation = free.alloc();
 
             self.free = free.next;
             free.next = self.partial;
@@ -53,7 +51,7 @@ impl<T: SlabPosition> SlabCache<T> {
              allocation from the page allocator is needed."
         )
     }
-    pub fn dealloc(&self, ptr: NonNull<T>) {
+    pub fn dealloc(&self, _ptr: NonNull<T>) {
         todo!()
     }
 }
@@ -68,12 +66,14 @@ impl SlabCache<Unassigned> {
 
 impl<T: SlabPosition> SlabCacheConstructor for SlabCache<T> {
     default fn new(buddy_order: usize) -> SlabCache<T> {
-        let free = unsafe {
+        let mut free = unsafe {
             SLAB_ALLOCATOR
                 .slab_of::<SlabDescriptor<Unassigned>>()
                 .as_mut()
-                .alloc(SlabDescriptor::new(buddy_order, None))
+                .alloc()
         };
+
+        unsafe { *free.as_mut() = SlabDescriptor::new(buddy_order, None) }
 
         SlabCache {
             buddy_order,
