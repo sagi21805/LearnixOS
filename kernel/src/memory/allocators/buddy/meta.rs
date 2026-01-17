@@ -1,4 +1,4 @@
-use core::{iter::ByRefSized, ptr::NonNull};
+use core::ptr::NonNull;
 
 use common::enums::BuddyOrder;
 
@@ -11,9 +11,9 @@ use crate::memory::{
 
 #[derive(Clone, Copy, Debug)]
 pub struct BuddyBlockMeta {
-    next: Option<NonNull<UnassignedPage>>,
-    prev: Option<NonNull<UnassignedPage>>,
-    order: Option<BuddyOrder>,
+    pub next: Option<NonNull<UnassignedPage>>,
+    pub prev: Option<NonNull<UnassignedPage>>,
+    pub order: Option<BuddyOrder>,
 }
 
 impl const Default for BuddyBlockMeta {

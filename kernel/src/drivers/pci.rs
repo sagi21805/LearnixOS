@@ -1,9 +1,6 @@
 extern crate alloc;
 
-use crate::{
-    drivers::ata::ahci::AHCIBaseAddress,
-    memory::allocators::page_allocator::allocator::PhysicalPageAllocator,
-};
+use crate::drivers::ata::ahci::AHCIBaseAddress;
 use alloc::vec::Vec;
 use common::enums::{
     CascadedPicInterruptLine, ClassCode, DeviceID, HeaderType,
