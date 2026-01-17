@@ -1,15 +1,21 @@
-use core::ptr;
+use core::ptr::{self, NonNull};
 
 use common::{
     address_types::PhysicalAddress,
+    constants::REGULAR_PAGE_SIZE,
     enums::{BUDDY_MAX_ORDER, BuddyOrder},
 };
 use cpu_utils::structures::paging::PageTable;
 
-use crate::memory::{
-    allocators::slab::traits::SlabPosition,
-    page_descriptor::{PAGES, Page, Unassigned, UnassignedPage},
+use crate::{
+    memory::{
+        allocators::buddy::meta::BuddyBlockMeta,
+        page_descriptor::{PAGES, Page, Unassigned, UnassignedPage},
+    },
+    println,
 };
+
+pub mod meta;
 
 pub static mut BUDDY_ALLOCATOR: BuddyAllocator = BuddyAllocator {
     freelist: [BuddyBlockMeta {
@@ -18,29 +24,6 @@ pub static mut BUDDY_ALLOCATOR: BuddyAllocator = BuddyAllocator {
         order: None,
     }; BUDDY_MAX_ORDER],
 };
-
-#[derive(Default, Clone, Copy, Debug)]
-pub struct BuddyBlockMeta {
-    // TODO CHANGE INTO REF BECAUSE IT CONSUMES LESS MEMORY
-    pub next: Option<*mut UnassignedPage>,
-    pub prev: Option<*mut UnassignedPage>,
-    pub order: Option<BuddyOrder>,
-}
-
-impl BuddyBlockMeta {
-    pub fn detach<T: SlabPosition>(&mut self) -> Option<*mut Page<T>> {
-        let detached = self.next? as *mut Page<T>; // None if there is no page to detach
-        self.next = unsafe { (*detached).buddy_meta.next };
-        Some(detached)
-    }
-
-    pub fn attach<T: SlabPosition>(&mut self, attachment: *mut Page<T>) {
-        let attachment_ref =
-            unsafe { &mut *attachment }.as_unassigned_mut();
-        attachment_ref.buddy_meta.next = self.next;
-        self.next = Some(attachment_ref as *mut UnassignedPage)
-    }
-}
 
 pub struct BuddyAllocator {
     freelist: [BuddyBlockMeta; BUDDY_MAX_ORDER],
@@ -63,7 +46,7 @@ impl BuddyAllocator {
                 .expect("Out of memory, swap is not implemented")
         });
 
-        (unsafe { &*page }).physical_address()
+        unsafe { page.as_ref().physical_address() }
     }
 
     // pub fn free_pages(&self, address: usize) {
@@ -75,14 +58,15 @@ impl BuddyAllocator {
     pub fn split_until(
         &mut self,
         wanted_order: usize,
-    ) -> Option<*mut UnassignedPage> {
+    ) -> Option<NonNull<UnassignedPage>> {
         let mut closet_order = ((wanted_order + 1)..BUDDY_MAX_ORDER)
             .find(|i| self.freelist[*i].next.is_some())?;
 
         let initial_page = unsafe {
-            &mut *self.freelist[closet_order]
+            self.freelist[closet_order]
                 .detach::<Unassigned>()
                 .unwrap()
+                .as_mut()
         };
 
         let (mut lhs, mut rhs) = unsafe { initial_page.split() }.unwrap();
@@ -91,7 +75,7 @@ impl BuddyAllocator {
         while closet_order != wanted_order {
             self.freelist[closet_order].attach(rhs);
 
-            let split_ref = unsafe { &mut *lhs };
+            let split_ref = unsafe { lhs.as_mut() };
 
             (lhs, rhs) = unsafe { split_ref.split().unwrap() };
             closet_order -= 1;
@@ -128,19 +112,38 @@ impl BuddyAllocator {
         let mut prev = None;
 
         while let Some(curr) = iter.next() {
-            curr.buddy_meta.next = iter.peek().map(|v| {
-                *v as *const UnassignedPage as *mut UnassignedPage
+            curr.buddy_meta.next = iter.peek().map(|v| unsafe {
+                NonNull::new_unchecked(
+                    *v as *const Page<Unassigned> as *mut UnassignedPage,
+                )
             });
             curr.buddy_meta.prev = prev;
             curr.buddy_meta.order = Some(BuddyOrder::MAX);
-            prev = Some(curr)
+            prev = Some(NonNull::from_mut(curr))
         }
         self.freelist[BUDDY_MAX_ORDER - 1] = BuddyBlockMeta {
-            next: Some(unsafe { (&mut PAGES[0]) as *mut UnassignedPage }),
+            next: Some(unsafe { NonNull::new_unchecked(&mut PAGES[0]) }),
             prev: None,
             order: Some(BuddyOrder::MAX),
         };
         // Allocate initial MB
-        self.alloc_pages(256);
+
+        // Allocate pages array
+        let mem_map_size_pages = unsafe {
+            (PAGES.len() * size_of::<UnassignedPage>()) / REGULAR_PAGE_SIZE
+        };
+        println!("Mem map pages total: {}", mem_map_size_pages);
+        println!(
+            "Mem Map allocation: {:x?}",
+            self.alloc_pages(256 + mem_map_size_pages)
+        );
     }
+}
+#[macro_export]
+/// Allocate the amount of pages specified, and return the address
+macro_rules! alloc_pages {
+    ($page_number: expr) => {{
+        use $crate::memory::allocators::buddy::BUDDY_ALLOCATOR;
+        BUDDY_ALLOCATOR.alloc_pages($page_number)
+    }};
 }
