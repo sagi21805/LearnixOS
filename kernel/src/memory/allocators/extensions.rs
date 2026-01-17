@@ -16,7 +16,7 @@ use strum::VariantArray;
 use common::error::TableError;
 use cpu_utils::structures::paging::EntryIndex;
 
-use crate::memory::allocators::page_allocator::buddy::BUDDY_ALLOCATOR;
+use crate::memory::allocators::buddy::BUDDY_ALLOCATOR;
 
 #[ext]
 pub impl PhysicalAddress {
