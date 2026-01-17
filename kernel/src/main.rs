@@ -34,11 +34,14 @@ use crate::{
         vga_display::color_code::ColorCode,
     },
     memory::{
-        allocators::page_allocator::{
-            allocator::PhysicalPageAllocator, buddy::BUDDY_ALLOCATOR,
+        allocators::{
+            buddy::BUDDY_ALLOCATOR,
+            slab::{
+                Generic512, SLAB_ALLOCATOR, descriptor::SlabDescriptor,
+            },
         },
         memory_map::{MemoryMap, MemoryRegion, parse_map},
-        page_descriptor::pages_init,
+        page_descriptor::{Unassigned, pages_init},
     },
 };
 
@@ -67,18 +70,17 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Obtained Memory Map");
     println!("{}", MemoryMap(parsed_memory_map!()));
 
-    pages_init(&MemoryMap(parsed_memory_map!()));
-    unsafe { BUDDY_ALLOCATOR.init() };
-
+    pages_init(MemoryMap(parsed_memory_map!()));
+    unsafe { BUDDY_ALLOCATOR.init(MemoryMap(parsed_memory_map!())) };
     okprintln!("Allocator Initialized");
     unsafe {
-        InterruptDescriptorTable::init(&mut IDT, alloc_pages!(1).into());
+        InterruptDescriptorTable::init(&mut IDT, alloc_pages!(1));
         okprintln!("Initialized interrupt descriptor table");
         interrupt_handlers::init(IDT.assume_init_mut());
         okprintln!("Initialized interrupts handlers");
         CascadedPIC::init(&mut PIC);
         okprintln!("Initialized Programmable Interrupt Controller");
-        let keyboard_buffer_address = alloc_pages!(1).into();
+        let keyboard_buffer_address = alloc_pages!(1).translate();
         Keyboard::init(
             &mut KEYBOARD,
             keyboard_buffer_address,
@@ -87,6 +89,20 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
+
+    unsafe { SLAB_ALLOCATOR.init() }
+
+    println!("{:?}", unsafe {
+        SLAB_ALLOCATOR.slab_of::<Generic512>().as_ref()
+    });
+
+    let generic512 = unsafe { SLAB_ALLOCATOR.kmalloc::<Generic512>() };
+    println!("{:?}", generic512);
+
+    println!("{:?}", unsafe {
+        SLAB_ALLOCATOR.slab_of::<Generic512>().as_ref()
+    });
+
     // panic!("")
     // let mut pci_devices = pci::scan_pci();
     // println!("Press ENTER to enumerate PCI devices!");

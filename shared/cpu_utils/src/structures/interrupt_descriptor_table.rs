@@ -1,5 +1,5 @@
 use common::{
-    address_types::VirtualAddress,
+    address_types::{PhysicalAddress, VirtualAddress},
     enums::{
         ProtectionLevel, SystemSegmentType,
         interrupts::{Interrupt, InterruptStackTable, InterruptType},
@@ -74,7 +74,7 @@ impl InterruptDescriptorTable {
     /// - `base_address`: A virtual address that the IDT will be placed on.
     pub fn init(
         uninit: &'static mut MaybeUninit<&mut Self>,
-        base_address: VirtualAddress,
+        base_address: PhysicalAddress,
     ) {
         let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
             MaybeUninit::uninit();

@@ -3,13 +3,14 @@ use core::ptr::{self, NonNull};
 use common::{
     address_types::PhysicalAddress,
     constants::REGULAR_PAGE_SIZE,
-    enums::{BUDDY_MAX_ORDER, BuddyOrder},
+    enums::{BUDDY_MAX_ORDER, BuddyOrder, MemoryRegionType},
 };
 use cpu_utils::structures::paging::PageTable;
 
 use crate::{
     memory::{
         allocators::buddy::meta::BuddyBlockMeta,
+        memory_map::{MemoryRegion, ParsedMemoryMap},
         page_descriptor::{PAGES, Page, Unassigned, UnassignedPage},
     },
     println,
@@ -18,11 +19,7 @@ use crate::{
 pub mod meta;
 
 pub static mut BUDDY_ALLOCATOR: BuddyAllocator = BuddyAllocator {
-    freelist: [BuddyBlockMeta {
-        next: None,
-        prev: None,
-        order: None,
-    }; BUDDY_MAX_ORDER],
+    freelist: [BuddyBlockMeta::default(); BUDDY_MAX_ORDER],
 };
 
 pub struct BuddyAllocator {
@@ -30,7 +27,7 @@ pub struct BuddyAllocator {
 }
 
 impl BuddyAllocator {
-    pub fn alloc_pages(&mut self, num_pages: usize) -> usize {
+    pub fn alloc_pages(&mut self, num_pages: usize) -> PhysicalAddress {
         assert!(
             num_pages <= (1 << BuddyOrder::MAX as usize),
             "Size cannot be greater then: {}",
@@ -85,14 +82,11 @@ impl BuddyAllocator {
         Some(lhs)
     }
 
-    pub fn merge(&self) {
-        unimplemented!()
-    }
+    pub fn merge(&self, page: NonNull<UnassignedPage>) {}
 
     pub fn alloc_table(&mut self) -> &'static mut PageTable {
         unsafe {
-            let address =
-                { PhysicalAddress::new_unchecked(self.alloc_pages(1)) };
+            let address = self.alloc_pages(1);
             ptr::write_volatile(
                 address.as_mut_ptr::<PageTable>(),
                 PageTable::empty(),
@@ -101,31 +95,46 @@ impl BuddyAllocator {
         }
     }
 
-    pub fn init(&'static mut self) {
-        let mut iter = unsafe {
-            PAGES
-                .iter_mut()
-                .step_by(1 << BuddyOrder::MAX as usize)
-                .peekable()
-        };
+    pub fn init(&'static mut self, map: ParsedMemoryMap) {
+        for area in map
+            .iter()
+            .filter(|a| a.region_type == MemoryRegionType::Usable)
+        {
+            let mut start = UnassignedPage::index_of_page(
+                (area.base_address as usize).into(),
+            );
+            let end = UnassignedPage::index_of_page(
+                ((area.base_address + area.length) as usize).into(),
+            );
 
-        let mut prev = None;
+            let mut prev = None;
 
-        while let Some(curr) = iter.next() {
-            curr.buddy_meta.next = iter.peek().map(|v| unsafe {
-                NonNull::new_unchecked(
-                    *v as *const Page<Unassigned> as *mut UnassignedPage,
+            while start < end {
+                let largest_order = BuddyOrder::try_from(
+                    ((end - start).ilog2().min(BuddyOrder::MAX as u32))
+                        as u8,
                 )
-            });
-            curr.buddy_meta.prev = prev;
-            curr.buddy_meta.order = Some(BuddyOrder::MAX);
-            prev = Some(NonNull::from_mut(curr))
+                .unwrap();
+
+                println!("{:?}", largest_order);
+
+                let curr = unsafe { &mut PAGES[start] };
+                let next = unsafe {
+                    &mut PAGES[start + (1 << largest_order as usize)]
+                };
+
+                curr.buddy_meta.next = Some(NonNull::from_mut(next));
+                curr.buddy_meta.prev = prev;
+                curr.buddy_meta.order = Some(largest_order);
+                prev = Some(NonNull::from_mut(curr));
+
+                self.freelist[largest_order as usize]
+                    .attach(NonNull::from_mut(curr));
+
+                start += largest_order as usize;
+            }
         }
-        self.freelist[BUDDY_MAX_ORDER - 1] = BuddyBlockMeta {
-            next: Some(unsafe { NonNull::new_unchecked(&mut PAGES[0]) }),
-            prev: None,
-            order: Some(BuddyOrder::MAX),
-        };
+
         // Allocate initial MB
 
         // Allocate pages array

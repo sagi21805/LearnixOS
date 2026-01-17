@@ -36,7 +36,7 @@ impl<T: SlabPosition> SlabDescriptor<T> {
         let mut objects = unsafe {
             NonNull::slice_from_raw_parts(
                 NonNull::new_unchecked(
-                    address as *mut PreallocatedObject<T>,
+                    address.as_mut_ptr::<PreallocatedObject<T>>(),
                 ),
                 ((1 << order) * REGULAR_PAGE_SIZE)
                     / size_of::<PreallocatedObject<T>>(),

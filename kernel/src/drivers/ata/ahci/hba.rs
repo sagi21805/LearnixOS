@@ -36,7 +36,7 @@ use crate::{
         vga_display::color_code::ColorCode,
     },
     eprintln,
-    memory::allocators::page_allocator::extensions::PhysicalAddressExt,
+    memory::allocators::extensions::PhysicalAddressExt,
     print, println,
 };
 
@@ -1231,94 +1231,96 @@ impl HBAMemoryRegisters {
     /// Returns the amount of active devices found and set them into idle
     /// state.
     pub fn probe_init(&mut self) -> usize {
-        println!(
-            "Detected {} implemented ports",
-            self.ghc.cap.number_of_ports()
-        );
+        //     println!(
+        //         "Detected {} implemented ports",
+        //         self.ghc.cap.number_of_ports()
+        //     );
 
-        println!(
-            "Supported command slots: {}, Supported 64bit addresses: {}",
-            self.ghc.cap.number_of_commands(),
-            self.ghc.cap.is_s64a()
-        );
+        //     println!(
+        //         "Supported command slots: {}, Supported 64bit addresses:
+        // {}",         self.ghc.cap.number_of_commands(),
+        //         self.ghc.cap.is_s64a()
+        //     );
 
-        let mut count = 0;
-        for (i, port) in self.ports.iter_mut().enumerate() {
-            if self.ghc.pi.is_port_implemented(i as u8)
-                && let Ok(power) = port.ssts.power()
-                && let InterfacePowerManagement::Active = power
-            {
-                count += 1;
-                println!("\nDetected device at port number: {}", i);
-                print!("  Device Power: ");
-                println!("{:?}", power ; color = ColorCode::new(Color::Green, Color::Black));
-                print!("  Device Speed: ");
-                println!("{}", port.ssts.speed() ; color = ColorCode::new(Color::Green, Color::Black));
-                print!("  Device type: ");
-                match port.sig.device_type() {
-                    Ok(t) => {
-                        println!("{:?}", t ; color = ColorCode::new(Color::Green, Color::Black) )
-                    }
-                    Err(e) => {
-                        println!("{:?}", e ; color = ColorCode::new(Color::Red, Color::Black) )
-                    }
-                }
-                port.cmd.stop();
+        //     let mut count = 0;
+        //     for (i, port) in self.ports.iter_mut().enumerate() {
+        //         if self.ghc.pi.is_port_implemented(i as u8)
+        //             && let Ok(power) = port.ssts.power()
+        //             && let InterfacePowerManagement::Active = power
+        //         {
+        //             count += 1;
+        //             println!("\nDetected device at port number: {}", i);
+        //             print!("  Device Power: ");
+        //             println!("{:?}", power ; color =
+        // ColorCode::new(Color::Green, Color::Black));
+        // print!("  Device Speed: ");             println!("{}",
+        // port.ssts.speed() ; color = ColorCode::new(Color::Green,
+        // Color::Black));             print!("  Device type: ");
+        //             match port.sig.device_type() {
+        //                 Ok(t) => {
+        //                     println!("{:?}", t ; color =
+        // ColorCode::new(Color::Green, Color::Black) )
+        // }                 Err(e) => {
+        //                     println!("{:?}", e ; color =
+        // ColorCode::new(Color::Red, Color::Black) )
+        // }             }
+        //             port.cmd.stop();
 
-                let clb_fbu_table = unsafe { alloc_pages!(1) };
-                for i in (0..4096).step_by(size_of::<usize>()) {
-                    unsafe {
-                        core::ptr::write_volatile(
-                            ((clb_fbu_table + i) + PHYSICAL_MEMORY_OFFSET)
-                                as *mut usize,
-                            0,
-                        );
-                    }
-                }
+        //             let clb_fbu_table = unsafe { alloc_pages!(1) };
+        //             for i in (0..4096).step_by(size_of::<usize>()) {
+        //                 unsafe {
+        //                     core::ptr::write_volatile(
+        //                         ((clb_fbu_table + i) +
+        // PHYSICAL_MEMORY_OFFSET)                             as
+        // *mut usize,                         0,
+        //                     );
+        //                 }
+        //             }
 
-                port.set_cmd_list_address(clb_fbu_table);
-                port.set_received_fis_address(
-                    clb_fbu_table + size_of::<CmdList>(),
-                );
+        //             port.set_cmd_list_address(clb_fbu_table);
+        //             port.set_received_fis_address(
+        //                 clb_fbu_table + size_of::<CmdList>(),
+        //             );
 
-                // MAPPING the first header with 8 entries (0x100 in total
-                // table size)
-                let cmd_list = port.cmd_list();
-                cmd_list.entries[0].set_cmd_table(
-                    clb_fbu_table
-                        + size_of::<CmdList>()
-                        + size_of::<ReceivedFis>(),
-                );
+        //             // MAPPING the first header with 8 entries (0x100 in
+        // total             // table size)
+        //             let cmd_list = port.cmd_list();
+        //             cmd_list.entries[0].set_cmd_table(
+        //                 clb_fbu_table
+        //                     + size_of::<CmdList>()
+        //                     + size_of::<ReceivedFis>(),
+        //             );
 
-                port.cmd.set_fre();
-                port.serr.zero_error();
-                // port.ie.set_dhre();
-                // port.ie.set_pse();
-                // port.ie.set_dse();
-                // port.ie.set_tfee();
-                port.is.clear_pending_interrupts();
-                self.ghc.is.clear_all();
+        //             port.cmd.set_fre();
+        //             port.serr.zero_error();
+        //             // port.ie.set_dhre();
+        //             // port.ie.set_pse();
+        //             // port.ie.set_dse();
+        //             // port.ie.set_tfee();
+        //             port.is.clear_pending_interrupts();
+        //             self.ghc.is.clear_all();
 
-                port.cmd.set_sud();
-                port.cmd.set_pod();
-                port.cmd.set_icc(InterfaceCommunicationControl::Active);
+        //             port.cmd.set_sud();
+        //             port.cmd.set_pod();
+        //
+        // port.cmd.set_icc(InterfaceCommunicationControl::Active);
 
-                loop {
-                    if !port.tfd.is_bsy()
-                        && !port.tfd.is_drq()
-                        && matches!(
-                            port.ssts.power().unwrap(),
-                            InterfacePowerManagement::Active
-                        )
-                    {
-                        break;
-                    }
-                }
-                port.cmd.start();
-                println!("Started port number: {}", i)
-            }
-        }
-
-        count
+        //             loop {
+        //                 if !port.tfd.is_bsy()
+        //                     && !port.tfd.is_drq()
+        //                     && matches!(
+        //                         port.ssts.power().unwrap(),
+        //                         InterfacePowerManagement::Active
+        //                     )
+        //                 {
+        //                     break;
+        //                 }
+        //             }
+        //             port.cmd.start();
+        //             println!("Started port number: {}", i)
+        //         }
+        //     }
+        todo!()
+        // count
     }
 }

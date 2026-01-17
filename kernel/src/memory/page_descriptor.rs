@@ -3,7 +3,7 @@ use core::ptr::NonNull;
 use crate::{
     memory::{
         allocators::{
-            page_allocator::buddy::BuddyBlockMeta,
+            buddy::meta::BuddyBlockMeta,
             slab::{cache::SlabCache, traits::SlabPosition},
         },
         memory_map::ParsedMemoryMap,
@@ -11,6 +11,7 @@ use crate::{
     println,
 };
 use common::{
+    address_types::PhysicalAddress,
     constants::{
         PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
@@ -24,15 +25,25 @@ pub struct Unassigned;
 
 pub type UnassignedPage = Page<Unassigned>;
 
-impl UnassignedPage {
-    pub fn assign<T: SlabPosition>(&self) -> &Page<T> {
-        let ptr = self as *const _ as usize;
-        unsafe { &*(ptr as *const Page<T>) }
+#[extend::ext]
+pub impl NonNull<Page<Unassigned>> {
+    fn assign<T: SlabPosition>(&self) -> NonNull<Page<T>> {
+        unsafe { NonNull::new_unchecked(self.as_ptr() as *mut Page<T>) }
     }
+}
 
-    pub fn assign_mut<T: SlabPosition>(&mut self) -> &mut Page<T> {
-        let ptr = self as *const _ as usize;
-        unsafe { &mut *(ptr as *mut Page<T>) }
+#[extend::ext]
+pub impl<T: SlabPosition> NonNull<Page<T>> {
+    fn as_unassigned(&self) -> NonNull<Page<Unassigned>> {
+        unsafe {
+            NonNull::new_unchecked(self.as_ptr() as *mut Page<Unassigned>)
+        }
+    }
+}
+
+impl UnassignedPage {
+    pub fn assign<T: SlabPosition>(&self) -> NonNull<Page<T>> {
+        unsafe { NonNull::new_unchecked(self as *const _ as *mut Page<T>) }
     }
 }
 
@@ -56,12 +67,14 @@ impl<T: 'static + SlabPosition> Page<T> {
         unsafe { &mut *(ptr as *mut UnassignedPage) }
     }
 
-    pub fn physical_address(&self) -> usize {
+    pub fn physical_address(&self) -> PhysicalAddress {
         let index = (self.as_unassigned() as *const _ as usize
             - PAGE_ALLOCATOR_OFFSET)
             / size_of::<UnassignedPage>();
 
-        index * REGULAR_PAGE_SIZE
+        unsafe {
+            PhysicalAddress::new_unchecked(index * REGULAR_PAGE_SIZE)
+        }
     }
 
     pub fn get_buddy(&self) -> Option<*mut Page<T>> {
@@ -82,9 +95,10 @@ impl<T: 'static + SlabPosition> Page<T> {
     ///
     /// # Safety
     /// This function does not attach the new references!
+    #[allow(clippy::type_complexity)]
     pub unsafe fn split(
         &mut self,
-    ) -> Option<(*mut Page<T>, *mut Page<T>)> {
+    ) -> Option<(NonNull<Page<T>>, NonNull<Page<T>>)> {
         // Reduce it's order to find it's order.
 
         let prev_order =
@@ -98,17 +112,21 @@ impl<T: 'static + SlabPosition> Page<T> {
             + (1 << prev_order as usize);
 
         // Find it's half
-        let buddy = unsafe { PAGES[index].assign_mut::<T>() };
+        let mut buddy = unsafe { PAGES[index].assign::<T>() };
 
         // Set the order of the buddy.
-        write_volatile!(buddy.buddy_meta.order, Some(prev_order));
+        write_volatile!(buddy.as_mut().buddy_meta.order, Some(prev_order));
 
-        Some((self as *mut Page<T>, buddy as *mut Page<T>))
+        Some((NonNull::from_mut(self), buddy))
+    }
+
+    pub const fn index_of_page(address: PhysicalAddress) -> usize {
+        address.as_usize() / REGULAR_PAGE_SIZE
     }
 }
 
-pub fn pages_init(map: &ParsedMemoryMap) -> usize {
-    let last = map.last().unwrap();
+pub fn pages_init(mmap: ParsedMemoryMap) -> usize {
+    let last = mmap.last().unwrap();
     let last_page = (last.base_address + last.length) as usize
         & !REGULAR_PAGE_ALIGNMENT.as_usize();
     let total_pages = last_page / REGULAR_PAGE_SIZE;
