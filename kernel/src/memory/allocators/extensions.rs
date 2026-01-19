@@ -1,8 +1,8 @@
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     constants::{
-        BIG_PAGE_SIZE, PAGE_ALLOCATOR_OFFSET, PAGE_DIRECTORY_ENTRIES,
-        PHYSICAL_MEMORY_OFFSET,
+        BIG_PAGE_SIZE, HUGE_PAGE_SIZE, PAGE_ALLOCATOR_OFFSET,
+        PAGE_DIRECTORY_ENTRIES, PHYSICAL_MEMORY_OFFSET,
     },
     enums::{PageSize, PageTableLevel},
     error::EntryError,
@@ -192,18 +192,19 @@ pub impl PageTable {
     // ANCHOR_END: page_table_find_available_page
 
     /// Map the region of memory from 0 to `mem_size_bytes`
-    /// at the top of the page table so that ```rust
-    /// VirtualAddress(0xffff800000000000) ->
-    /// PhysicalAddress(0) ```
+    /// at the top of the page table so that
+    ///
+    /// ```rust
+    /// VirtualAddress(0xffff800000000000) -> PhysicalAddress(0)
+    /// ```
     ///
     /// TODO: ADD SUPPORT FOR FULL FLAG
     #[allow(unsafe_op_in_unsafe_fn)]
     fn map_physical_memory(&mut self, mem_size_bytes: usize) {
         let mut second_level_entries_count =
-            (mem_size_bytes / BIG_PAGE_SIZE).max(1);
-        let mut third_level_entries_count = second_level_entries_count
-            .div_ceil(PAGE_ALLOCATOR_OFFSET)
-            .max(1);
+            (mem_size_bytes / BIG_PAGE_SIZE) + 1;
+        let mut third_level_entries_count =
+            second_level_entries_count.div_ceil(HUGE_PAGE_SIZE) + 1;
         let forth_level_entries_count = third_level_entries_count
             .div_ceil(PAGE_DIRECTORY_ENTRIES)
             .clamp(1, 256);

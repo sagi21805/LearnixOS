@@ -74,7 +74,7 @@ impl InterruptDescriptorTable {
     /// - `base_address`: A virtual address that the IDT will be placed on.
     pub fn init(
         uninit: &'static mut MaybeUninit<&mut Self>,
-        base_address: PhysicalAddress,
+        base_address: VirtualAddress,
     ) {
         let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
             MaybeUninit::uninit();
