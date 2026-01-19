@@ -36,6 +36,7 @@ use crate::{
     memory::{
         allocators::{
             buddy::BUDDY_ALLOCATOR,
+            extensions::PageTableExt,
             slab::{
                 Generic512, SLAB_ALLOCATOR, descriptor::SlabDescriptor,
             },
@@ -54,8 +55,9 @@ use common::{
 };
 use cpu_utils::{
     instructions::interrupts::{self},
-    structures::interrupt_descriptor_table::{
-        IDT, InterruptDescriptorTable,
+    structures::{
+        interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
+        paging::PageTable,
     },
 };
 
@@ -72,15 +74,25 @@ pub unsafe extern "C" fn _start() -> ! {
 
     pages_init(MemoryMap(parsed_memory_map!()));
     unsafe { BUDDY_ALLOCATOR.init(MemoryMap(parsed_memory_map!())) };
+
+    let last = MemoryMap(parsed_memory_map!()).last().unwrap();
+
+    PageTable::current_table_mut()
+        .map_physical_memory((last.base_address + last.length) as usize);
     okprintln!("Allocator Initialized");
+    println!("Address: {:x?}", unsafe { alloc_pages!(1).translate() });
     unsafe {
-        InterruptDescriptorTable::init(&mut IDT, alloc_pages!(1));
+        InterruptDescriptorTable::init(
+            &mut IDT,
+            alloc_pages!(1).translate(),
+        );
         okprintln!("Initialized interrupt descriptor table");
         interrupt_handlers::init(IDT.assume_init_mut());
         okprintln!("Initialized interrupts handlers");
         CascadedPIC::init(&mut PIC);
+
         okprintln!("Initialized Programmable Interrupt Controller");
-        let keyboard_buffer_address = alloc_pages!(1).translate();
+        let keyboard_buffer_address: common::address_types::VirtualAddress = alloc_pages!(1).translate();
         Keyboard::init(
             &mut KEYBOARD,
             keyboard_buffer_address,

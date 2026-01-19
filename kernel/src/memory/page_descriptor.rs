@@ -127,13 +127,12 @@ impl<T: 'static + SlabPosition> Page<T> {
 
 pub fn pages_init(mmap: ParsedMemoryMap) -> usize {
     let last = mmap.last().unwrap();
-    let last_page = (last.base_address + last.length) as usize
-        & !REGULAR_PAGE_ALIGNMENT.as_usize();
-    let total_pages = last_page / REGULAR_PAGE_SIZE;
+    let last_address = (last.base_address + last.length) as usize;
+    let total_pages = last_address / REGULAR_PAGE_SIZE;
 
     println!(
-        "Last Page: {}, Total Pages: {}, size_of_array: {:x?} Kib",
-        last_page,
+        "Last address: {}, Total Pages: {}, size_of_array: {:x?} Kib",
+        last_address,
         total_pages,
         total_pages * size_of::<Page<Unassigned>>() / 1024
     );
