@@ -2,6 +2,7 @@ use super::descriptor::SlabDescriptor;
 use super::traits::{SlabCacheConstructor, SlabPosition};
 use crate::memory::allocators::slab::SLAB_ALLOCATOR;
 use crate::memory::page_descriptor::Unassigned;
+use core::alloc::{Allocator, GlobalAlloc};
 use core::ptr::NonNull;
 
 #[derive(Clone, Debug)]
@@ -93,5 +94,22 @@ impl SlabCacheConstructor for SlabCache<SlabDescriptor<Unassigned>> {
             partial: Some(partial),
             full: None,
         }
+    }
+}
+
+unsafe impl Allocator for SlabCache<Unassigned> {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<NonNull<[u8]>, core::alloc::AllocError> {
+        todo!()
+    }
+
+    unsafe fn deallocate(
+        &self,
+        ptr: core::ptr::NonNull<u8>,
+        layout: core::alloc::Layout,
+    ) {
+        todo!()
     }
 }

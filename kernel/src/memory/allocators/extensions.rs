@@ -6,6 +6,7 @@ use common::{
     },
     enums::{PageSize, PageTableLevel},
     error::EntryError,
+    late_init::LateInit,
 };
 use cpu_utils::structures::paging::{
     PageEntryFlags, PageTable, PageTableEntry,
@@ -16,7 +17,9 @@ use strum::VariantArray;
 use common::error::TableError;
 use cpu_utils::structures::paging::EntryIndex;
 
-use crate::memory::allocators::buddy::BUDDY_ALLOCATOR;
+use crate::memory::{
+    allocators::buddy::BUDDY_ALLOCATOR, page_descriptor::PageMap,
+};
 
 #[ext]
 pub impl PhysicalAddress {
@@ -252,4 +255,10 @@ pub impl PageSize {
             }
         }
     }
+}
+
+#[ext]
+pub impl PageMap {
+    /// Reallocates the page array on the buddy allocator.
+    fn reallocate(init: &'static mut LateInit<PageMap>) {}
 }
