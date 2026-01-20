@@ -4,7 +4,10 @@ use crate::{
     memory::{
         allocators::{
             buddy::meta::BuddyBlockMeta,
-            slab::{cache::SlabCache, traits::SlabPosition},
+            slab::{
+                cache::SlabCache, descriptor::SlabDescriptor,
+                traits::SlabPosition,
+            },
         },
         memory_map::ParsedMemoryMap,
     },
@@ -19,6 +22,8 @@ use common::{
     late_init::LateInit,
     write_volatile,
 };
+
+use core::ops::{Deref, DerefMut};
 
 #[derive(Default, Clone, Copy, Debug)]
 pub struct Unassigned;
@@ -52,7 +57,7 @@ pub static mut PAGES: LateInit<&'static mut [UnassignedPage]> =
 
 #[derive(Debug)]
 pub struct Page<T: 'static + SlabPosition> {
-    pub owner: Option<NonNull<SlabCache<T>>>,
+    pub owner: Option<NonNull<SlabDescriptor<T>>>,
     pub buddy_meta: BuddyBlockMeta,
 }
 
@@ -120,6 +125,13 @@ impl<T: 'static + SlabPosition> Page<T> {
         Some((NonNull::from_mut(self), buddy))
     }
 
+    /// Try to merge this page with it's buddy.
+    ///
+    /// Note: This function should not be recursive
+    pub unsafe fn merge(&self) {
+        todo!("")
+    }
+
     pub const fn index_of_page(address: PhysicalAddress) -> usize {
         address.as_usize() / REGULAR_PAGE_SIZE
     }
@@ -152,5 +164,34 @@ pub fn pages_init(mmap: ParsedMemoryMap) -> usize {
             );
         }
         PAGES.as_ptr_range().end as usize
+    }
+}
+
+pub struct PageMap {
+    map: &'static mut [UnassignedPage],
+    // lock: todo!(),
+}
+
+impl Deref for PageMap {
+    type Target = [UnassignedPage];
+
+    fn deref(&self) -> &Self::Target {
+        self.map
+    }
+}
+
+impl DerefMut for PageMap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.map
+    }
+}
+
+impl PageMap {
+    ///  Initializes all pages on a constant address.
+    pub fn init(
+        uninit: &'static mut LateInit<PageMap>,
+        mmap: ParsedMemoryMap,
+    ) {
+        todo!()
     }
 }

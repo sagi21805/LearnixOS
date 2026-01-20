@@ -2,19 +2,14 @@ use core::ptr::{self, NonNull};
 
 use common::{
     address_types::PhysicalAddress,
-    constants::REGULAR_PAGE_SIZE,
-    enums::{BUDDY_MAX_ORDER, BuddyOrder, Color, MemoryRegionType},
+    enums::{BUDDY_MAX_ORDER, BuddyOrder, MemoryRegionType},
 };
 use cpu_utils::structures::paging::PageTable;
 
-use crate::{
-    drivers::vga_display::color_code::ColorCode,
-    memory::{
-        allocators::buddy::meta::BuddyBlockMeta,
-        memory_map::{MemoryRegion, ParsedMemoryMap},
-        page_descriptor::{PAGES, Page, Unassigned, UnassignedPage},
-    },
-    print, println,
+use crate::memory::{
+    allocators::buddy::meta::BuddyBlockMeta,
+    memory_map::ParsedMemoryMap,
+    page_descriptor::{PAGES, Unassigned, UnassignedPage},
 };
 
 pub mod meta;
@@ -83,7 +78,9 @@ impl BuddyAllocator {
         Some(lhs)
     }
 
-    pub fn merge(&self, page: NonNull<UnassignedPage>) {}
+    pub fn merge_until_max(&self, page: NonNull<UnassignedPage>) {
+        todo!()
+    }
 
     pub fn alloc_table(&mut self) -> &'static mut PageTable {
         unsafe {
@@ -96,7 +93,11 @@ impl BuddyAllocator {
         }
     }
 
-    pub fn init(&'static mut self, map: ParsedMemoryMap) {
+    /// The code_end number should be the end address of the code.
+    ///
+    /// This function will not put in the free list pages that hold
+    /// addresses from 0->code_end
+    pub fn init(&'static mut self, map: ParsedMemoryMap, code_end: usize) {
         for area in map
             .iter()
             .filter(|a| a.region_type == MemoryRegionType::Usable)
@@ -117,10 +118,6 @@ impl BuddyAllocator {
                 )
                 .unwrap();
 
-                println!("Start: {}, end: {}", start, end);
-
-                println!("{:?}", largest_order);
-
                 let curr = unsafe { &mut PAGES[start] };
                 let next = unsafe {
                     &mut PAGES[start + ((1 << largest_order as usize) - 1)]
@@ -137,34 +134,6 @@ impl BuddyAllocator {
                 start += 1 << largest_order as usize;
             }
         }
-
-        for (i, meta) in self.freelist.iter().enumerate() {
-            let mut next = meta.next;
-
-            if next.is_some() {
-                println!("Order: {:?}", i ; color = ColorCode::new(Color::Blue, Color::Black));
-            } else {
-                continue;
-            }
-
-            while let Some(node) = next {
-                print!("{:?} -> ", node);
-                unsafe { next = node.as_ref().buddy_meta.next };
-            }
-
-            println!("");
-        }
-        // Allocate initial MB
-
-        // Allocate pages array
-        // let mem_map_size_pages = unsafe {
-        //     (PAGES.len() * size_of::<UnassignedPage>()) /
-        // REGULAR_PAGE_SIZE };
-        // println!("Mem map pages total: {}", mem_map_size_pages);
-        // println!(
-        //     "Mem Map allocation: {:x?}",
-        //     self.alloc_pages(256 + mem_map_size_pages)
-        // );
     }
 }
 #[macro_export]

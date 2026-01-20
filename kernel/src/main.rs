@@ -38,11 +38,12 @@ use crate::{
             buddy::BUDDY_ALLOCATOR,
             extensions::PageTableExt,
             slab::{
-                Generic512, SLAB_ALLOCATOR, descriptor::SlabDescriptor,
+                Generic512, Generic8192, SLAB_ALLOCATOR,
+                descriptor::SlabDescriptor,
             },
         },
         memory_map::{MemoryMap, MemoryRegion, parse_map},
-        page_descriptor::{Unassigned, pages_init},
+        page_descriptor::{PAGES, Unassigned, UnassignedPage, pages_init},
     },
 };
 
@@ -73,14 +74,13 @@ pub unsafe extern "C" fn _start() -> ! {
     println!("{}", MemoryMap(parsed_memory_map!()));
 
     pages_init(MemoryMap(parsed_memory_map!()));
-    unsafe { BUDDY_ALLOCATOR.init(MemoryMap(parsed_memory_map!())) };
+    unsafe { BUDDY_ALLOCATOR.init(MemoryMap(parsed_memory_map!()), 0) };
 
     let last = MemoryMap(parsed_memory_map!()).last().unwrap();
 
     PageTable::current_table_mut()
         .map_physical_memory((last.base_address + last.length) as usize);
-    okprintln!("Allocator Initialized");
-    println!("Address: {:x?}", unsafe { alloc_pages!(1).translate() });
+    okprintln!("Initialized buddy allocator");
     unsafe {
         InterruptDescriptorTable::init(
             &mut IDT,
@@ -103,17 +103,7 @@ pub unsafe extern "C" fn _start() -> ! {
     }
 
     unsafe { SLAB_ALLOCATOR.init() }
-
-    println!("{:?}", unsafe {
-        SLAB_ALLOCATOR.slab_of::<Generic512>().as_ref()
-    });
-
-    let generic512 = unsafe { SLAB_ALLOCATOR.kmalloc::<Generic512>() };
-    println!("{:?}", generic512);
-
-    println!("{:?}", unsafe {
-        SLAB_ALLOCATOR.slab_of::<Generic512>().as_ref()
-    });
+    okprintln!("Initialized slab allocator");
 
     // panic!("")
     // let mut pci_devices = pci::scan_pci();

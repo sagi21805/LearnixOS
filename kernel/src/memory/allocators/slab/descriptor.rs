@@ -32,7 +32,7 @@ impl<T: SlabPosition> SlabDescriptor<T> {
         order: usize,
         next: Option<NonNull<SlabDescriptor<T>>>,
     ) -> SlabDescriptor<T> {
-        let address = unsafe { alloc_pages!(1 << order) };
+        let address = unsafe { alloc_pages!(1 << order).translate() };
         let mut objects = unsafe {
             NonNull::slice_from_raw_parts(
                 NonNull::new_unchecked(

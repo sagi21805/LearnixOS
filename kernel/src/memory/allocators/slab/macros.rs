@@ -50,10 +50,14 @@ macro_rules! define_slab_system {
                     let index = <$t>::POSITION;
 
                     self.slabs[index].write(SlabCache::<$t>::new(
-                        size_of::<$t>().next_multiple_of(REGULAR_PAGE_SIZE) / REGULAR_PAGE_SIZE
+                        (size_of::<$t>().next_multiple_of(REGULAR_PAGE_SIZE) / REGULAR_PAGE_SIZE) - 1
                     ).as_unassigned().clone());
                 )*
             }
         }
     }
 }
+
+// TODO implement reverse lookup with an enum that will automatically be
+// generated and check the code generated on compiler explorer. if
+// interesting, write on it on the book
