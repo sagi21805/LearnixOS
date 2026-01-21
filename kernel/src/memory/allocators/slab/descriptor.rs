@@ -78,8 +78,11 @@ impl<T: SlabPosition> SlabDescriptor<T> {
         unsafe { NonNull::from_mut(&mut preallocated.allocated) }
     }
 
-    pub unsafe fn dealloc(&mut self, ptr: *const T) {
-        let freed_index = (ptr.addr() - self.objects.as_ptr().addr())
+    pub unsafe fn dealloc(&mut self, ptr: NonNull<T>) {
+        todo!("Remember to call drop on the item");
+
+        let freed_index = (ptr.as_ptr().addr()
+            - self.objects.as_ptr().addr())
             / size_of::<PreallocatedObject<T>>();
 
         unsafe {
