@@ -1,8 +1,8 @@
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     constants::{
-        BIG_PAGE_SIZE, HUGE_PAGE_SIZE, PAGE_ALLOCATOR_OFFSET,
-        PAGE_DIRECTORY_ENTRIES, PHYSICAL_MEMORY_OFFSET,
+        BIG_PAGE_SIZE, HUGE_PAGE_SIZE, PAGE_DIRECTORY_ENTRIES,
+        PHYSICAL_MEMORY_OFFSET,
     },
     enums::{PageSize, PageTableLevel},
     error::EntryError,

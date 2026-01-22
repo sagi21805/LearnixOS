@@ -80,6 +80,7 @@
         "ipms",
         "IRDA",
         "ISDN",
+        "kfree",
         "kmalloc",
         "lctrl",
         "Learnix",
