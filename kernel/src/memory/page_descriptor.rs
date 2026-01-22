@@ -4,10 +4,7 @@ use crate::{
     memory::{
         allocators::{
             buddy::meta::BuddyBlockMeta,
-            slab::{
-                cache::SlabCache, descriptor::SlabDescriptor,
-                traits::SlabPosition,
-            },
+            slab::{descriptor::SlabDescriptor, traits::SlabPosition},
         },
         memory_map::ParsedMemoryMap,
     },
@@ -15,9 +12,7 @@ use crate::{
 };
 use common::{
     address_types::PhysicalAddress,
-    constants::{
-        PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
-    },
+    constants::{PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_SIZE},
     enums::BuddyOrder,
     late_init::LateInit,
     write_volatile,
@@ -61,6 +56,8 @@ pub struct Page<T: 'static + SlabPosition> {
     pub buddy_meta: BuddyBlockMeta,
 }
 
+pub struct 
+
 impl<T: 'static + SlabPosition> Page<T> {
     pub fn as_unassigned(&self) -> &UnassignedPage {
         let ptr = self as *const _ as usize;
@@ -74,7 +71,7 @@ impl<T: 'static + SlabPosition> Page<T> {
 
     pub fn physical_address(&self) -> PhysicalAddress {
         let index = (self.as_unassigned() as *const _ as usize
-            - PAGE_ALLOCATOR_OFFSET)
+            - unsafe { PAGES.as_ptr().addr() })
             / size_of::<UnassignedPage>();
 
         unsafe {
@@ -111,8 +108,9 @@ impl<T: 'static + SlabPosition> Page<T> {
                 .unwrap();
 
         write_volatile!(self.buddy_meta.order, Some(prev_order));
+
         let index = ((self.as_unassigned() as *const _ as usize
-            - PAGE_ALLOCATOR_OFFSET)
+            - unsafe { PAGES.as_ptr().addr() })
             / size_of::<UnassignedPage>())
             + (1 << prev_order as usize);
 
