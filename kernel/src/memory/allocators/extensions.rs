@@ -18,7 +18,7 @@ use common::error::TableError;
 use cpu_utils::structures::paging::EntryIndex;
 
 use crate::memory::{
-    allocators::buddy::BUDDY_ALLOCATOR, page_descriptor::PageMap,
+    allocators::buddy::BUDDY_ALLOCATOR, page::map::PageMap,
 };
 
 #[ext]

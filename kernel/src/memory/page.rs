@@ -1,12 +1,13 @@
-use core::ptr::NonNull;
+use core::{mem::ManuallyDrop, ptr::NonNull};
 
 use crate::{
     memory::{
-        allocators::{
-            buddy::meta::BuddyBlockMeta,
-            slab::{descriptor::SlabDescriptor, traits::SlabPosition},
+        allocators::slab::{
+            descriptor::SlabDescriptor, traits::SlabPosition,
         },
         memory_map::ParsedMemoryMap,
+        page::meta::{BuddyPageMeta, PageMeta},
+        unassigned::{AssignSlab, UnassignSlab, Unassigned},
     },
     println,
 };
@@ -18,22 +19,25 @@ use common::{
     write_volatile,
 };
 
-use core::ops::{Deref, DerefMut};
-
-#[derive(Default, Clone, Copy, Debug)]
-pub struct Unassigned;
+pub mod map;
+pub mod meta;
 
 pub type UnassignedPage = Page<Unassigned>;
 
-#[extend::ext]
-pub impl NonNull<Page<Unassigned>> {
+pub static mut PAGES: LateInit<&'static mut [UnassignedPage]> =
+    LateInit::uninit();
+
+impl AssignSlab for NonNull<Page<Unassigned>> {
+    type Target<Unassigned: SlabPosition> = NonNull<Page<Unassigned>>;
+
     fn assign<T: SlabPosition>(&self) -> NonNull<Page<T>> {
         unsafe { NonNull::new_unchecked(self.as_ptr() as *mut Page<T>) }
     }
 }
 
-#[extend::ext]
-pub impl<T: SlabPosition> NonNull<Page<T>> {
+impl<T: SlabPosition> UnassignSlab for NonNull<Page<T>> {
+    type Target = NonNull<Page<Unassigned>>;
+
     fn as_unassigned(&self) -> NonNull<Page<Unassigned>> {
         unsafe {
             NonNull::new_unchecked(self.as_ptr() as *mut Page<Unassigned>)
@@ -41,36 +45,14 @@ pub impl<T: SlabPosition> NonNull<Page<T>> {
     }
 }
 
-impl UnassignedPage {
-    pub fn assign<T: SlabPosition>(&self) -> NonNull<Page<T>> {
-        unsafe { NonNull::new_unchecked(self as *const _ as *mut Page<T>) }
-    }
-}
-
-pub static mut PAGES: LateInit<&'static mut [UnassignedPage]> =
-    LateInit::uninit();
-
-#[derive(Debug)]
 pub struct Page<T: 'static + SlabPosition> {
     pub owner: Option<NonNull<SlabDescriptor<T>>>,
-    pub buddy_meta: BuddyBlockMeta,
+    pub meta: PageMeta,
 }
 
-pub struct 
-
 impl<T: 'static + SlabPosition> Page<T> {
-    pub fn as_unassigned(&self) -> &UnassignedPage {
-        let ptr = self as *const _ as usize;
-        unsafe { &*(ptr as *const UnassignedPage) }
-    }
-
-    pub fn as_unassigned_mut(&mut self) -> &mut UnassignedPage {
-        let ptr = self as *const _ as usize;
-        unsafe { &mut *(ptr as *mut UnassignedPage) }
-    }
-
     pub fn physical_address(&self) -> PhysicalAddress {
-        let index = (self.as_unassigned() as *const _ as usize
+        let index = (self as *const _ as usize
             - unsafe { PAGES.as_ptr().addr() })
             / size_of::<UnassignedPage>();
 
@@ -80,7 +62,7 @@ impl<T: 'static + SlabPosition> Page<T> {
     }
 
     pub fn get_buddy(&self) -> Option<*mut Page<T>> {
-        let order = self.buddy_meta.order?;
+        let order = unsafe { self.meta.buddy.order? };
         if let BuddyOrder::MAX = order {
             None
         } else {
@@ -103,22 +85,27 @@ impl<T: 'static + SlabPosition> Page<T> {
     ) -> Option<(NonNull<Page<T>>, NonNull<Page<T>>)> {
         // Reduce it's order to find it's order.
 
-        let prev_order =
-            BuddyOrder::try_from(self.buddy_meta.order? as u8 - 1)
-                .unwrap();
+        let prev_order = BuddyOrder::try_from(
+            unsafe { self.meta.buddy.order? } as u8 - 1,
+        )
+        .unwrap();
 
-        write_volatile!(self.buddy_meta.order, Some(prev_order));
+        write_volatile!((*self.meta.buddy).order, Some(prev_order));
 
-        let index = ((self.as_unassigned() as *const _ as usize
+        let index = ((self as *const _ as usize
             - unsafe { PAGES.as_ptr().addr() })
             / size_of::<UnassignedPage>())
             + (1 << prev_order as usize);
 
         // Find it's half
-        let mut buddy = unsafe { PAGES[index].assign::<T>() };
+        let mut buddy =
+            unsafe { NonNull::from_mut(&mut PAGES[index]).assign::<T>() };
 
         // Set the order of the buddy.
-        write_volatile!(buddy.as_mut().buddy_meta.order, Some(prev_order));
+        write_volatile!(
+            (*buddy.as_mut().meta.buddy).order,
+            Some(prev_order)
+        );
 
         Some((NonNull::from_mut(self), buddy))
     }
@@ -156,40 +143,13 @@ pub fn pages_init(mmap: ParsedMemoryMap) -> usize {
             core::ptr::write_volatile(
                 p as *mut UnassignedPage,
                 UnassignedPage {
-                    buddy_meta: BuddyBlockMeta::default(),
+                    meta: PageMeta {
+                        buddy: ManuallyDrop::new(BuddyPageMeta::default()),
+                    },
                     owner: None,
                 },
             );
         }
         PAGES.as_ptr_range().end as usize
-    }
-}
-
-pub struct PageMap {
-    map: &'static mut [UnassignedPage],
-    // lock: todo!(),
-}
-
-impl Deref for PageMap {
-    type Target = [UnassignedPage];
-
-    fn deref(&self) -> &Self::Target {
-        self.map
-    }
-}
-
-impl DerefMut for PageMap {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.map
-    }
-}
-
-impl PageMap {
-    ///  Initializes all pages on a constant address.
-    pub fn init(
-        uninit: &'static mut LateInit<PageMap>,
-        mmap: ParsedMemoryMap,
-    ) {
-        todo!()
     }
 }
