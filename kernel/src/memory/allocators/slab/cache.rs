@@ -1,7 +1,7 @@
 use super::descriptor::SlabDescriptor;
 use super::traits::{SlabCacheConstructor, SlabPosition};
 use crate::memory::allocators::slab::SLAB_ALLOCATOR;
-use crate::memory::page_descriptor::Unassigned;
+use crate::memory::unassigned::{AssignSlab, Unassigned};
 use core::ptr::NonNull;
 
 #[derive(Clone, Debug)]
@@ -77,7 +77,7 @@ impl<T: SlabPosition> SlabCacheConstructor for SlabCache<T> {
 
         SlabCache {
             buddy_order,
-            free: Some(unsafe { free.as_ref().assign::<T>() }),
+            free: Some(free.assign::<T>()),
             partial: None,
             full: None,
         }

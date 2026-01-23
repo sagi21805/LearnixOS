@@ -24,13 +24,14 @@ macro_rules! register_slabs {
 macro_rules! define_slab_system {
     ($($t:ty),* $(,)?) => {
         use common::constants::REGULAR_PAGE_SIZE;
+        use $crate::memory::allocators::slab::traits::SlabCacheConstructor;
 
         $crate::register_slabs!($($t),*);
 
         const COUNT: usize = [$(stringify!($t)),*].len();
 
         pub struct SlabAllocator {
-            slabs: [common::late_init::LateInit<SlabCache<$crate::memory::page_descriptor::Unassigned>>; COUNT]
+            slabs: [common::late_init::LateInit<SlabCache<$crate::memory::unassigned::Unassigned>>; COUNT]
         }
 
         impl SlabAllocator {

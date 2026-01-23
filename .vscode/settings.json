@@ -167,6 +167,7 @@
         "udma",
         "ufis",
         "UHCI",
+        "Unassignment",
         "Uninit",
         "USBPI",
         "virt",
