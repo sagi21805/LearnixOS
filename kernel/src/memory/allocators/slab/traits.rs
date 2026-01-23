@@ -1,4 +1,4 @@
-use crate::memory::page_descriptor::Unassigned;
+use crate::memory::unassigned::Unassigned;
 
 /// Get the position on the slab array, for a slab of the given type.
 ///

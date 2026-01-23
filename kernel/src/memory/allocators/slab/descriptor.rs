@@ -1,9 +1,13 @@
 use super::traits::SlabPosition;
-use crate::{alloc_pages, memory::page_descriptor::Unassigned};
+use crate::{
+    alloc_pages,
+    memory::unassigned::{AssignSlab, UnassignSlab, Unassigned},
+};
 use common::constants::REGULAR_PAGE_SIZE;
 use core::{
     fmt::Debug,
     mem::{ManuallyDrop, size_of},
+    num::{NonZero, NonZeroU16},
     ptr::NonNull,
 };
 use nonmax::NonMaxU16;
@@ -23,8 +27,44 @@ impl<T> Debug for PreallocatedObject<T> {
 #[derive(Debug, Clone)]
 pub struct SlabDescriptor<T: 'static + Sized + SlabPosition> {
     pub next_free_idx: Option<NonMaxU16>,
+    pub total_allocated: u16,
     pub objects: NonNull<[PreallocatedObject<T>]>,
     pub next: Option<NonNull<SlabDescriptor<T>>>,
+}
+
+impl<T: SlabPosition> UnassignSlab for SlabDescriptor<T> {
+    type Target = SlabDescriptor<Unassigned>;
+
+    fn as_unassigned(&self) -> Self::Target {
+        unsafe {
+            (*(self as *const SlabDescriptor<T>
+                as *mut SlabDescriptor<Unassigned>))
+                .clone()
+        }
+    }
+}
+
+impl AssignSlab for NonNull<SlabDescriptor<Unassigned>> {
+    type Target<Unassigned: SlabPosition> =
+        NonNull<SlabDescriptor<Unassigned>>;
+
+    fn assign<T: SlabPosition>(&self) -> NonNull<SlabDescriptor<T>> {
+        unsafe {
+            NonNull::new_unchecked(self.as_ptr() as *mut SlabDescriptor<T>)
+        }
+    }
+}
+
+impl<T: SlabPosition> UnassignSlab for NonNull<SlabDescriptor<T>> {
+    type Target = NonNull<SlabDescriptor<Unassigned>>;
+
+    fn as_unassigned(&self) -> Self::Target {
+        unsafe {
+            NonNull::new_unchecked(
+                self.as_ptr() as *mut SlabDescriptor<Unassigned>
+            )
+        }
+    }
 }
 
 impl<T: SlabPosition> SlabDescriptor<T> {
@@ -59,6 +99,7 @@ impl<T: SlabPosition> SlabDescriptor<T> {
 
         SlabDescriptor {
             next_free_idx: Some(unsafe { NonMaxU16::new_unchecked(0) }),
+            total_allocated: 0,
             objects,
             next,
         }
@@ -74,6 +115,8 @@ impl<T: SlabPosition> SlabDescriptor<T> {
         let preallocated = unsafe { &mut self.objects.as_mut()[idx] };
 
         self.next_free_idx = unsafe { preallocated.next_free_idx };
+
+        self.total_allocated += 1;
 
         unsafe { NonNull::from_mut(&mut preallocated.allocated) }
     }
@@ -91,30 +134,8 @@ impl<T: SlabPosition> SlabDescriptor<T> {
         };
         self.next_free_idx =
             unsafe { Some(NonMaxU16::new_unchecked(freed_index as u16)) };
-    }
 
-    pub fn as_unassigned(&self) -> &SlabDescriptor<Unassigned> {
-        unsafe {
-            &*(self as *const _ as *const SlabDescriptor<Unassigned>)
-        }
-    }
-
-    pub fn as_unassigned_mut(
-        &mut self,
-    ) -> &mut SlabDescriptor<Unassigned> {
-        unsafe {
-            &mut *(self as *mut _ as *mut SlabDescriptor<Unassigned>)
-        }
-    }
-}
-
-impl SlabDescriptor<Unassigned> {
-    pub fn assign<T: SlabPosition>(&self) -> NonNull<SlabDescriptor<T>> {
-        unsafe {
-            NonNull::new_unchecked(
-                self as *const _ as *mut SlabDescriptor<T>,
-            )
-        }
+        self.total_allocated -= 1;
     }
 }
 
@@ -125,10 +146,10 @@ impl SlabDescriptor<SlabDescriptor<Unassigned>> {
         let mut descriptor =
             SlabDescriptor::<SlabDescriptor<Unassigned>>::new(order, None);
 
-        let mut ptr = descriptor.alloc();
+        let mut self_allocation = descriptor.alloc();
 
-        unsafe { *ptr.as_mut() = descriptor.as_unassigned().clone() }
+        unsafe { *self_allocation.as_mut() = descriptor.as_unassigned() }
 
-        unsafe { ptr.as_ref().assign::<SlabDescriptor<Unassigned>>() }
+        self_allocation.assign::<SlabDescriptor<Unassigned>>()
     }
 }

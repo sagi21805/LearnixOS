@@ -12,12 +12,12 @@ use crate::{
         allocators::{
             extensions::VirtualAddressExt,
             slab::{
-                cache::SlabCache,
-                descriptor::SlabDescriptor,
-                traits::{SlabCacheConstructor, SlabPosition},
+                cache::SlabCache, descriptor::SlabDescriptor,
+                traits::SlabPosition,
             },
         },
-        page_descriptor::{PAGES, Unassigned, UnassignedPage},
+        page::{PAGES, UnassignedPage},
+        unassigned::{AssignSlab, Unassigned},
     },
 };
 use core::{
@@ -71,20 +71,15 @@ impl SlabAllocator {
                 .translate()
         });
 
-        let page = unsafe { PAGES[index].assign::<T>().as_ref() };
+        let page = unsafe {
+            NonNull::from_mut(&mut PAGES[index]).assign::<T>().as_ref()
+        };
 
         if let Some(mut descriptor) = page.owner {
             unsafe { descriptor.as_mut().dealloc(ptr) };
         } else {
             panic!("Object is freed from a page that has not owner!")
         }
-    }
-}
-
-#[extend::ext]
-impl NonNull<SlabDescriptor<Unassigned>> {
-    fn assign<T: SlabPosition>(self) -> NonNull<SlabDescriptor<T>> {
-        unsafe { self.as_ref().assign::<T>() }
     }
 }
 

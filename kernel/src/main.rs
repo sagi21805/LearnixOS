@@ -26,24 +26,18 @@ use core::{num::NonZero, panic::PanicInfo};
 
 use crate::{
     drivers::{
-        ata::ahci::{HBAMemoryRegisters, IdentityPacketData},
         interrupt_handlers,
         keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
-        pci::{self},
         pic8259::{CascadedPIC, PIC},
         vga_display::color_code::ColorCode,
     },
     memory::{
         allocators::{
-            buddy::BUDDY_ALLOCATOR,
-            extensions::PageTableExt,
-            slab::{
-                Generic512, Generic8192, SLAB_ALLOCATOR,
-                descriptor::SlabDescriptor,
-            },
+            buddy::BUDDY_ALLOCATOR, extensions::PageTableExt,
+            slab::SLAB_ALLOCATOR,
         },
-        memory_map::{MemoryMap, MemoryRegion, parse_map},
-        page_descriptor::{PAGES, Unassigned, UnassignedPage, pages_init},
+        memory_map::{MemoryMap, parse_map},
+        page::pages_init,
     },
 };
 
