@@ -7,19 +7,17 @@ use common::{
 use cpu_utils::structures::paging::PageTable;
 
 use crate::memory::{
-    allocators::buddy::meta::BuddyBlockMeta,
     memory_map::ParsedMemoryMap,
-    page_descriptor::{PAGES, Unassigned, UnassignedPage},
+    page::{PAGES, UnassignedPage, meta::BuddyPageMeta},
+    unassigned::Unassigned,
 };
 
-pub mod meta;
-
 pub static mut BUDDY_ALLOCATOR: BuddyAllocator = BuddyAllocator {
-    freelist: [BuddyBlockMeta::default(); BUDDY_MAX_ORDER],
+    freelist: [const { BuddyPageMeta::default() }; BUDDY_MAX_ORDER],
 };
 
 pub struct BuddyAllocator {
-    freelist: [BuddyBlockMeta; BUDDY_MAX_ORDER],
+    freelist: [BuddyPageMeta; BUDDY_MAX_ORDER],
 }
 
 impl BuddyAllocator {
@@ -122,10 +120,12 @@ impl BuddyAllocator {
                 let next = unsafe {
                     &mut PAGES[start + ((1 << largest_order as usize) - 1)]
                 };
-
-                curr.buddy_meta.next = Some(NonNull::from_mut(next));
-                curr.buddy_meta.prev = prev;
-                curr.buddy_meta.order = Some(largest_order);
+                unsafe {
+                    (*curr.meta.buddy).next =
+                        Some(NonNull::from_mut(next));
+                    (*curr.meta.buddy).prev = prev;
+                    (*curr.meta.buddy).order = Some(largest_order);
+                }
                 prev = Some(NonNull::from_mut(curr));
 
                 self.freelist[largest_order as usize]
