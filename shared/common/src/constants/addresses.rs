@@ -16,6 +16,7 @@ pub const TOP_IDENTITY_PAGE_TABLE_L3_OFFSET: usize = 0xe000;
 pub const TOP_IDENTITY_PAGE_TABLE_L2_OFFSET: usize = 0xf000;
 pub const KERNEL_OFFSET: u64 = 0x10000;
 
-pub const PAGE_ALLOCATOR_OFFSET: usize = 0x100000;
 #[cfg(target_arch = "x86_64")]
 pub const PHYSICAL_MEMORY_OFFSET: usize = 0xffff800000000000;
+#[cfg(target_arch = "x86_64")]
+pub const PAGE_ALLOCATOR_OFFSET: usize = PHYSICAL_MEMORY_OFFSET + 0x100000;
