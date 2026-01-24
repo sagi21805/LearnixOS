@@ -1,12 +1,16 @@
+use cpu_utils::structures::paging::PageEntryFlags;
+
 use super::descriptor::SlabDescriptor;
 use super::traits::{SlabCacheConstructor, SlabPosition};
 use crate::memory::allocators::slab::SLAB_ALLOCATOR;
+use crate::memory::allocators::slab::traits::DmaGeneric;
 use crate::memory::unassigned::{AssignSlab, Unassigned};
 use core::ptr::NonNull;
 
 #[derive(Clone, Debug)]
 pub struct SlabCache<T: 'static + Sized + SlabPosition> {
     pub buddy_order: usize,
+    pub pflags: PageEntryFlags,
     pub free: Option<NonNull<SlabDescriptor<T>>>,
     pub partial: Option<NonNull<SlabDescriptor<T>>>,
     pub full: Option<NonNull<SlabDescriptor<T>>>,
@@ -77,6 +81,28 @@ impl<T: SlabPosition> SlabCacheConstructor for SlabCache<T> {
 
         SlabCache {
             buddy_order,
+            pflags: PageEntryFlags::regular_page_flags(),
+            free: Some(free.assign::<T>()),
+            partial: None,
+            full: None,
+        }
+    }
+}
+
+impl<T: SlabPosition + DmaGeneric> SlabCacheConstructor for SlabCache<T> {
+    fn new(buddy_order: usize) -> Self {
+        let mut free = unsafe {
+            SLAB_ALLOCATOR
+                .slab_of::<SlabDescriptor<Unassigned>>()
+                .as_mut()
+                .alloc()
+        };
+
+        unsafe { *free.as_mut() = SlabDescriptor::new(buddy_order, None) }
+
+        SlabCache {
+            buddy_order,
+            pflags: PageEntryFlags::regular_io_page_flags(),
             free: Some(free.assign::<T>()),
             partial: None,
             full: None,
@@ -89,6 +115,7 @@ impl SlabCacheConstructor for SlabCache<SlabDescriptor<Unassigned>> {
         let partial = SlabDescriptor::<SlabDescriptor<Unassigned>>::initial_descriptor(buddy_order);
         SlabCache {
             buddy_order,
+            pflags: PageEntryFlags::regular_page_flags(),
             free: None,
             partial: Some(partial),
             full: None,
