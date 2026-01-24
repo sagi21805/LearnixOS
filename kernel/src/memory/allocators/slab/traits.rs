@@ -15,3 +15,17 @@ impl SlabPosition for Unassigned {
 pub trait SlabCacheConstructor {
     fn new(buddy_order: usize) -> Self;
 }
+
+pub trait Generic {
+    const START: usize;
+    const END: usize;
+
+    fn size(&self) -> usize;
+}
+
+pub trait DmaGeneric {
+    const START: usize;
+    const END: usize;
+
+    fn size(&self) -> usize;
+}
