@@ -56,10 +56,6 @@ pub fn enable() -> Option<()> {
             PhysicalAddress::new_unchecked(0),
             PageEntryFlags::huge_page_flags(),
         );
-        identity_page_table_l2.entries[1].map_unchecked(
-            PhysicalAddress::new_unchecked(0x200000),
-            PageEntryFlags::huge_page_flags(),
-        );
     }
     // ANCHOR_END: setup_page_tables
     // ANCHOR: setup_top_page_tables
