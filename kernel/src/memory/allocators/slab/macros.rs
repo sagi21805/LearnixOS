@@ -51,7 +51,7 @@ macro_rules! define_slab_system {
                     let index = <$t>::POSITION;
 
                     self.slabs[index].write(SlabCache::<$t>::new(
-                        (size_of::<$t>().next_multiple_of(REGULAR_PAGE_SIZE) / REGULAR_PAGE_SIZE) - 1
+                        size_of::<$t>().div_ceil(REGULAR_PAGE_SIZE)
                     ).as_unassigned().clone());
                 )*
             }
