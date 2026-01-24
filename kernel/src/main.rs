@@ -18,7 +18,8 @@
 #![feature(ascii_char)]
 #![feature(const_convert)]
 #![feature(core_intrinsics)]
-#![feature(min_specialization)]
+#![feature(explicit_tail_calls)]
+#![feature(specialization)]
 #![deny(clippy::all)]
 mod drivers;
 mod memory;
@@ -37,17 +38,11 @@ use crate::{
             slab::SLAB_ALLOCATOR,
         },
         memory_map::{MemoryMap, parse_map},
-        page::pages_init,
+        page::{PAGES, map::PageMap},
     },
 };
 
-use common::{
-    address_types::PhysicalAddress,
-    constants::{
-        PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
-    },
-    enums::{CascadedPicInterruptLine, Color, PS2ScanCode},
-};
+use common::{constants::REGULAR_PAGE_SIZE, enums::Color};
 use cpu_utils::{
     instructions::interrupts::{self},
     structures::{
@@ -67,7 +62,7 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Obtained Memory Map");
     println!("{}", MemoryMap(parsed_memory_map!()));
 
-    pages_init(MemoryMap(parsed_memory_map!()));
+    PageMap::init(unsafe { &mut PAGES }, MemoryMap(parsed_memory_map!()));
     unsafe { BUDDY_ALLOCATOR.init(MemoryMap(parsed_memory_map!()), 0) };
 
     let last = MemoryMap(parsed_memory_map!()).last().unwrap();
