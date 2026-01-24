@@ -60,6 +60,6 @@ impl BuddyPageMeta {
 
 #[derive(Debug)]
 pub struct SlabPageMeta<T: SlabPosition> {
-    owner: NonNull<SlabCache<T>>,
-    freelist: NonNull<SlabDescriptor<T>>,
+    pub owner: NonNull<SlabCache<T>>,
+    pub freelist: NonNull<SlabDescriptor<T>>,
 }
