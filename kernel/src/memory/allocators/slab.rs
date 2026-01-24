@@ -12,8 +12,9 @@ use crate::{
         allocators::{
             extensions::VirtualAddressExt,
             slab::{
-                cache::SlabCache, descriptor::SlabDescriptor,
-                traits::SlabPosition,
+                cache::SlabCache,
+                descriptor::SlabDescriptor,
+                traits::{Generic, SlabPosition},
             },
         },
         page::{PAGES, UnassignedPage},
@@ -24,13 +25,6 @@ use core::{
     alloc::{AllocError, Allocator},
     ptr::NonNull,
 };
-
-pub trait Generic {
-    const START: usize;
-    const END: usize;
-
-    fn size(&self) -> usize;
-}
 
 generate_generics!(
     8, 16, 32, 64, 96, 128, 192, 256, 512, 1024, 2048, 4096, 8192
@@ -75,11 +69,9 @@ impl SlabAllocator {
             NonNull::from_mut(&mut PAGES[index]).assign::<T>().as_ref()
         };
 
-        if let Some(mut descriptor) = page.owner {
-            unsafe { descriptor.as_mut().dealloc(ptr) };
-        } else {
-            panic!("Object is freed from a page that has not owner!")
-        }
+        let descriptor = unsafe { page.meta.slab.freelist };
+
+        unsafe { descriptor.assign::<T>().as_mut().dealloc(ptr) };
     }
 }
 
