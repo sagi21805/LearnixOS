@@ -1,3 +1,5 @@
+use core::num::NonZero;
+
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     constants::{
@@ -118,9 +120,19 @@ pub impl VirtualAddress {
         }
     }
 
-    fn set_flags(&self, flags: PageEntryFlags) -> Result<(), EntryError> {
-        let page_size = PageSize::from_alignment(self.alignment())
-            .expect("self address is not aligned to a page size");
+    fn set_flags(
+        &self,
+        flags: PageEntryFlags,
+        page_size: PageSize,
+        num_pages: NonZero<usize>,
+    ) -> Result<(), EntryError> {
+        let address_index = self
+            .index_of(PageTableLevel::VARIANTS[page_size as usize + 1]);
+
+        debug_assert!(
+            address_index + num_pages.get() <= PAGE_DIRECTORY_ENTRIES,
+            "There are only 512 entries inside a table"
+        );
 
         let mut table = PageTable::current_table_mut();
 
@@ -130,9 +142,14 @@ pub impl VirtualAddress {
             let entry = &mut table.entries[index];
             table = entry.mapped_table_mut()?;
         }
-        table.entries[self
-            .index_of(PageTableLevel::VARIANTS[page_size as usize + 1])]
-        .set_flags(flags);
+
+        table
+            .entries
+            .iter_mut()
+            .skip(address_index)
+            .take(num_pages.get())
+            .for_each(|entry| entry.set_flags(flags));
+
         Ok(())
     }
 
