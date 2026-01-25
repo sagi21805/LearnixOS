@@ -70,6 +70,9 @@ impl SlabCache<Unassigned> {
 
 impl<T: SlabPosition> SlabCacheConstructor for SlabCache<T> {
     default fn new(buddy_order: usize) -> SlabCache<T> {
+        const PFLAGS: PageEntryFlags =
+            PageEntryFlags::regular_io_page_flags();
+
         let mut free = unsafe {
             SLAB_ALLOCATOR
                 .slab_of::<SlabDescriptor<Unassigned>>()
@@ -77,11 +80,13 @@ impl<T: SlabPosition> SlabCacheConstructor for SlabCache<T> {
                 .alloc()
         };
 
-        unsafe { *free.as_mut() = SlabDescriptor::new(buddy_order, None) }
+        unsafe {
+            *free.as_mut() = SlabDescriptor::new(buddy_order, PFLAGS, None)
+        }
 
         SlabCache {
             buddy_order,
-            pflags: PageEntryFlags::regular_page_flags(),
+            pflags: PFLAGS,
             free: Some(free.assign::<T>()),
             partial: None,
             full: None,
@@ -91,6 +96,9 @@ impl<T: SlabPosition> SlabCacheConstructor for SlabCache<T> {
 
 impl<T: SlabPosition + DmaGeneric> SlabCacheConstructor for SlabCache<T> {
     fn new(buddy_order: usize) -> Self {
+        const PFLAGS: PageEntryFlags =
+            PageEntryFlags::regular_io_page_flags();
+
         let mut free = unsafe {
             SLAB_ALLOCATOR
                 .slab_of::<SlabDescriptor<Unassigned>>()
@@ -98,11 +106,13 @@ impl<T: SlabPosition + DmaGeneric> SlabCacheConstructor for SlabCache<T> {
                 .alloc()
         };
 
-        unsafe { *free.as_mut() = SlabDescriptor::new(buddy_order, None) }
+        unsafe {
+            *free.as_mut() = SlabDescriptor::new(buddy_order, PFLAGS, None)
+        }
 
         SlabCache {
             buddy_order,
-            pflags: PageEntryFlags::regular_io_page_flags(),
+            pflags: PFLAGS,
             free: Some(free.assign::<T>()),
             partial: None,
             full: None,

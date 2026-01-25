@@ -1,15 +1,19 @@
 use super::traits::SlabPosition;
 use crate::{
     alloc_pages,
-    memory::unassigned::{AssignSlab, UnassignSlab, Unassigned},
+    memory::{
+        allocators::extensions::VirtualAddressExt,
+        unassigned::{AssignSlab, UnassignSlab, Unassigned},
+    },
 };
-use common::constants::REGULAR_PAGE_SIZE;
+use common::{constants::REGULAR_PAGE_SIZE, enums::PageSize};
 use core::{
     fmt::Debug,
     mem::{ManuallyDrop, size_of},
-    num::{NonZero, NonZeroU16},
+    num::NonZero,
     ptr::NonNull,
 };
+use cpu_utils::structures::paging::PageEntryFlags;
 use nonmax::NonMaxU16;
 
 /// Preallocated object in the slab allocator.
@@ -70,9 +74,17 @@ impl<T: SlabPosition> UnassignSlab for NonNull<SlabDescriptor<T>> {
 impl<T: SlabPosition> SlabDescriptor<T> {
     pub fn new(
         order: usize,
+        pflags: PageEntryFlags,
         next: Option<NonNull<SlabDescriptor<T>>>,
     ) -> SlabDescriptor<T> {
         let address = unsafe { alloc_pages!(1 << order).translate() };
+
+        address
+            .set_flags(pflags, PageSize::Regular, unsafe {
+                NonZero::new_unchecked(1 << order)
+            })
+            .unwrap();
+
         let mut objects = unsafe {
             NonNull::slice_from_raw_parts(
                 NonNull::new_unchecked(
@@ -144,7 +156,11 @@ impl SlabDescriptor<SlabDescriptor<Unassigned>> {
         order: usize,
     ) -> NonNull<SlabDescriptor<SlabDescriptor<Unassigned>>> {
         let mut descriptor =
-            SlabDescriptor::<SlabDescriptor<Unassigned>>::new(order, None);
+            SlabDescriptor::<SlabDescriptor<Unassigned>>::new(
+                order,
+                PageEntryFlags::regular_page_flags(),
+                None,
+            );
 
         let mut self_allocation = descriptor.alloc();
 
