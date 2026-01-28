@@ -17,6 +17,7 @@
 #![feature(ascii_char_variants)]
 #![feature(ascii_char)]
 #![feature(const_convert)]
+#![feature(slice_ptr_get)]
 #![feature(core_intrinsics)]
 #![feature(explicit_tail_calls)]
 #![feature(specialization)]
