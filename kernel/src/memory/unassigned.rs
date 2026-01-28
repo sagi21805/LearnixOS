@@ -1,4 +1,4 @@
-use crate::memory::allocators::slab::traits::SlabPosition;
+use crate::memory::allocators::slab::traits::{Slab, SlabPosition};
 
 #[derive(Default, Clone, Copy, Debug)]
 pub struct Unassigned;
@@ -10,7 +10,7 @@ pub trait UnassignSlab {
 }
 
 pub trait AssignSlab {
-    type Target<U: SlabPosition>;
+    type Target<U: Slab>;
 
-    fn assign<T: SlabPosition>(&self) -> Self::Target<T>;
+    fn assign<T: Slab>(&self) -> Self::Target<T>;
 }

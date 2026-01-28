@@ -8,6 +8,9 @@ macro_rules! register_slabs {
         impl $crate::memory::allocators::slab::traits::SlabPosition for $head {
             const POSITION: usize = $idx;
         }
+
+        impl $crate::memory::allocators::slab::traits::Slab for $head {}
+
         $crate::register_slabs!(@step $idx + 1; $($tail),*);
     };
 
@@ -15,6 +18,8 @@ macro_rules! register_slabs {
         impl $crate::memory::allocators::slab::traits::SlabPosition for $head {
             const POSITION: usize = $idx;
         }
+
+        impl $crate::memory::allocators::slab::traits::Slab for $head {}
     };
 
     (@step $idx:expr; ) => {};

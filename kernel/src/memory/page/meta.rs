@@ -4,7 +4,7 @@ use common::enums::BuddyOrder;
 
 use crate::memory::{
     allocators::slab::{
-        cache::SlabCache, descriptor::SlabDescriptor, traits::SlabPosition,
+        cache::SlabCache, descriptor::SlabDescriptor, traits::Slab,
     },
     page::{Page, UnassignedPage},
     unassigned::{AssignSlab, UnassignSlab, Unassigned},
@@ -33,7 +33,7 @@ impl const Default for BuddyPageMeta {
 }
 
 impl BuddyPageMeta {
-    pub fn detach<T: SlabPosition>(&mut self) -> Option<NonNull<Page<T>>> {
+    pub fn detach<T: Slab>(&mut self) -> Option<NonNull<Page<T>>> {
         let detached = self.next?; // None if there is no page to detach
 
         self.next = unsafe { detached.as_ref().meta.buddy.next };
@@ -45,7 +45,7 @@ impl BuddyPageMeta {
         Some(detached.assign::<T>())
     }
 
-    pub fn attach<T: SlabPosition>(&mut self, mut p: NonNull<Page<T>>) {
+    pub fn attach<T: Slab>(&mut self, mut p: NonNull<Page<T>>) {
         unsafe { (*p.as_mut().meta.buddy).next = self.next };
 
         if let Some(mut next) = self.next {
@@ -59,7 +59,7 @@ impl BuddyPageMeta {
 }
 
 #[derive(Debug)]
-pub struct SlabPageMeta<T: SlabPosition> {
+pub struct SlabPageMeta<T: Slab> {
     pub owner: NonNull<SlabCache<T>>,
     pub freelist: NonNull<SlabDescriptor<T>>,
 }
