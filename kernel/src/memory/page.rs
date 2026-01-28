@@ -1,12 +1,16 @@
 use core::{marker::PhantomData, ptr::NonNull};
 
 use crate::memory::{
-    allocators::slab::traits::SlabPosition,
+    allocators::{
+        extensions::VirtualAddressExt,
+        slab::traits::{Slab, SlabPosition},
+    },
     page::{map::PageMap, meta::PageMeta},
     unassigned::{AssignSlab, UnassignSlab, Unassigned},
 };
 use common::{
-    address_types::PhysicalAddress, constants::REGULAR_PAGE_SIZE,
+    address_types::{PhysicalAddress, VirtualAddress},
+    constants::REGULAR_PAGE_SIZE,
     late_init::LateInit,
 };
 
@@ -17,20 +21,20 @@ pub type UnassignedPage = Page<Unassigned>;
 
 pub static mut PAGES: LateInit<PageMap> = LateInit::uninit();
 
-pub struct Page<T: 'static + SlabPosition> {
+pub struct Page<T: Slab> {
     pub meta: PageMeta,
     _phantom: PhantomData<T>,
 }
 
 impl AssignSlab for NonNull<Page<Unassigned>> {
-    type Target<Unassigned: SlabPosition> = NonNull<Page<Unassigned>>;
+    type Target<Unassigned: Slab> = NonNull<Page<Unassigned>>;
 
-    fn assign<T: SlabPosition>(&self) -> NonNull<Page<T>> {
+    fn assign<T: Slab>(&self) -> NonNull<Page<T>> {
         unsafe { NonNull::new_unchecked(self.as_ptr() as *mut Page<T>) }
     }
 }
 
-impl<T: SlabPosition> UnassignSlab for NonNull<Page<T>> {
+impl<T: Slab> UnassignSlab for NonNull<Page<T>> {
     type Target = NonNull<Page<Unassigned>>;
 
     fn as_unassigned(&self) -> NonNull<Page<Unassigned>> {
@@ -40,7 +44,7 @@ impl<T: SlabPosition> UnassignSlab for NonNull<Page<T>> {
     }
 }
 
-impl<T: 'static + SlabPosition> Page<T> {
+impl<T: Slab> Page<T> {
     pub fn new(meta: PageMeta) -> Page<T> {
         Page {
             meta,
@@ -58,7 +62,7 @@ impl<T: 'static + SlabPosition> Page<T> {
         }
     }
 
-    pub const fn index_of_page(address: PhysicalAddress) -> usize {
-        address.as_usize() / REGULAR_PAGE_SIZE
+    pub fn index_of_page(address: VirtualAddress) -> usize {
+        address.translate().as_usize() / REGULAR_PAGE_SIZE
     }
 }

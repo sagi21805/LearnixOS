@@ -2,15 +2,14 @@ use super::traits::SlabPosition;
 use crate::{
     alloc_pages,
     memory::{
-        allocators::extensions::VirtualAddressExt,
+        allocators::slab::traits::Slab,
         unassigned::{AssignSlab, UnassignSlab, Unassigned},
     },
 };
-use common::{constants::REGULAR_PAGE_SIZE, enums::PageSize};
+use common::constants::REGULAR_PAGE_SIZE;
 use core::{
     fmt::Debug,
     mem::{ManuallyDrop, size_of},
-    num::NonZero,
     ptr::NonNull,
 };
 use cpu_utils::structures::paging::PageEntryFlags;
@@ -36,7 +35,7 @@ pub struct SlabDescriptor<T: 'static + Sized + SlabPosition> {
     pub next: Option<NonNull<SlabDescriptor<T>>>,
 }
 
-impl<T: SlabPosition> UnassignSlab for SlabDescriptor<T> {
+impl<T: Slab> UnassignSlab for SlabDescriptor<T> {
     type Target = SlabDescriptor<Unassigned>;
 
     fn as_unassigned(&self) -> Self::Target {
@@ -49,17 +48,16 @@ impl<T: SlabPosition> UnassignSlab for SlabDescriptor<T> {
 }
 
 impl AssignSlab for NonNull<SlabDescriptor<Unassigned>> {
-    type Target<Unassigned: SlabPosition> =
-        NonNull<SlabDescriptor<Unassigned>>;
+    type Target<Unassigned: Slab> = NonNull<SlabDescriptor<Unassigned>>;
 
-    fn assign<T: SlabPosition>(&self) -> NonNull<SlabDescriptor<T>> {
+    fn assign<T: Slab>(&self) -> NonNull<SlabDescriptor<T>> {
         unsafe {
             NonNull::new_unchecked(self.as_ptr() as *mut SlabDescriptor<T>)
         }
     }
 }
 
-impl<T: SlabPosition> UnassignSlab for NonNull<SlabDescriptor<T>> {
+impl<T: Slab> UnassignSlab for NonNull<SlabDescriptor<T>> {
     type Target = NonNull<SlabDescriptor<Unassigned>>;
 
     fn as_unassigned(&self) -> Self::Target {
@@ -71,19 +69,21 @@ impl<T: SlabPosition> UnassignSlab for NonNull<SlabDescriptor<T>> {
     }
 }
 
-impl<T: SlabPosition> SlabDescriptor<T> {
-    pub fn new(
+impl<T: Slab> SlabDescriptor<T> {
+    /// Create a new slab descriptor.
+    ///
+    /// # Safety
+    /// This function is marked as unsafe because it does not initialize
+    /// the page that the allocation is on.
+    ///
+    /// This function is meant to be called from the [`grow`]
+    /// function inside slab cache. (Which is safe and do initialize
+    /// the page)
+    pub unsafe fn new(
         order: usize,
-        pflags: PageEntryFlags,
         next: Option<NonNull<SlabDescriptor<T>>>,
     ) -> SlabDescriptor<T> {
         let address = unsafe { alloc_pages!(1 << order).translate() };
-
-        address
-            .set_flags(pflags, PageSize::Regular, unsafe {
-                NonZero::new_unchecked(1 << order)
-            })
-            .unwrap();
 
         let mut objects = unsafe {
             NonNull::slice_from_raw_parts(
@@ -155,12 +155,14 @@ impl SlabDescriptor<SlabDescriptor<Unassigned>> {
     pub fn initial_descriptor(
         order: usize,
     ) -> NonNull<SlabDescriptor<SlabDescriptor<Unassigned>>> {
-        let mut descriptor =
-            SlabDescriptor::<SlabDescriptor<Unassigned>>::new(
-                order,
-                PageEntryFlags::regular_page_flags(),
-                None,
-            );
+        todo!(
+            "PAGE IS NOT INITIALIZED HERE, UNDERSTAND IF GROW IS VIABLE \
+             OR OTHER SOLUTION IS NEEDED"
+        );
+
+        let mut descriptor = unsafe {
+            SlabDescriptor::<SlabDescriptor<Unassigned>>::new(order, None)
+        };
 
         let mut self_allocation = descriptor.alloc();
 

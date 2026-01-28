@@ -9,13 +9,10 @@ use learnix_macros::generate_generics;
 use crate::{
     define_slab_system,
     memory::{
-        allocators::{
-            extensions::VirtualAddressExt,
-            slab::{
-                cache::SlabCache,
-                descriptor::SlabDescriptor,
-                traits::{Generic, SlabPosition},
-            },
+        allocators::slab::{
+            cache::SlabCache,
+            descriptor::SlabDescriptor,
+            traits::{Generic, Slab, SlabPosition},
         },
         page::{PAGES, UnassignedPage},
         unassigned::{AssignSlab, Unassigned},
@@ -50,19 +47,18 @@ define_slab_system!(
 pub static mut SLAB_ALLOCATOR: SlabAllocator = SlabAllocator::new();
 
 impl SlabAllocator {
-    pub fn slab_of<T: SlabPosition>(&self) -> NonNull<SlabCache<T>> {
+    pub fn slab_of<T: Slab>(&self) -> NonNull<SlabCache<T>> {
         self.slabs[T::POSITION].assign::<T>()
     }
 
-    pub fn kmalloc<T: SlabPosition>(&self) -> NonNull<T> {
+    pub fn kmalloc<T: Slab>(&self) -> NonNull<T> {
         let mut slab = self.slab_of::<T>();
         unsafe { slab.as_mut().alloc() }
     }
 
-    pub fn kfree<T: SlabPosition>(&self, ptr: NonNull<T>) {
+    pub fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
         let index = UnassignedPage::index_of_page(unsafe {
             VirtualAddress::new_unchecked(ptr.as_ptr() as usize)
-                .translate()
         });
 
         let page = unsafe {
@@ -192,7 +188,7 @@ unsafe impl Allocator for SlabAllocator {
         }
     }
 }
-unsafe impl<T: SlabPosition> Send for SlabDescriptor<T> {}
-unsafe impl<T: SlabPosition> Sync for SlabDescriptor<T> {}
-unsafe impl<T: SlabPosition> Send for SlabCache<T> {}
-unsafe impl<T: SlabPosition> Sync for SlabCache<T> {}
+unsafe impl<T: Slab> Send for SlabDescriptor<T> {}
+unsafe impl<T: Slab> Sync for SlabDescriptor<T> {}
+unsafe impl<T: Slab> Send for SlabCache<T> {}
+unsafe impl<T: Slab> Sync for SlabCache<T> {}
