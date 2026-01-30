@@ -11,11 +11,11 @@ pub trait Slab: 'static + Sized + SlabPosition + SlabFlags {}
 impl Slab for Unassigned {}
 
 pub trait SlabPosition {
-    const POSITION: usize;
+    const SLAB_POSITION: usize;
 }
 
 impl SlabPosition for Unassigned {
-    const POSITION: usize = usize::MAX;
+    const SLAB_POSITION: usize = usize::MAX;
 }
 
 pub trait SlabFlags: SlabPosition {
@@ -23,7 +23,12 @@ pub trait SlabFlags: SlabPosition {
 }
 
 impl<T: SlabPosition> SlabFlags for T {
-    default const PFLAGS: PageEntryFlags = PageEntryFlags::default();
+    default const PFLAGS: PageEntryFlags =
+        PageEntryFlags::regular_page_flags();
+}
+
+impl SlabFlags for Unassigned {
+    const PFLAGS: PageEntryFlags = PageEntryFlags::default();
 }
 
 pub trait SlabCacheConstructor {

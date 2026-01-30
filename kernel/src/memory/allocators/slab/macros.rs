@@ -6,7 +6,7 @@ macro_rules! register_slabs {
 
     (@step $idx:expr; $head:ty, $($tail:ty),+) => {
         impl $crate::memory::allocators::slab::traits::SlabPosition for $head {
-            const POSITION: usize = $idx;
+            const SLAB_POSITION: usize = $idx;
         }
 
         impl $crate::memory::allocators::slab::traits::Slab for $head {}
@@ -16,7 +16,7 @@ macro_rules! register_slabs {
 
     (@step $idx:expr; $head:ty) => {
         impl $crate::memory::allocators::slab::traits::SlabPosition for $head {
-            const POSITION: usize = $idx;
+            const SLAB_POSITION: usize = $idx;
         }
 
         impl $crate::memory::allocators::slab::traits::Slab for $head {}
@@ -53,7 +53,7 @@ macro_rules! define_slab_system {
 
             pub fn init(&'static mut self) {
                 $(
-                    let index = <$t>::POSITION;
+                    let index = <$t>::SLAB_POSITION;
 
                     self.slabs[index].write(SlabCache::<$t>::new(
                         size_of::<$t>().div_ceil(REGULAR_PAGE_SIZE)

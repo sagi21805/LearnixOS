@@ -48,7 +48,7 @@ pub static mut SLAB_ALLOCATOR: SlabAllocator = SlabAllocator::new();
 
 impl SlabAllocator {
     pub fn slab_of<T: Slab>(&self) -> NonNull<SlabCache<T>> {
-        self.slabs[T::POSITION].assign::<T>()
+        self.slabs[T::SLAB_POSITION].assign::<T>()
     }
 
     pub fn kmalloc<T: Slab>(&self) -> NonNull<T> {
