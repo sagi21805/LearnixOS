@@ -12,7 +12,6 @@ use core::{
     mem::{ManuallyDrop, size_of},
     ptr::NonNull,
 };
-use cpu_utils::structures::paging::PageEntryFlags;
 use nonmax::NonMaxU16;
 
 /// Preallocated object in the slab allocator.
@@ -155,11 +154,6 @@ impl SlabDescriptor<SlabDescriptor<Unassigned>> {
     pub fn initial_descriptor(
         order: usize,
     ) -> NonNull<SlabDescriptor<SlabDescriptor<Unassigned>>> {
-        todo!(
-            "PAGE IS NOT INITIALIZED HERE, UNDERSTAND IF GROW IS VIABLE \
-             OR OTHER SOLUTION IS NEEDED"
-        );
-
         let mut descriptor = unsafe {
             SlabDescriptor::<SlabDescriptor<Unassigned>>::new(order, None)
         };

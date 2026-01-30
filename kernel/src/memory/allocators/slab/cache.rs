@@ -135,7 +135,46 @@ impl<T: Slab> SlabCacheConstructor for SlabCache<T> {
 
 impl SlabCacheConstructor for SlabCache<SlabDescriptor<Unassigned>> {
     fn new(buddy_order: usize) -> SlabCache<SlabDescriptor<Unassigned>> {
-        let partial = SlabDescriptor::<SlabDescriptor<Unassigned>>::initial_descriptor(buddy_order);
+        let mut partial = SlabDescriptor::<SlabDescriptor<Unassigned>>::initial_descriptor(buddy_order);
+
+        unsafe {
+            *partial.as_mut() =
+                SlabDescriptor::<SlabDescriptor<Unassigned>>::new(
+                    buddy_order,
+                    None,
+                )
+        }
+
+        let slab_address: VirtualAddress =
+            unsafe { partial.as_ref().objects.as_ptr().addr().into() };
+
+        slab_address
+            .set_flags(
+                SlabDescriptor::<Unassigned>::PFLAGS,
+                PageSize::Regular,
+                unsafe {
+                    NonZero::<usize>::new_unchecked(1 << buddy_order)
+                },
+            )
+            .unwrap();
+
+        let slab_page = unsafe {
+            &mut PAGES[UnassignedPage::index_of_page(slab_address)]
+        };
+
+        // Set owner and freelist.
+        unsafe {
+            (*slab_page.meta.slab).freelist = partial.as_unassigned();
+
+            // This assumption can be made, because the created cache in
+            // this function will go to the constant position on the slab
+            // array defined with the `SlabPosition` array
+            (*slab_page.meta.slab).owner = NonNull::from_ref(
+                &SLAB_ALLOCATOR.slabs
+                    [SlabDescriptor::<Unassigned>::SLAB_POSITION],
+            );
+        };
+
         SlabCache {
             buddy_order,
             pflags: SlabDescriptor::<Unassigned>::PFLAGS,
