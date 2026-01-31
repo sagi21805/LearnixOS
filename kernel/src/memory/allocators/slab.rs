@@ -3,7 +3,6 @@ pub mod descriptor;
 pub mod macros;
 pub mod traits;
 
-use common::address_types::VirtualAddress;
 use learnix_macros::generate_generics;
 
 use crate::{
@@ -14,8 +13,8 @@ use crate::{
             descriptor::SlabDescriptor,
             traits::{Generic, Slab, SlabPosition},
         },
-        page::{PAGES, UnassignedPage},
-        unassigned::{AssignSlab, Unassigned},
+        page::Page,
+        unassigned::{AssignSlab, UnassignSlab, Unassigned},
     },
 };
 use core::{
@@ -57,13 +56,7 @@ impl SlabAllocator {
     }
 
     pub fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
-        let index = UnassignedPage::index_of_page(unsafe {
-            VirtualAddress::new_unchecked(ptr.as_ptr() as usize)
-        });
-
-        let page = unsafe {
-            NonNull::from_mut(&mut PAGES[index]).assign::<T>().as_ref()
-        };
+        let page = unsafe { Page::<T>::from_virt(ptr.into()).as_ref() };
 
         let descriptor = unsafe { page.meta.slab.freelist };
 
