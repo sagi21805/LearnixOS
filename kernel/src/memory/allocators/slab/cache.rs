@@ -1,7 +1,6 @@
 use core::{num::NonZero, ptr::NonNull};
 
-use common::{address_types::VirtualAddress, enums::PageSize};
-use cpu_utils::structures::paging::PageEntryFlags;
+use common::address_types::VirtualAddress;
 
 use crate::memory::{
     allocators::{
@@ -11,7 +10,7 @@ use crate::memory::{
             traits::{Slab, SlabFlags},
         },
     },
-    page::{PAGES, UnassignedPage},
+    page::UnassignedPage,
     unassigned::{AssignSlab, UnassignSlab, Unassigned},
 };
 
@@ -21,28 +20,29 @@ use super::{
 };
 
 #[derive(Clone, Debug)]
-pub struct SlabCache<T: 'static + Sized + SlabPosition> {
+pub struct SlabCache<T: Slab> {
     pub buddy_order: usize,
-    pub pflags: PageEntryFlags,
     pub free: Option<NonNull<SlabDescriptor<T>>>,
     pub partial: Option<NonNull<SlabDescriptor<T>>>,
     pub full: Option<NonNull<SlabDescriptor<T>>>,
 }
 
+impl<T: Slab> UnassignSlab for NonNull<SlabCache<T>> {
+    type Target = NonNull<SlabCache<Unassigned>>;
+
+    fn as_unassigned(&self) -> Self::Target {
+        unsafe {
+            NonNull::new_unchecked(
+                self.as_ptr() as *mut SlabCache<Unassigned>
+            )
+        }
+    }
+}
+
 impl<T: Slab> SlabCache<T> {
-    pub fn as_unassigned(&self) -> &SlabCache<Unassigned> {
-        todo!("Change to trait implementation");
-        unsafe { &*(self as *const _ as *const SlabCache<Unassigned>) }
-    }
-
-    pub fn as_unassigned_mut(&mut self) -> &mut SlabCache<Unassigned> {
-        todo!("Change to trait implementation");
-        unsafe { &mut *(self as *mut _ as *mut SlabCache<Unassigned>) }
-    }
-
     /// Allocate a new slab descriptor, attaches it to the free slab list,
     /// and initialize it's page.
-    pub fn grow(&self) -> NonNull<SlabDescriptor<T>> {
+    pub fn grow(&mut self) {
         // Allocate a new slab descriptor for this slab
         let mut slab = unsafe {
             SLAB_ALLOCATOR
@@ -52,30 +52,33 @@ impl<T: Slab> SlabCache<T> {
 
         unsafe {
             *slab.as_mut() =
-                SlabDescriptor::<T>::new(self.buddy_order, None)
+                SlabDescriptor::<T>::new(self.buddy_order, self.free)
         }
 
+        self.take_ownership(slab);
+
+        self.free = Some(slab);
+    }
+
+    pub fn take_ownership(&self, slab: NonNull<SlabDescriptor<T>>) {
         let slab_address: VirtualAddress =
             unsafe { slab.as_ref().objects.as_ptr().addr().into() };
 
         slab_address
-            .set_flags(self.pflags, PageSize::Regular, unsafe {
+            .set_flags(T::PFLAGS, T::PSIZE, unsafe {
                 NonZero::<usize>::new_unchecked(1 << self.buddy_order)
             })
             .unwrap();
 
-        let slab_page = unsafe {
-            &mut PAGES[UnassignedPage::index_of_page(slab_address)]
-        };
+        let slab_page =
+            unsafe { UnassignedPage::from_virt(slab_address).as_mut() };
 
         // Set owner and freelist.
         unsafe {
             (*slab_page.meta.slab).freelist = slab.as_unassigned();
             (*slab_page.meta.slab).owner =
-                NonNull::from_ref(self.as_unassigned());
+                NonNull::from_ref(self).as_unassigned();
         };
-
-        slab
     }
 
     pub fn alloc(&mut self) -> NonNull<T> {
@@ -125,7 +128,6 @@ impl<T: Slab> SlabCacheConstructor for SlabCache<T> {
     default fn new(buddy_order: usize) -> SlabCache<T> {
         SlabCache {
             buddy_order,
-            pflags: T::PFLAGS,
             free: None,
             partial: None,
             full: None,
@@ -135,52 +137,31 @@ impl<T: Slab> SlabCacheConstructor for SlabCache<T> {
 
 impl SlabCacheConstructor for SlabCache<SlabDescriptor<Unassigned>> {
     fn new(buddy_order: usize) -> SlabCache<SlabDescriptor<Unassigned>> {
-        let mut partial = SlabDescriptor::<SlabDescriptor<Unassigned>>::initial_descriptor(buddy_order);
+        let partial = SlabDescriptor::<SlabDescriptor<Unassigned>>::initial_descriptor(buddy_order);
 
-        unsafe {
-            *partial.as_mut() =
-                SlabDescriptor::<SlabDescriptor<Unassigned>>::new(
-                    buddy_order,
-                    None,
-                )
-        }
-
-        let slab_address: VirtualAddress =
-            unsafe { partial.as_ref().objects.as_ptr().addr().into() };
-
-        slab_address
-            .set_flags(
-                SlabDescriptor::<Unassigned>::PFLAGS,
-                PageSize::Regular,
-                unsafe {
-                    NonZero::<usize>::new_unchecked(1 << buddy_order)
-                },
-            )
-            .unwrap();
-
-        let slab_page = unsafe {
-            &mut PAGES[UnassignedPage::index_of_page(slab_address)]
+        // This assumption can be made, because the created cache in
+        // this function will go to the constant position on the slab
+        // array defined with the `SlabPosition` array
+        let mut future_owner = unsafe {
+            SLAB_ALLOCATOR.slab_of::<SlabDescriptor<Unassigned>>()
         };
 
-        // Set owner and freelist.
-        unsafe {
-            (*slab_page.meta.slab).freelist = partial.as_unassigned();
-
-            // This assumption can be made, because the created cache in
-            // this function will go to the constant position on the slab
-            // array defined with the `SlabPosition` array
-            (*slab_page.meta.slab).owner = NonNull::from_ref(
-                &SLAB_ALLOCATOR.slabs
-                    [SlabDescriptor::<Unassigned>::SLAB_POSITION],
-            );
-        };
-
-        SlabCache {
+        let cache = SlabCache {
             buddy_order,
-            pflags: SlabDescriptor::<Unassigned>::PFLAGS,
             free: None,
             partial: Some(partial),
             full: None,
+        };
+
+        // Only in this function, we initialiuze the global array in the
+        // new function.
+        //
+        // Because then we can use the `take_ownership` function
+        unsafe {
+            *future_owner.as_mut() = cache.clone();
+            future_owner.as_mut().take_ownership(partial);
         }
+
+        cache
     }
 }
