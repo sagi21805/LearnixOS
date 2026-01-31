@@ -55,9 +55,11 @@ macro_rules! define_slab_system {
                 $(
                     let index = <$t>::SLAB_POSITION;
 
-                    self.slabs[index].write(SlabCache::<$t>::new(
-                        size_of::<$t>().div_ceil(REGULAR_PAGE_SIZE)
-                    ).as_unassigned().clone());
+                    let initialized = SlabCache::<$t>::new(size_of::<$t>().div_ceil(REGULAR_PAGE_SIZE));
+
+                    let unassigned = NonNull::from_ref(&initialized).as_unassigned();
+
+                    self.slabs[index].write(unsafe { unassigned.as_ref().clone() });
                 )*
             }
         }

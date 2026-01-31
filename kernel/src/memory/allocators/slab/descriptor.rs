@@ -27,23 +27,11 @@ impl<T> Debug for PreallocatedObject<T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct SlabDescriptor<T: 'static + Sized + SlabPosition> {
+pub struct SlabDescriptor<T: Slab> {
     pub next_free_idx: Option<NonMaxU16>,
     pub total_allocated: u16,
     pub objects: NonNull<[PreallocatedObject<T>]>,
     pub next: Option<NonNull<SlabDescriptor<T>>>,
-}
-
-impl<T: Slab> UnassignSlab for SlabDescriptor<T> {
-    type Target = SlabDescriptor<Unassigned>;
-
-    fn as_unassigned(&self) -> Self::Target {
-        unsafe {
-            (*(self as *const SlabDescriptor<T>
-                as *mut SlabDescriptor<Unassigned>))
-                .clone()
-        }
-    }
 }
 
 impl AssignSlab for NonNull<SlabDescriptor<Unassigned>> {
@@ -132,6 +120,8 @@ impl<T: Slab> SlabDescriptor<T> {
         unsafe { NonNull::from_mut(&mut preallocated.allocated) }
     }
 
+    // TODO: In tests rembmber to implement something on T that implement
+    // drop and see that when freeing the memory it is called
     pub unsafe fn dealloc(&mut self, ptr: NonNull<T>) {
         todo!("Remember to call drop on the item");
 
@@ -151,6 +141,11 @@ impl<T: Slab> SlabDescriptor<T> {
 }
 
 impl SlabDescriptor<SlabDescriptor<Unassigned>> {
+    /// Return a pointer to the initial descriptor after it allocated
+    /// himself.
+    ///
+    /// The pointer the is returned by this function contains an already
+    /// initalized descriptor that allocates itself.
     pub fn initial_descriptor(
         order: usize,
     ) -> NonNull<SlabDescriptor<SlabDescriptor<Unassigned>>> {
@@ -160,7 +155,12 @@ impl SlabDescriptor<SlabDescriptor<Unassigned>> {
 
         let mut self_allocation = descriptor.alloc();
 
-        unsafe { *self_allocation.as_mut() = descriptor.as_unassigned() }
+        unsafe {
+            *self_allocation.as_mut() = NonNull::from_ref(&descriptor)
+                .as_unassigned()
+                .as_ref()
+                .clone()
+        }
 
         self_allocation.assign::<SlabDescriptor<Unassigned>>()
     }
