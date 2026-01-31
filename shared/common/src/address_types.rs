@@ -1,3 +1,5 @@
+use core::ptr::NonNull;
+
 #[cfg(target_arch = "x86_64")]
 use crate::constants::PHYSICAL_MEMORY_OFFSET;
 use crate::enums::PageTableLevel;
@@ -60,6 +62,12 @@ impl const From<usize> for PhysicalAddress {
 )]
 #[repr(C)]
 pub struct VirtualAddress(usize);
+
+impl<T> From<NonNull<T>> for VirtualAddress {
+    fn from(value: NonNull<T>) -> Self {
+        unsafe { VirtualAddress::new_unchecked(value.as_ptr().addr()) }
+    }
+}
 
 impl const From<usize> for VirtualAddress {
     // TODO! Change into new in the future

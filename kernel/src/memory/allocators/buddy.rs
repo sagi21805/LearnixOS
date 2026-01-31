@@ -125,10 +125,10 @@ impl BuddyAllocator {
             .iter()
             .filter(|a| a.region_type == MemoryRegionType::Usable)
         {
-            let mut start = UnassignedPage::index_of_page(
+            let mut start = UnassignedPage::index_of(
                 (area.base_address as usize).into(),
             );
-            let end = UnassignedPage::index_of_page(
+            let end = UnassignedPage::index_of(
                 ((area.base_address + area.length) as usize).into(),
             );
 
@@ -231,6 +231,9 @@ impl BuddyAllocator {
         Some(left)
     }
 
+    // This function will probably fail, should change that the head of the
+    // page list is static and the list starts from the second node, and
+    // then this would work
     fn detach_from_mid(page: NonNull<UnassignedPage>) {
         let (mut prev, next) = unsafe {
             let p_ref = page.as_ref();
