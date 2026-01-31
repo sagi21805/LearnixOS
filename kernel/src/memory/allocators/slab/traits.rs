@@ -1,3 +1,4 @@
+use common::enums::PageSize;
 use cpu_utils::structures::paging::PageEntryFlags;
 
 use crate::memory::unassigned::Unassigned;
@@ -20,15 +21,19 @@ impl SlabPosition for Unassigned {
 
 pub trait SlabFlags: SlabPosition {
     const PFLAGS: PageEntryFlags;
+    const PSIZE: PageSize;
 }
 
 impl<T: SlabPosition> SlabFlags for T {
     default const PFLAGS: PageEntryFlags =
         PageEntryFlags::regular_page_flags();
+
+    default const PSIZE: PageSize = PageSize::Regular;
 }
 
 impl SlabFlags for Unassigned {
     const PFLAGS: PageEntryFlags = PageEntryFlags::default();
+    const PSIZE: PageSize = PageSize::Regular;
 }
 
 pub trait SlabCacheConstructor {
