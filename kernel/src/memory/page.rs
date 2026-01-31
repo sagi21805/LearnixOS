@@ -62,7 +62,21 @@ impl<T: Slab> Page<T> {
         }
     }
 
-    pub fn index_of_page(address: VirtualAddress) -> usize {
-        address.translate().as_usize() / REGULAR_PAGE_SIZE
+    /// Return the index of the page structure inside the [`PAGES`] array
+    /// pointed by this virtual address.
+    ///
+    /// **Note**: if you meant to get the page structure, consider using
+    /// [`Page<T>::from_virt`]
+    pub fn index_of(addr: VirtualAddress) -> usize {
+        addr.translate().as_usize() / REGULAR_PAGE_SIZE
+    }
+
+    /// Return the physical page structure that is pointed by this physical
+    /// address
+    pub fn from_virt(addr: VirtualAddress) -> NonNull<Page<T>> {
+        unsafe {
+            NonNull::from_ref(&PAGES[Page::<T>::index_of(addr)])
+                .assign::<T>()
+        }
     }
 }
