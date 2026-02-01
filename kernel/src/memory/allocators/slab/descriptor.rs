@@ -1,9 +1,8 @@
-use super::traits::SlabPosition;
 use crate::{
     alloc_pages,
     memory::{
         allocators::slab::traits::Slab,
-        unassigned::{AssignSlab, UnassignSlab, Unassigned},
+        unassigned::{AssignSlab, UnassignSlab},
     },
 };
 use common::constants::REGULAR_PAGE_SIZE;
@@ -34,7 +33,7 @@ pub struct SlabDescriptor<T: Slab> {
     pub next: Option<NonNull<SlabDescriptor<T>>>,
 }
 
-impl AssignSlab for NonNull<SlabDescriptor<Unassigned>> {
+impl AssignSlab for NonNull<SlabDescriptor<()>> {
     type Target<Unassigned: Slab> = NonNull<SlabDescriptor<Unassigned>>;
 
     fn assign<T: Slab>(&self) -> NonNull<SlabDescriptor<T>> {
@@ -45,13 +44,11 @@ impl AssignSlab for NonNull<SlabDescriptor<Unassigned>> {
 }
 
 impl<T: Slab> UnassignSlab for NonNull<SlabDescriptor<T>> {
-    type Target = NonNull<SlabDescriptor<Unassigned>>;
+    type Target = NonNull<SlabDescriptor<()>>;
 
     fn as_unassigned(&self) -> Self::Target {
         unsafe {
-            NonNull::new_unchecked(
-                self.as_ptr() as *mut SlabDescriptor<Unassigned>
-            )
+            NonNull::new_unchecked(self.as_ptr() as *mut SlabDescriptor<()>)
         }
     }
 }
@@ -140,7 +137,7 @@ impl<T: Slab> SlabDescriptor<T> {
     }
 }
 
-impl SlabDescriptor<SlabDescriptor<Unassigned>> {
+impl SlabDescriptor<SlabDescriptor<()>> {
     /// Return a pointer to the initial descriptor after it allocated
     /// himself.
     ///
@@ -148,9 +145,9 @@ impl SlabDescriptor<SlabDescriptor<Unassigned>> {
     /// initalized descriptor that allocates itself.
     pub fn initial_descriptor(
         order: usize,
-    ) -> NonNull<SlabDescriptor<SlabDescriptor<Unassigned>>> {
+    ) -> NonNull<SlabDescriptor<SlabDescriptor<()>>> {
         let mut descriptor = unsafe {
-            SlabDescriptor::<SlabDescriptor<Unassigned>>::new(order, None)
+            SlabDescriptor::<SlabDescriptor<()>>::new(order, None)
         };
 
         let mut self_allocation = descriptor.alloc();
@@ -162,6 +159,6 @@ impl SlabDescriptor<SlabDescriptor<Unassigned>> {
                 .clone()
         }
 
-        self_allocation.assign::<SlabDescriptor<Unassigned>>()
+        self_allocation.assign::<SlabDescriptor<()>>()
     }
 }

@@ -36,7 +36,7 @@ macro_rules! define_slab_system {
         const COUNT: usize = [$(stringify!($t)),*].len();
 
         pub struct SlabAllocator {
-            slabs: [common::late_init::LateInit<SlabCache<$crate::memory::unassigned::Unassigned>>; COUNT]
+            slabs: [common::late_init::LateInit<SlabCache<()>>; COUNT]
         }
 
         impl SlabAllocator {

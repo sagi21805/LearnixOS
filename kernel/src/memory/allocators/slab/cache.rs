@@ -5,19 +5,13 @@ use common::address_types::VirtualAddress;
 use crate::memory::{
     allocators::{
         extensions::VirtualAddressExt,
-        slab::{
-            SLAB_ALLOCATOR,
-            traits::{Slab, SlabFlags},
-        },
+        slab::{SLAB_ALLOCATOR, traits::Slab},
     },
     page::UnassignedPage,
-    unassigned::{AssignSlab, UnassignSlab, Unassigned},
+    unassigned::{AssignSlab, UnassignSlab},
 };
 
-use super::{
-    descriptor::SlabDescriptor,
-    traits::{SlabCacheConstructor, SlabPosition},
-};
+use super::{descriptor::SlabDescriptor, traits::SlabCacheConstructor};
 
 #[derive(Clone, Debug)]
 pub struct SlabCache<T: Slab> {
@@ -28,13 +22,11 @@ pub struct SlabCache<T: Slab> {
 }
 
 impl<T: Slab> UnassignSlab for NonNull<SlabCache<T>> {
-    type Target = NonNull<SlabCache<Unassigned>>;
+    type Target = NonNull<SlabCache<()>>;
 
     fn as_unassigned(&self) -> Self::Target {
         unsafe {
-            NonNull::new_unchecked(
-                self.as_ptr() as *mut SlabCache<Unassigned>
-            )
+            NonNull::new_unchecked(self.as_ptr() as *mut SlabCache<()>)
         }
     }
 }
@@ -45,9 +37,7 @@ impl<T: Slab> SlabCache<T> {
     pub fn grow(&mut self) {
         // Allocate a new slab descriptor for this slab
         let mut slab = unsafe {
-            SLAB_ALLOCATOR
-                .kmalloc::<SlabDescriptor<Unassigned>>()
-                .assign::<T>()
+            SLAB_ALLOCATOR.kmalloc::<SlabDescriptor<()>>().assign::<T>()
         };
 
         unsafe {
@@ -116,7 +106,7 @@ impl<T: Slab> SlabCache<T> {
     }
 }
 
-impl SlabCache<Unassigned> {
+impl SlabCache<()> {
     pub fn assign<T: Slab>(&self) -> NonNull<SlabCache<T>> {
         unsafe {
             NonNull::new_unchecked(self as *const _ as *mut SlabCache<T>)
@@ -135,16 +125,18 @@ impl<T: Slab> SlabCacheConstructor for SlabCache<T> {
     }
 }
 
-impl SlabCacheConstructor for SlabCache<SlabDescriptor<Unassigned>> {
-    fn new(buddy_order: usize) -> SlabCache<SlabDescriptor<Unassigned>> {
-        let partial = SlabDescriptor::<SlabDescriptor<Unassigned>>::initial_descriptor(buddy_order);
+impl SlabCacheConstructor for SlabCache<SlabDescriptor<()>> {
+    fn new(buddy_order: usize) -> SlabCache<SlabDescriptor<()>> {
+        let partial =
+            SlabDescriptor::<SlabDescriptor<()>>::initial_descriptor(
+                buddy_order,
+            );
 
         // This assumption can be made, because the created cache in
         // this function will go to the constant position on the slab
         // array defined with the `SlabPosition` array
-        let mut future_owner = unsafe {
-            SLAB_ALLOCATOR.slab_of::<SlabDescriptor<Unassigned>>()
-        };
+        let mut future_owner =
+            unsafe { SLAB_ALLOCATOR.slab_of::<SlabDescriptor<()>>() };
 
         let cache = SlabCache {
             buddy_order,

@@ -10,7 +10,6 @@ use cpu_utils::structures::paging::PageTable;
 use crate::memory::{
     memory_map::ParsedMemoryMap,
     page::{PAGES, UnassignedPage, meta::BuddyPageMeta},
-    unassigned::Unassigned,
 };
 
 pub static mut BUDDY_ALLOCATOR: BuddyAllocator = BuddyAllocator {
@@ -64,7 +63,7 @@ impl BuddyAllocator {
             .find(|i| self.freelist[*i].next.is_some())?;
 
         let initial_page =
-            self.freelist[closet_order].detach::<Unassigned>().unwrap();
+            self.freelist[closet_order].detach::<()>().unwrap();
 
         Some(self.split_recursive(
             initial_page,
@@ -231,9 +230,9 @@ impl BuddyAllocator {
         Some(left)
     }
 
-    // This function will probably fail, should change that the head of the
-    // page list is static and the list starts from the second node, and
-    // then this would work
+    // TODO: This function will probably fail, should change that the head
+    // of the page list is static and the list starts from the second
+    // node, and then this would work
     fn detach_from_mid(page: NonNull<UnassignedPage>) {
         let (mut prev, next) = unsafe {
             let p_ref = page.as_ref();

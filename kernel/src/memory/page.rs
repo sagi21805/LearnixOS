@@ -1,12 +1,9 @@
 use core::{marker::PhantomData, ptr::NonNull};
 
 use crate::memory::{
-    allocators::{
-        extensions::VirtualAddressExt,
-        slab::traits::{Slab, SlabPosition},
-    },
+    allocators::{extensions::VirtualAddressExt, slab::traits::Slab},
     page::{map::PageMap, meta::PageMeta},
-    unassigned::{AssignSlab, UnassignSlab, Unassigned},
+    unassigned::{AssignSlab, UnassignSlab},
 };
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
@@ -17,7 +14,7 @@ use common::{
 pub mod map;
 pub mod meta;
 
-pub type UnassignedPage = Page<Unassigned>;
+pub type UnassignedPage = Page<()>;
 
 pub static mut PAGES: LateInit<PageMap> = LateInit::uninit();
 
@@ -26,7 +23,7 @@ pub struct Page<T: Slab> {
     _phantom: PhantomData<T>,
 }
 
-impl AssignSlab for NonNull<Page<Unassigned>> {
+impl AssignSlab for NonNull<Page<()>> {
     type Target<Unassigned: Slab> = NonNull<Page<Unassigned>>;
 
     fn assign<T: Slab>(&self) -> NonNull<Page<T>> {
@@ -35,12 +32,10 @@ impl AssignSlab for NonNull<Page<Unassigned>> {
 }
 
 impl<T: Slab> UnassignSlab for NonNull<Page<T>> {
-    type Target = NonNull<Page<Unassigned>>;
+    type Target = NonNull<Page<()>>;
 
-    fn as_unassigned(&self) -> NonNull<Page<Unassigned>> {
-        unsafe {
-            NonNull::new_unchecked(self.as_ptr() as *mut Page<Unassigned>)
-        }
+    fn as_unassigned(&self) -> NonNull<Page<()>> {
+        unsafe { NonNull::new_unchecked(self.as_ptr() as *mut Page<()>) }
     }
 }
 

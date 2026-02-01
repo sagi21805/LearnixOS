@@ -7,12 +7,12 @@ use crate::memory::{
         cache::SlabCache, descriptor::SlabDescriptor, traits::Slab,
     },
     page::{Page, UnassignedPage},
-    unassigned::{AssignSlab, UnassignSlab, Unassigned},
+    unassigned::{AssignSlab, UnassignSlab},
 };
 
 pub union PageMeta {
     pub buddy: ManuallyDrop<BuddyPageMeta>,
-    pub slab: ManuallyDrop<SlabPageMeta<Unassigned>>,
+    pub slab: ManuallyDrop<SlabPageMeta<()>>,
 }
 
 #[derive(Debug)]
