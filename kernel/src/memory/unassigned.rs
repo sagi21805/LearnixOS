@@ -1,7 +1,4 @@
-use crate::memory::allocators::slab::traits::{Slab, SlabPosition};
-
-#[derive(Default, Clone, Copy, Debug)]
-pub struct Unassigned;
+use crate::memory::allocators::slab::traits::Slab;
 
 pub trait UnassignSlab {
     type Target;

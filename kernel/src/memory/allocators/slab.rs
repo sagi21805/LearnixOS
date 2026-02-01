@@ -14,7 +14,7 @@ use crate::{
             traits::{Generic, Slab, SlabPosition},
         },
         page::Page,
-        unassigned::{AssignSlab, UnassignSlab, Unassigned},
+        unassigned::{AssignSlab, UnassignSlab},
     },
 };
 use core::{
@@ -27,7 +27,7 @@ generate_generics!(
 );
 
 define_slab_system!(
-    SlabDescriptor<Unassigned>,
+    SlabDescriptor<()>,
     Generic8,
     Generic16,
     Generic32,

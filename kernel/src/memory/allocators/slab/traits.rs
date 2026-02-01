@@ -1,21 +1,19 @@
 use common::enums::PageSize;
 use cpu_utils::structures::paging::PageEntryFlags;
 
-use crate::memory::unassigned::Unassigned;
-
 /// Get the position on the slab array, for a slab of the given type.
 ///
 /// Shouldn't implement this trait manually; it is implemented
 /// via the `define_slab_system` macro.
 pub trait Slab: 'static + Sized + SlabPosition + SlabFlags {}
 
-impl Slab for Unassigned {}
+impl Slab for () {}
 
 pub trait SlabPosition {
     const SLAB_POSITION: usize;
 }
 
-impl SlabPosition for Unassigned {
+impl SlabPosition for () {
     const SLAB_POSITION: usize = usize::MAX;
 }
 
@@ -31,7 +29,7 @@ impl<T: SlabPosition> SlabFlags for T {
     default const PSIZE: PageSize = PageSize::Regular;
 }
 
-impl SlabFlags for Unassigned {
+impl SlabFlags for () {
     const PFLAGS: PageEntryFlags = PageEntryFlags::default();
     const PSIZE: PageSize = PageSize::Regular;
 }
