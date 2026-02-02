@@ -136,6 +136,8 @@ impl PageTableEntry {
     }
     // ANCHOR_END: page_table_entry_mapped
 
+    // TODO: CHANGE STATIC REF HERE AND EVERY OTHER LOW LEVEL PLACE LIKE
+    // THIS INTO NonNull<T>
     /// Return the physical address mapped by this table as
     /// a reference into a page table.
     ///
@@ -144,7 +146,9 @@ impl PageTableEntry {
     // ANCHOR: page_table_entry_mapped_table_mut
     #[cfg(target_arch = "x86_64")]
     #[allow(clippy::mut_from_ref)]
-    pub fn mapped_table_mut(&self) -> Result<&mut PageTable, EntryError> {
+    pub fn mapped_table_mut(
+        &self,
+    ) -> Result<&'static mut PageTable, EntryError> {
         // first check if the entry is mapped.
         let pt = unsafe {
             &mut *self.mapped()?.translate().as_mut_ptr::<PageTable>()
