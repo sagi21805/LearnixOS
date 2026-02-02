@@ -126,47 +126,57 @@ pub impl VirtualAddress {
         page_size: PageSize,
         num_pages: NonZero<usize>,
     ) -> Result<(), EntryError> {
-        let address_index = self
-            .index_of(PageTableLevel::VARIANTS[page_size as usize + 1]);
+        let address_index = self.index_of(page_size.min_level());
 
         debug_assert!(
             address_index + num_pages.get() <= PAGE_DIRECTORY_ENTRIES,
             "There are only 512 entries inside a table"
         );
 
-        let mut table = PageTable::current_table_mut();
+        let mut table = self.walk(page_size.min_level())?;
 
-        for level in PageTableLevel::VARIANTS[0..page_size as usize].iter()
-        {
-            let index = self.index_of(*level);
-            let entry = &mut table.entries[index];
-            table = entry.mapped_table_mut()?;
+        unsafe {
+            table
+                .as_mut()
+                .entries
+                .iter_mut()
+                .skip(address_index)
+                .take(num_pages.get())
+                .for_each(|entry| entry.set_flags(flags));
         }
-
-        table
-            .entries
-            .iter_mut()
-            .skip(address_index)
-            .take(num_pages.get())
-            .for_each(|entry| entry.set_flags(flags));
 
         Ok(())
     }
 
+    /// Return the entry that is pointed by the wanted level
     fn walk(
         &self,
         wanted: PageTableLevel,
-    ) -> Result<NonNull<PageTableEntry>, EntryError> {
+    ) -> Result<NonNull<PageTable>, EntryError> {
         let mut table = PageTable::current_table_mut();
 
-        for level in PageTableLevel::VARIANTS[0..=wanted as usize] {
-            let entry = &table.entries[self.index_of(level)];
+        for level in PageTableLevel::VARIANTS[0..wanted as usize].iter() {
+            let entry = &table.entries[self.index_of(*level)];
             table = entry.mapped_table_mut()?;
         }
+
+        Ok(NonNull::from_mut(table))
     }
 
-    fn translate(&self) -> PhysicalAddress {
-        todo!()
+    fn translate(&self) -> Option<PhysicalAddress> {
+        let mut table = PageTable::current_table_mut();
+
+        for level in PageTableLevel::VARIANTS.iter() {
+            let entry = &table.entries[self.index_of(*level)];
+            match entry.mapped_table_mut() {
+                Ok(t) => table = t,
+                Err(EntryError::NotATable) => {
+                    return unsafe { Some(entry.mapped_unchecked()) };
+                }
+                Err(EntryError::NoMapping) => return None,
+            }
+        }
+        unreachable!()
     }
 }
 
