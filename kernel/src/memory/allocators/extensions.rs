@@ -1,4 +1,4 @@
-use core::num::NonZero;
+use core::{num::NonZero, ptr::NonNull};
 
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
@@ -151,6 +151,18 @@ pub impl VirtualAddress {
             .for_each(|entry| entry.set_flags(flags));
 
         Ok(())
+    }
+
+    fn walk(
+        &self,
+        wanted: PageTableLevel,
+    ) -> Result<NonNull<PageTableEntry>, EntryError> {
+        let mut table = PageTable::current_table_mut();
+
+        for level in PageTableLevel::VARIANTS[0..=wanted as usize] {
+            let entry = &table.entries[self.index_of(level)];
+            table = entry.mapped_table_mut()?;
+        }
     }
 
     fn translate(&self) -> PhysicalAddress {

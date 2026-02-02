@@ -142,7 +142,7 @@ impl SlabDescriptor<SlabDescriptor<()>> {
     /// himself.
     ///
     /// The pointer the is returned by this function contains an already
-    /// initalized descriptor that allocates itself.
+    /// initialized descriptor that allocates itself.
     pub fn initial_descriptor(
         order: usize,
     ) -> NonNull<SlabDescriptor<SlabDescriptor<()>>> {

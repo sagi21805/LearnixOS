@@ -108,7 +108,7 @@ impl VirtualAddress {
     /// 1 -> index of 1st table
     // ANCHOR: virtual_nth_pt_index_unchecked
     pub const fn index_of(&self, level: PageTableLevel) -> usize {
-        (self.0 >> (39 - 9 * (4 - level as usize))) & 0o777
+        (self.0 >> (39 - 9 * (level as usize))) & 0o777
     }
 
     // pub fn translate(&self) -> Option<PhysicalAddress> {
