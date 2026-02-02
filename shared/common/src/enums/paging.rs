@@ -77,6 +77,15 @@ impl PageSize {
         (*self as usize + 1) >= table_level as usize
     }
 
+    /// The minimal page level that this page size can exist on.
+    pub fn min_level(&self) -> PageTableLevel {
+        match self {
+            PageSize::Regular => PageTableLevel::PT,
+            PageSize::Big => PageTableLevel::PD,
+            PageSize::Huge => PageTableLevel::PDPT,
+        }
+    }
+
     /// Determines the appropriate `PageSizeAlignment` for a
     /// given memory layout.
     ///

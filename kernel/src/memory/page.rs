@@ -63,7 +63,10 @@ impl<T: Slab> Page<T> {
     /// **Note**: if you meant to get the page structure, consider using
     /// [`Page<T>::from_virt`]
     pub fn index_of(addr: VirtualAddress) -> usize {
-        addr.translate().as_usize() / REGULAR_PAGE_SIZE
+        addr.translate()
+            .expect("Address could not be translated")
+            .as_usize()
+            / REGULAR_PAGE_SIZE
     }
 
     /// Return the physical page structure that is pointed by this physical
