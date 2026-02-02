@@ -3,7 +3,7 @@
 /// Implemented directly from https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/serial-ata-ahci-spec-rev1-3-1.pdf
 extern crate alloc;
 
-use core::{fmt::Debug, num::NonZero, panic};
+use core::{fmt::Debug, num::NonZero, panic, ptr::NonNull};
 
 use common::{
     address_types::PhysicalAddress,
@@ -1198,7 +1198,9 @@ pub struct HBAMemoryRegisters {
 }
 
 impl HBAMemoryRegisters {
-    pub fn new(a: PhysicalAddress) -> Result<&'static mut Self, HbaError> {
+    pub fn new(
+        a: PhysicalAddress,
+    ) -> Result<NonNull<HBAMemoryRegisters>, HbaError> {
         if !a.is_aligned(REGULAR_PAGE_ALIGNMENT) {
             return Err(HbaError::AddressNotAligned);
         }
@@ -1209,8 +1211,9 @@ impl HBAMemoryRegisters {
             PageSize::Regular,
         );
 
-        let hba: &'static mut HBAMemoryRegisters =
-            unsafe { &mut *a.translate().as_mut_ptr() };
+        let mut hba_ptr = a.translate().as_ptr::<HBAMemoryRegisters>();
+
+        let hba = unsafe { hba_ptr.as_mut() };
 
         hba.ghc.ghc.set_ae();
         hba.ghc.ghc.set_ie();
@@ -1225,7 +1228,7 @@ impl HBAMemoryRegisters {
             unimplemented!("Didn't implement bios os handoff")
         }
 
-        Ok(hba)
+        Ok(hba_ptr)
     }
 
     /// Returns the amount of active devices found and set them into idle
