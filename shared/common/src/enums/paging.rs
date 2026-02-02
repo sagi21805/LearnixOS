@@ -23,10 +23,10 @@ use crate::{
 )]
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum PageTableLevel {
-    PML4 = 4,
-    PDPT = 3,
+    PML4 = 0,
+    PDPT = 1,
     PD = 2,
-    PT = 1,
+    PT = 3,
 }
 
 impl PageTableLevel {
@@ -74,7 +74,7 @@ impl PageSize {
     /// return `true` for those, and it cannot be allocated on `PD` so for
     /// it is will return `false`
     pub fn allocatable_at(&self, table_level: PageTableLevel) -> bool {
-        (3 - *self as usize) <= table_level as usize
+        (*self as usize + 1) >= table_level as usize
     }
 
     /// Determines the appropriate `PageSizeAlignment` for a
