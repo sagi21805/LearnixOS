@@ -1211,7 +1211,8 @@ impl HBAMemoryRegisters {
             PageSize::Regular,
         );
 
-        let mut hba_ptr = a.translate().as_ptr::<HBAMemoryRegisters>();
+        let mut hba_ptr =
+            a.translate().as_non_null::<HBAMemoryRegisters>();
 
         let hba = unsafe { hba_ptr.as_mut() };
 

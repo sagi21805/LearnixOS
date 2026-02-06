@@ -68,8 +68,11 @@ pub unsafe extern "C" fn _start() -> ! {
 
     let last = MemoryMap(parsed_memory_map!()).last().unwrap();
 
-    PageTable::current_table_mut()
-        .map_physical_memory((last.base_address + last.length) as usize);
+    unsafe {
+        PageTable::current_table().as_mut().map_physical_memory(
+            (last.base_address + last.length) as usize,
+        );
+    }
     okprintln!("Initialized buddy allocator");
     unsafe {
         InterruptDescriptorTable::init(

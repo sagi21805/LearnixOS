@@ -20,8 +20,10 @@ pub fn common_address_functions(input: TokenStream) -> TokenStream {
             pub const fn as_usize(&self) -> usize {
                 self.0
             }
-            pub const fn as_ptr<T>(&self) -> core::ptr::NonNull<T> {
-                core::ptr::NonNull::new_unchecked(core::ptr::with_exposed_provenance_mut::<T>(self.0))
+            pub const fn as_non_null<T>(&self) -> core::ptr::NonNull<T> {
+                core::ptr::NonNull::new(
+                    core::ptr::with_exposed_provenance_mut::<T>(self.0)
+                ).expect("Tried to create NonNull from address, found null")
             }
             pub const fn is_aligned(
                 &self,

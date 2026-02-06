@@ -1,4 +1,4 @@
-use core::ptr;
+use core::ptr::{self, NonNull};
 
 use crate::{registers::cr3, structures::paging::PageTableEntry};
 use common::{
@@ -48,35 +48,25 @@ impl PageTable {
     #[inline]
     pub unsafe fn empty_from_ptr(
         page_table_ptr: VirtualAddress,
-    ) -> Option<&'static mut PageTable> {
+    ) -> Option<NonNull<PageTable>> {
         if !page_table_ptr.is_aligned(REGULAR_PAGE_ALIGNMENT) {
             return None;
         }
         unsafe {
             ptr::write_volatile(
-                page_table_ptr.as_mut_ptr::<PageTable>(),
+                page_table_ptr.as_non_null::<PageTable>().as_ptr(),
                 PageTable::empty(),
             );
-            Some(&mut *page_table_ptr.as_mut_ptr::<PageTable>())
+            Some(page_table_ptr.as_non_null::<PageTable>())
         }
     }
     // ANCHOR_END: page_table_empty_from_ptr
 
     // ANCHOR: page_table_current_table
     #[inline]
-    pub fn current_table() -> &'static PageTable {
-        unsafe {
-            &*core::ptr::with_exposed_provenance(cr3::read() as usize)
-        }
-    }
-
-    #[inline]
-    pub fn current_table_mut() -> &'static mut PageTable {
-        unsafe {
-            &mut *core::ptr::with_exposed_provenance_mut(
-                cr3::read() as usize
-            )
-        }
+    pub fn current_table() -> NonNull<PageTable> {
+        NonNull::new(cr3::read() as usize as *mut PageTable)
+            .expect("Page table pointer is not present in cr3, found NULL")
     }
     // ANCHOR_END: page_table_current_table
 
