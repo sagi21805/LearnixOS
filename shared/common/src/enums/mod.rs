@@ -1,4 +1,7 @@
+pub mod ahci;
+pub mod ata;
 pub mod bios_interrupts;
+pub mod buddy;
 pub mod cpuid;
 pub mod general;
 pub mod global_descriptor_table;
@@ -11,7 +14,10 @@ pub mod pic8259;
 pub mod ports;
 pub mod vga;
 
+pub use ahci::*;
+pub use ata::*;
 pub use bios_interrupts::*;
+pub use buddy::*;
 pub use cpuid::*;
 pub use general::*;
 pub use global_descriptor_table::*;

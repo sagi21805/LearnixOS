@@ -1,4 +1,6 @@
 use core::{alloc::Layout, ptr::Alignment};
+use num_enum::TryFromPrimitive;
+use strum_macros::{EnumIter, VariantArray};
 
 use crate::{
     constants::{
@@ -7,12 +9,24 @@ use crate::{
     },
     error::{ConversionError, TableError},
 };
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+
+#[repr(u8)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    EnumIter,
+    TryFromPrimitive,
+    VariantArray,
+)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum PageTableLevel {
-    PML4 = 4,
-    PDPT = 3,
+    PML4 = 0,
+    PDPT = 1,
     PD = 2,
-    PT = 1,
+    PT = 3,
 }
 
 impl PageTableLevel {
@@ -27,38 +41,12 @@ impl PageTableLevel {
             .then(|| unsafe { core::mem::transmute(n) })
             .ok_or(TableError::Full)
     }
-
-    pub const fn iterator<'a>() -> impl Iterator<Item = &'a PageTableLevel>
-    {
-        const VARIANTS: [PageTableLevel; 4] = [
-            PageTableLevel::PML4,
-            PageTableLevel::PDPT,
-            PageTableLevel::PD,
-            PageTableLevel::PT,
-        ];
-
-        // Convert the array slice into an iterator.
-        VARIANTS.iter()
-    }
 }
-
-impl TryFrom<u8> for PageTableLevel {
-    type Error = ConversionError<u8>;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if (1..=4).contains(&value) {
-            Ok(unsafe {
-                core::mem::transmute::<u8, PageTableLevel>(value)
-            })
-        } else {
-            Err(ConversionError::CantConvertFrom(value))
-        }
-    }
-}
-
-// impl const From<usize> for PageTableLevel {}
-
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+#[repr(u8)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, EnumIter, TryFromPrimitive,
+)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum PageSize {
     /// 4Kib pages
     Regular = 2,
@@ -79,8 +67,23 @@ impl PageSize {
         }
     }
 
-    pub fn exceeds(&self, table_level: PageTableLevel) -> bool {
-        (3 - *self as usize) <= table_level as usize
+    /// Conclude if a page can be allocated in the give PageTableLevel
+    ///
+    /// # Example
+    /// A huge (2Mib) Page can be allocated on PML4, PDPT and PD so it will
+    /// return `true` for those, and it cannot be allocated on `PD` so for
+    /// it is will return `false`
+    pub fn allocatable_at(&self, table_level: PageTableLevel) -> bool {
+        (*self as usize + 1) >= table_level as usize
+    }
+
+    /// The minimal page level that this page size can exist on.
+    pub fn min_level(&self) -> PageTableLevel {
+        match self {
+            PageSize::Regular => PageTableLevel::PT,
+            PageSize::Big => PageTableLevel::PD,
+            PageSize::Huge => PageTableLevel::PDPT,
+        }
     }
 
     /// Determines the appropriate `PageSizeAlignment` for a

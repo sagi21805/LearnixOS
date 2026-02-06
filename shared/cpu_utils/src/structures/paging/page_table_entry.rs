@@ -1,3 +1,6 @@
+#[cfg(target_arch = "x86_64")]
+use core::ptr::NonNull;
+
 use common::{
     address_types::PhysicalAddress,
     constants::{ENTRY_ADDRESS_MASK, REGULAR_PAGE_ALIGNMENT},
@@ -63,7 +66,7 @@ impl PageTableEntry {
     /// the entry was already mapped.
     // ANCHOR: page_table_entry_map_unchecked
     #[inline]
-    pub const unsafe fn map_unchecked(
+    pub unsafe fn map_unchecked(
         &mut self,
         frame: PhysicalAddress,
         flags: PageEntryFlags,
@@ -97,7 +100,7 @@ impl PageTableEntry {
     /// allocator
     // ANCHOR: page_table_entry_map
     #[inline]
-    pub const unsafe fn map(
+    pub unsafe fn map(
         &mut self,
         frame: PhysicalAddress,
         flags: PageEntryFlags,
@@ -141,29 +144,12 @@ impl PageTableEntry {
     ///
     /// This method assumes all page tables are identity
     /// mapped.
-    // ANCHOR: page_table_entry_mapped_table_mut
-    #[cfg(target_arch = "x86_64")]
-    #[allow(clippy::mut_from_ref)]
-    pub fn mapped_table_mut(&self) -> Result<&mut PageTable, EntryError> {
-        // first check if the entry is mapped.
-        let pt = unsafe {
-            &mut *self.mapped()?.translate().as_mut_ptr::<PageTable>()
-        };
-        // then check if it is a table.
-        if !self.is_huge_page() && self.is_table() {
-            Ok(pt)
-        } else {
-            Err(EntryError::NotATable)
-        }
-    }
-    // ANCHOR_END: page_table_entry_mapped_table_mut
-
     // ANCHOR: page_table_entry_mapped_table
     #[cfg(target_arch = "x86_64")]
-    pub fn mapped_table(&self) -> Result<&PageTable, EntryError> {
+    #[allow(clippy::mut_from_ref)]
+    pub fn mapped_table(&self) -> Result<NonNull<PageTable>, EntryError> {
         // first check if the entry is mapped.
-        let pt =
-            unsafe { &*self.mapped()?.translate().as_ptr::<PageTable>() };
+        let pt = self.mapped()?.translate().as_non_null::<PageTable>();
         // then check if it is a table.
         if !self.is_huge_page() && self.is_table() {
             Ok(pt)
@@ -172,4 +158,9 @@ impl PageTableEntry {
         }
     }
     // ANCHOR_END: page_table_entry_mapped_table
+
+    pub fn table_index(&self) -> usize {
+        let table_offset = self as *const _ as usize & ((1 << 12) - 1);
+        table_offset / size_of::<PageTableEntry>()
+    }
 }

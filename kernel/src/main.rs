@@ -17,41 +17,40 @@
 #![feature(ascii_char_variants)]
 #![feature(ascii_char)]
 #![feature(const_convert)]
+#![feature(slice_ptr_get)]
+#![feature(core_intrinsics)]
+#![feature(explicit_tail_calls)]
+#![feature(specialization)]
 #![deny(clippy::all)]
 mod drivers;
 mod memory;
-use core::{
-    alloc::{Allocator, Layout},
-    num::NonZero,
-    panic::PanicInfo,
-};
+use core::{num::NonZero, panic::PanicInfo};
 
 use crate::{
     drivers::{
         interrupt_handlers,
         keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
-        pci::{self},
         pic8259::{CascadedPIC, PIC},
         vga_display::color_code::ColorCode,
     },
     memory::{
-        allocators::page_allocator::allocator::PhysicalPageAllocator,
-        memory_map::{ParsedMapDisplay, parse_map},
+        allocators::{
+            buddy::BUDDY_ALLOCATOR, extensions::PageTableExt,
+            slab::SLAB_ALLOCATOR,
+        },
+        memory_map::{MemoryMap, parse_map},
+        page::{PAGES, map::PageMap},
     },
 };
 
-use common::{
-    constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
-    enums::{Color, HeaderType},
-};
+use common::{constants::REGULAR_PAGE_SIZE, enums::Color};
 use cpu_utils::{
     instructions::interrupts::{self},
-    structures::interrupt_descriptor_table::{
-        IDT, InterruptDescriptorTable,
+    structures::{
+        interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
+        paging::PageTable,
     },
 };
-
-use memory::allocators::page_allocator::ALLOCATOR;
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -62,18 +61,31 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Entered Long Mode");
     parse_map();
     okprintln!("Obtained Memory Map");
-    println!("{}", ParsedMapDisplay(parsed_memory_map!()));
-    PhysicalPageAllocator::init(unsafe { &mut ALLOCATOR });
-    okprintln!("Allocator Initialized");
+    println!("{}", MemoryMap(parsed_memory_map!()));
+
+    PageMap::init(unsafe { &mut PAGES }, MemoryMap(parsed_memory_map!()));
+    unsafe { BUDDY_ALLOCATOR.init(MemoryMap(parsed_memory_map!()), 0) };
+
+    let last = MemoryMap(parsed_memory_map!()).last().unwrap();
+
     unsafe {
-        let idt_address = alloc_pages!(1).into();
-        InterruptDescriptorTable::init(&mut IDT, idt_address);
+        PageTable::current_table().as_mut().map_physical_memory(
+            (last.base_address + last.length) as usize,
+        );
+    }
+    okprintln!("Initialized buddy allocator");
+    unsafe {
+        InterruptDescriptorTable::init(
+            &mut IDT,
+            alloc_pages!(1).translate(),
+        );
         okprintln!("Initialized interrupt descriptor table");
         interrupt_handlers::init(IDT.assume_init_mut());
         okprintln!("Initialized interrupts handlers");
         CascadedPIC::init(&mut PIC);
+
         okprintln!("Initialized Programmable Interrupt Controller");
-        let keyboard_buffer_address = alloc_pages!(1).into();
+        let keyboard_buffer_address: common::address_types::VirtualAddress = alloc_pages!(1).translate();
         Keyboard::init(
             &mut KEYBOARD,
             keyboard_buffer_address,
@@ -82,31 +94,86 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
-    let pci_devices = pci::scan_pci();
-    println!("Press ENTER to enumerate PCI devices!");
-    let a = pci_devices.as_ptr() as usize;
-    println!("pci_devices address: {:x}", a);
-    for device in pci_devices.iter() {
-        loop {
-            unsafe {
-                let c = KEYBOARD.assume_init_mut().read_char();
-                if c == "\n" {
-                    break;
-                }
-            }
-        }
-        match device.identify() {
-            HeaderType::GeneralDevice => {
-                println!("{:#?}", unsafe { device.common })
-            }
-            _ => {
-                println!("{:#?}", unsafe { device.common })
-            }
-        }
-    }
+
+    unsafe { SLAB_ALLOCATOR.init() }
+    okprintln!("Initialized slab allocator");
+
+    // panic!("")
+    // let mut pci_devices = pci::scan_pci();
+    // println!("Press ENTER to enumerate PCI devices!");
+    // let a = pci_devices.as_ptr() as usize;
+    // println!("pci_devices address: {:x}", a);
+
+    // loop {
+    //     let c = unsafe { KEYBOARD.assume_init_mut().read_raw_scancode()
+    // };     if let Some(e) = c
+    //         && PS2ScanCode::from_scancode(e) == PS2ScanCode::Enter
+    //     {
+    //         break;
+    //     }
+    // }
+
+    // unsafe { PIC.enable_irq(CascadedPicInterruptLine::Ahci) };
+    // for device in pci_devices.iter_mut() {
+    //     // println!("{:#?}", unsafe { device.common.vendor_device });
+    //     // println!("{:#?}", unsafe { device.common.header_type });
+    //     // println!("{:#?}\n", unsafe { device.common.device_type });
+
+    //     if device.header.common().device_type.is_ahci() {
+    //         let a = unsafe {
+    //             PhysicalAddress::new_unchecked(
+    //                 device.header.general_device.bar5.address(),
+    //             )
+    //         };
+
+    //         println!(
+    //             "Bus Master: {}, Interrupts Disable {}, I/O Space: {}, \
+    //              Memory Space: {}",
+    //             device.header.common().command.is_bus_master(),
+    //             device.header.common().command.is_interrupt_disable(),
+    //             device.header.common().command.is_io_space(),
+    //             device.header.common().command.is_memory_space()
+    //         );
+
+    //         println!(
+    //             "Interrupt Line: {}, Interrupt Pin: {}",
+    //             unsafe { device.header.general_device.interrupt_line },
+    //             unsafe { device.header.general_device.interrupt_pin }
+    //         );
+
+    //         let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
+    //         let hba = HBAMemoryRegisters::new(aligned).unwrap();
+    //         let _ = hba.probe_init();
+    //         let p = &mut hba.ports[0];
+
+    //         let buf =
+    //             unsafe { alloc_pages!(1) as *mut IdentityPacketData };
+
+    //         p.identity_packet(buf);
+
+    //         let id = unsafe {
+    //             core::ptr::read_volatile(
+    //                 (buf as usize + PHYSICAL_MEMORY_OFFSET)
+    //                     as *mut IdentityPacketData,
+    //             )
+    //         };
+
+    //         println!("{:?}", id);
+
+    //         println!("Cylinders: {}", id.cylinders);
+    //         println!("Heads: {}", id.heads);
+    //         println!("Sectors: {}", id.sectors);
+
+    //         println!("Serial: {:?}", &id.serial_number);
+    //         println!("Model: {:?}", &id.model_num);
+    //         println!("Firmware: {:?}", &id.firmware_rev);
+    //     }
+    // }
+
     loop {
         unsafe {
-            print!("{}", KEYBOARD.assume_init_mut().read_char() ; color = ColorCode::new(Color::Green, Color::Black));
+            print!("{}", KEYBOARD.assume_init_mut().read_char() ; color
+    = ColorCode::new(Color::Green, Color::Black));
         }
     }
 }

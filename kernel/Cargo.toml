@@ -9,5 +9,11 @@ cpu_utils = { path = "../shared/cpu_utils" }
 derive_more = { version = "2.0.1", default-features = false, features = [
     "full",
 ] }
+num_enum = { version = "0.7.5", default-features = false, features = [
+    "complex-expressions",
+] }
 extend = "1.2.0"
 learnix-macros = { path = "../learnix-macros" }
+strum_macros = { version = "0.27", default-features = false }
+strum = { version = "0.27", default-features = false }
+nonmax = { version = "0.5.5", default-features = false }
