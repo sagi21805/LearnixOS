@@ -13,7 +13,12 @@
   "position-independent-executables": true,
   "relro-level": "off",
   "stack-probes": {
-    "kind": "call"
+    "kind": "inline-or-call",
+    "min-llvm-version-for-inline": [
+      16,
+      0,
+      0
+    ]
   },
   "static-position-independent-executables": true,
   "target-pointer-width": 64,

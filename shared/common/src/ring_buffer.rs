@@ -17,7 +17,7 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
             write_idx: 0,
             buffer: unsafe {
                 slice::from_raw_parts_mut(
-                    buffer_address.as_mut_ptr::<T>(),
+                    buffer_address.as_non_null::<T>().as_mut(),
                     length.get(),
                 )
             },

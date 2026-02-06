@@ -3,6 +3,7 @@ use common::{
     enums::MemoryRegionType,
 };
 use core::fmt::{self, Display, Formatter};
+use derive_more::{Deref, DerefMut};
 
 #[macro_export]
 macro_rules! parsed_memory_map {
@@ -15,13 +16,15 @@ macro_rules! parsed_memory_map {
                         as usize,
                 )
                 .translate()
-                .as_mut_ptr::<$crate::memory::memory_map::MemoryRegion>(),
+                .as_non_null::<$crate::memory::memory_map::MemoryRegion>()
+                .as_ptr(),
                 *(common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::PARSED_MEMORY_MAP_LENGTH
                         as usize,
                 )
                 .translate()
-                .as_mut_ptr::<u32>()) as usize,
+                .as_non_null::<u32>()
+                .as_ptr()) as usize,
             )
         }
     };
@@ -37,12 +40,14 @@ macro_rules! raw_memory_map {
                     common::constants::addresses::MEMORY_MAP_OFFSET as usize,
                 )
                 .translate()
-                .as_mut_ptr::<$crate::memory::memory_map::MemoryRegionExtended>(),
+                .as_non_null::<$crate::memory::memory_map::MemoryRegionExtended>()
+                .as_ptr(),
                 *(common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::MEMORY_MAP_LENGTH as usize,
                 )
                 .translate()
-                .as_mut_ptr::<u32>()) as usize,
+                .as_non_null::<u32>()
+                .as_ptr()) as usize,
             )
         }
     };
@@ -104,11 +109,13 @@ impl MemoryRegionTrait for MemoryRegionExtended {
     }
 }
 
-pub struct ParsedMapDisplay<T: MemoryRegionTrait + 'static>(
-    pub &'static [T],
-);
+#[derive(Deref, DerefMut)]
+pub struct MemoryMap<T: MemoryRegionTrait + 'static>(pub &'static [T]);
 
-impl<T: MemoryRegionTrait> Display for ParsedMapDisplay<T> {
+pub type RawMemoryMap = MemoryMap<MemoryRegionExtended>;
+pub type ParsedMemoryMap = MemoryMap<MemoryRegion>;
+
+impl<T: MemoryRegionTrait> Display for MemoryMap<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut usable = 0u64;
         let mut reserved = 0u64;
@@ -120,10 +127,10 @@ impl<T: MemoryRegionTrait> Display for ParsedMapDisplay<T> {
 
             write!(
                 f,
-                "[0x{:0>9x} - 0x{:0>9x}]: type: {}",
+                "[0x{:0>9x} - 0x{:0>9x}]: type: {:?}",
                 entry.base_address(),
                 entry.base_address() + entry.length(),
-                entry.region_type() as u32
+                entry.region_type()
             )?;
 
             match entry.region_type() {

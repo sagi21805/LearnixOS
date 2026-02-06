@@ -168,8 +168,8 @@ pub extern "x86-interrupt" fn page_fault_handler(
     error_code: u64,
 ) {
     println!("Interrupt: PageFault");
-    println!("Stack frame: {:#?}", stack_frame);
-    println!("Error code: {:#x}", error_code);
+    // println!("Stack frame: {:#?}", stack_frame);
+    // println!("Error code: {:#x}", error_code);
     println!("Faulting address: {:x}", cr2::read());
 }
 

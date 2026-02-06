@@ -106,14 +106,20 @@ impl InterruptDescriptorTable {
         gdt.load_tss(tss);
         unsafe {
             ptr::write_volatile(
-                base_address.as_mut_ptr::<Self>(),
+                base_address
+                    .as_non_null::<InterruptDescriptorTable>()
+                    .as_ptr(),
                 InterruptDescriptorTable {
                     interrupts: [const {
                         InterruptDescriptorTableEntry::missing()
                     }; 256],
                 },
             );
-            uninit.write(&mut *base_address.as_mut_ptr::<Self>());
+            uninit.write(
+                base_address
+                    .as_non_null::<InterruptDescriptorTable>()
+                    .as_mut(),
+            );
             uninit.assume_init_ref().load();
         }
     }

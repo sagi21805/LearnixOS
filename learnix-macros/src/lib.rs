@@ -1,7 +1,9 @@
 use flag::FlagInput;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{DeriveInput, parse_macro_input};
+use syn::{
+    DeriveInput, LitInt, Token, parse_macro_input, punctuated::Punctuated,
+};
 
 mod flag;
 
@@ -18,11 +20,10 @@ pub fn common_address_functions(input: TokenStream) -> TokenStream {
             pub const fn as_usize(&self) -> usize {
                 self.0
             }
-            pub const unsafe fn as_mut_ptr<T>(&self) -> *mut T {
-                core::ptr::with_exposed_provenance_mut::<T>(self.0)
-            }
-            pub const fn as_ptr<T>(&self) -> *const T {
-                core::ptr::with_exposed_provenance::<T>(self.0)
+            pub const fn as_non_null<T>(&self) -> core::ptr::NonNull<T> {
+                core::ptr::NonNull::new(
+                    core::ptr::with_exposed_provenance_mut::<T>(self.0)
+                ).expect("Tried to create NonNull from address, found null")
             }
             pub const fn is_aligned(
                 &self,
@@ -185,6 +186,7 @@ pub fn rwc_flag(input: TokenStream) -> TokenStream {
     // build identifiers
     let name_str = name.to_string();
     let clear_ident = format_ident!("clear_{}", name_str);
+    let support_ident = format_ident!("is_{}", name_str);
 
     let expanded = quote! {
         #[inline]
@@ -193,6 +195,19 @@ pub fn rwc_flag(input: TokenStream) -> TokenStream {
         /// Sets the corresponding flag
         pub const fn #clear_ident(&mut self) {
             self.0 |= 1 << #bit;
+        }
+
+
+        #[inline]
+        #[allow(dead_code)]
+        #[allow(unused_attributes)]
+        /// Checks if the corresponding flag is set
+        pub fn #support_ident(&self) -> bool {
+            unsafe {
+                core::ptr::read_volatile(
+                    self as *const _ as *mut usize
+                ) & ((1<< #bit) as usize) != 0
+            }
         }
     };
 
@@ -223,3 +238,45 @@ pub fn rw1_flag(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 // ANCHOR_END: rw1_flag
+
+#[proc_macro]
+pub fn generate_generics(input: TokenStream) -> TokenStream {
+    // Parse the input as a comma-separated list of integers: 8, 16, 32...
+    let parser = Punctuated::<LitInt, Token![,]>::parse_terminated;
+    let input = parse_macro_input!(input with parser);
+
+    let mut expanded = quote! {};
+
+    // initial range for the first item
+    let mut last_size: usize = 0;
+
+    for lit in input {
+        let generic_size: usize = lit
+            .base10_parse()
+            .expect("Invalid integer format, expected base10");
+
+        let generic_name = format_ident!("Generic{}", generic_size);
+
+        // minimum size of 8 bytes (usize on 64 bit).
+        let array_size = generic_size / 8;
+
+        let start = last_size;
+        let end = generic_size;
+
+        let struct_def = quote! {
+            #[derive(Debug, Clone, Copy)]
+            pub struct #generic_name(pub [usize; #array_size]);
+
+            impl Generic for #generic_name {
+                fn size(&self) -> usize { #generic_size }
+                const START: usize = #start;
+                const END: usize = #end;
+            }
+        };
+
+        last_size = generic_size + 1;
+        expanded.extend(struct_def);
+    }
+
+    TokenStream::from(expanded)
+}
