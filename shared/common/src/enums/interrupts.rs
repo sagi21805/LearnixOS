@@ -27,6 +27,7 @@ pub enum Interrupt {
     // Interrupts until 0x1f are reserved by Intel.
     Timer = 0x20,
     Keyboard = 0x21,
+    Ahci = 0x2a,
 }
 #[repr(u8)]
 #[derive(Clone, Debug, Copy)]

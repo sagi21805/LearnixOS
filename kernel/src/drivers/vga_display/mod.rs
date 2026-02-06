@@ -74,6 +74,7 @@ macro_rules! eprintln {
     // Case 1: Print "FAIL" with formatted message.
     ($fmt:expr $(, $arg:tt)*) => {{
         use $crate::drivers::vga_display::color_code::ColorCode;
+        use common::enums::Color;
         $crate::print!("[");
         $crate::print!("FAIL" ; color = ColorCode::new(Color::Red, Color::Black));
         $crate::print!("]: ");
@@ -83,6 +84,7 @@ macro_rules! eprintln {
     // Case 2: Print "FAIL" with custom message color.
     ($fmt:expr $(, $arg:tt)* ; color = $color:expr) => {{
         use $crate::drivers::vga_display::color_code::ColorCode;
+        use common::enums::Color;
         $crate::print!("[");
         $crate::print!("FAIL" ; color = ColorCode::new(Color::Red, Color::Black));
         $crate::print!("]: ");
@@ -97,6 +99,7 @@ macro_rules! okprintln {
     // Case 1: Print "OK" with formatted message.
     ($fmt:expr $(, $arg:tt)*) => {{
         use $crate::drivers::vga_display::color_code::ColorCode;
+        use common::enums::Color;
         $crate::print!("[");
         $crate::print!(" OK " ; color = ColorCode::new(Color::Green, Color::Black));
         $crate::print!("]: ");
@@ -106,6 +109,7 @@ macro_rules! okprintln {
     // Case 2: Print "OK" with custom message color.
     ($fmt:expr $(, $arg:tt)* ; color = $color:expr) => {{
         use $crate::drivers::vga_display::color_code::ColorCode;
+        use common::enums::Color;
         $crate::print!("[");
         $crate::print!(" OK " ; color = ColorCode::new(Color::Green, Color::Black));
         $crate::print!("]: ");

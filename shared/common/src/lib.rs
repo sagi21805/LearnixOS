@@ -13,7 +13,10 @@ pub mod bitmap;
 pub mod constants;
 pub mod enums;
 pub mod error;
+pub mod late_init;
 pub mod ring_buffer;
+pub mod volatile;
+
 struct FakeAllocator;
 
 unsafe impl core::alloc::GlobalAlloc for FakeAllocator {

@@ -1,5 +1,8 @@
 use crate::{
-    drivers::{keyboard::keyboard_handler, timer::timer_handler},
+    drivers::{
+        ata::ahci::ahci_interrupt, keyboard::keyboard_handler,
+        timer::timer_handler,
+    },
     println,
 };
 use common::{
@@ -63,6 +66,7 @@ pub extern "x86-interrupt" fn invalid_opcode_handler(
 ) {
     println!("Interrupt: InvalidOpcode");
     println!("Stack frame: {:#?}", stack_frame);
+    panic!("");
 }
 
 pub extern "x86-interrupt" fn device_not_found_handler(
@@ -164,8 +168,8 @@ pub extern "x86-interrupt" fn page_fault_handler(
     error_code: u64,
 ) {
     println!("Interrupt: PageFault");
-    println!("Stack frame: {:#?}", stack_frame);
-    println!("Error code: {:#x}", error_code);
+    // println!("Stack frame: {:#?}", stack_frame);
+    // println!("Error code: {:#x}", error_code);
     println!("Faulting address: {:x}", cr2::read());
 }
 
@@ -390,6 +394,14 @@ pub fn init(idt: &'static mut InterruptDescriptorTable) {
             Interrupt::Keyboard,
             VirtualAddress::new_unchecked(
                 keyboard_handler as *const () as usize,
+            ),
+            ProtectionLevel::Ring0,
+            InterruptType::Trap,
+        );
+        idt.set_interrupt_handler(
+            Interrupt::Ahci,
+            VirtualAddress::new_unchecked(
+                ahci_interrupt as *const () as usize,
             ),
             ProtectionLevel::Ring0,
             InterruptType::Trap,

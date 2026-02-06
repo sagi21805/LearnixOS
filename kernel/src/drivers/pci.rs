@@ -1,11 +1,11 @@
 extern crate alloc;
-use crate::memory::allocators::page_allocator::{
-    ALLOCATOR, allocator::PhysicalPageAllocator,
-};
+
+use crate::drivers::ata::ahci::AHCIBaseAddress;
 use alloc::vec::Vec;
 use common::enums::{
-    ClassCode, DeviceID, HeaderType, PciDeviceType, Port,
-    ProgrammingInterface, SubClass, VendorDevice, VendorID,
+    CascadedPicInterruptLine, ClassCode, DeviceID, HeaderType,
+    PciDeviceType, Port, ProgrammingInterface, SubClass, VendorDevice,
+    VendorID,
 };
 use cpu_utils::instructions::port::PortExt;
 use learnix_macros::flag;
@@ -67,20 +67,23 @@ impl PciConfigurationCycle {
                 uninit_ptr.byte_add(offset).write_volatile(header_data);
             }
         }
+        // uninit.bus = bus;
+        // uninit.device = device;
+        // uninit.function = function;
         uninit
     }
 
-    pub fn read_pci_device_header(
+    pub fn read_pci_device(
         bus: u8,
         device: u8,
         function: u8,
         common: PciCommonHeader,
     ) -> PciDevice {
-        let mut uninit = PciDevice { common };
+        let mut uninit = PciDeviceHeader { common };
         let uninit_ptr =
-            &mut uninit as *mut PciDevice as usize as *mut u32;
-        for offset in (size_of::<PciCommonHeader>()
-            ..size_of::<PciDevice>())
+            &mut uninit as *mut PciDeviceHeader as usize as *mut u32;
+        for offset in ((size_of::<PciCommonHeader>())
+            ..size_of::<PciDeviceHeader>())
             .step_by(size_of::<u32>())
         {
             unsafe {
@@ -94,7 +97,12 @@ impl PciConfigurationCycle {
                 uninit_ptr.byte_add(offset).write_volatile(header_data);
             }
         }
-        uninit
+        PciDevice {
+            header: uninit,
+            bus,
+            device,
+            function,
+        }
     }
 }
 
@@ -175,15 +183,15 @@ impl BISTRegister {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct PciCommonHeader {
-    vendor_device: VendorDevice,
-    command: CommandRegister,
-    status: StatusRegister,
-    revision: u8,
-    device_type: PciDeviceType,
-    cache_size: u8,
-    latency_timer: u8,
-    header_type: HeaderType,
-    bist: BISTRegister,
+    pub vendor_device: VendorDevice,
+    pub command: CommandRegister,
+    pub status: StatusRegister,
+    pub revision: u8,
+    pub device_type: PciDeviceType,
+    pub cache_size: u8,
+    pub latency_timer: u8,
+    pub header_type: HeaderType,
+    pub bist: BISTRegister,
 }
 
 impl PciCommonHeader {
@@ -205,27 +213,36 @@ impl PciCommonHeader {
             latency_timer: 0,
             header_type: HeaderType::GeneralDevice,
             bist: BISTRegister(0),
+            // bus: 0xff,
+            // device: 0xff,
+            // function: 0xff,
         }
     }
 }
 
-#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryBaseAddressRegister(u32);
 
-#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct IOBaseAddressRegister(u32);
 
 #[derive(Clone, Copy)]
 pub union BaseAddressRegister {
-    memory: MemoryBaseAddressRegister,
-    io: IOBaseAddressRegister,
+    pub memory: MemoryBaseAddressRegister,
+    pub io: IOBaseAddressRegister,
+    pub abar: AHCIBaseAddress,
 }
 
+#[derive(PartialEq, Eq)]
 pub enum BaseAddressRegisterType {
     Memory,
     IO,
+}
+
+pub enum BaseAddressRegisterSize {
+    Bit32 = 0,
+    Reserved = 1,
+    Bit64 = 2,
 }
 
 impl BaseAddressRegister {
@@ -240,37 +257,52 @@ impl BaseAddressRegister {
             }
         }
     }
+
+    pub fn is_64bit(&self) -> bool {
+        self.identify() == BaseAddressRegisterType::Memory
+            && unsafe {
+                self.memory.0 & BaseAddressRegisterSize::Bit64 as u32 != 0
+            }
+    }
+
+    pub fn address(&self) -> usize {
+        if !self.is_64bit() {
+            (unsafe { self.io.0 } & 0xfffffff0) as usize
+        } else {
+            unimplemented!("Still didn't implemented 64bit addresses")
+        }
+    }
 }
 
 impl core::fmt::Debug for BaseAddressRegister {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "Memory: {:?}", unsafe { self.memory })?;
-        writeln!(f, "I/O: {:?}", unsafe { self.io })
+        writeln!(f, "Memory: {:x?}", unsafe { self.memory })?;
+        writeln!(f, "I/O: {:x?}", unsafe { self.io })
     }
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct GeneralDeviceHeader {
-    common: PciCommonHeader,
-    bar0: BaseAddressRegister,
-    bar1: BaseAddressRegister,
-    bar2: BaseAddressRegister,
-    bar3: BaseAddressRegister,
-    bar4: BaseAddressRegister,
-    bar5: BaseAddressRegister,
-    cardbus_cis_ptr: u32,
-    subsystem_vendor_id: u16,
-    subsystem_id: u16,
-    expansion_rom_base: u32,
-    capabilities_ptr: u8,
-    _reserved0: u8,
-    _reserved1: u16,
-    _reserved2: u32,
-    interrupt_line: u8,
-    interrupt_pin: u8,
-    min_grant: u8,
-    max_latency: u8,
+    pub common: PciCommonHeader,
+    pub bar0: BaseAddressRegister,
+    pub bar1: BaseAddressRegister,
+    pub bar2: BaseAddressRegister,
+    pub bar3: BaseAddressRegister,
+    pub bar4: BaseAddressRegister,
+    pub bar5: BaseAddressRegister,
+    pub cardbus_cis_ptr: u32,
+    pub subsystem_vendor_id: u16,
+    pub subsystem_id: u16,
+    pub expansion_rom_base: u32,
+    pub capabilities_ptr: u8,
+    pub _reserved0: u8,
+    pub _reserved1: u16,
+    pub _reserved2: u32,
+    pub interrupt_line: u8,
+    pub interrupt_pin: u8,
+    pub min_grant: u8,
+    pub max_latency: u8,
 }
 
 impl GeneralDeviceHeader {
@@ -339,13 +371,13 @@ pub struct Pci2PciBridge {
     bridge_control: u16,
 }
 
-pub union PciDevice {
+pub union PciDeviceHeader {
     pub common: PciCommonHeader,
     pub general_device: GeneralDeviceHeader,
     pub pci2pci_bridge: Pci2PciBridge,
 }
 
-impl PciDevice {
+impl PciDeviceHeader {
     pub fn identify(&self) -> HeaderType {
         // Doesn't matter which one we choose, common is the
         // same for all of them in the same offset.
@@ -357,46 +389,57 @@ impl PciDevice {
     }
 }
 
-pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
-    let mut v: Vec<PciDevice, PhysicalPageAllocator> =
-        Vec::with_capacity_in(64, unsafe {
-            ALLOCATOR.assume_init_ref().clone()
-        });
-    for bus in 0..=255 {
-        for device in 0..32 {
-            let common =
-                PciConfigurationCycle::read_common_header(bus, device, 0);
-            if common.vendor_device.vendor == VendorID::NonExistent {
-                return v;
-            }
-            v.push_within_capacity(
-                PciConfigurationCycle::read_pci_device_header(
-                    bus, device, 0, common,
-                ),
-            )
-            .unwrap_or_else(|_| {
-                panic!("PCI Vec cannot push any more items")
-            });
-            if !common.header_type.is_multifunction() {
-                continue;
-            }
-            for function in 1..8 {
-                let common = PciConfigurationCycle::read_common_header(
-                    bus, device, function,
-                );
-                if common.vendor_device.vendor == VendorID::NonExistent {
-                    break;
-                }
-                v.push_within_capacity(
-                    PciConfigurationCycle::read_pci_device_header(
-                        bus, device, function, common,
-                    ),
-                )
-                .unwrap_or_else(|_| {
-                    panic!("PCI Vec cannot push any more items")
-                });
-            }
-        }
-    }
-    v
+pub struct PciDevice {
+    pub header: PciDeviceHeader,
+    pub bus: u8,
+    pub device: u8,
+    pub function: u8,
 }
+
+impl PciDevice {
+    pub fn enable_interrupts(&self, irq: CascadedPicInterruptLine) {}
+}
+
+// pub fn scan_pci() -> Vec<PciDevice, PhysicalPageAllocator> {
+//     let mut v: Vec<PciDevice, PhysicalPageAllocator> =
+//         Vec::with_capacity_in(64, unsafe {
+//             ALLOCATOR.assume_init_ref().clone()
+//         });
+//     for bus in 0..=255 {
+//         for device in 0..32 {
+//             let common =
+//                 PciConfigurationCycle::read_common_header(bus, device,
+// 0);             if common.vendor_device.vendor == VendorID::NonExistent
+// {                 continue;
+//             }
+//             v.push_within_capacity(
+//                 PciConfigurationCycle::read_pci_device(
+//                     bus, device, 0, common,
+//                 ),
+//             )
+//             .unwrap_or_else(|_| {
+//                 panic!("PCI Vec cannot push any more items")
+//             });
+//             if !common.header_type.is_multifunction() {
+//                 continue;
+//             }
+//             for function in 1..8 {
+//                 let common = PciConfigurationCycle::read_common_header(
+//                     bus, device, function,
+//                 );
+//                 if common.vendor_device.vendor == VendorID::NonExistent
+// {                     continue;
+//                 }
+//                 v.push_within_capacity(
+//                     PciConfigurationCycle::read_pci_device(
+//                         bus, device, function, common,
+//                     ),
+//                 )
+//                 .unwrap_or_else(|_| {
+//                     panic!("PCI Vec cannot push any more items")
+//                 });
+//             }
+//         }
+//     }
+//     v
+// }

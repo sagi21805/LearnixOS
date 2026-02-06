@@ -56,7 +56,7 @@ fn main() -> io::Result<()> {
         "targets/32bit_target.json",
         "release",
     );
-    build_stage("../kernel", "targets/64bit_target.json", &profile);
+    build_stage("../kernel", "targets/64bit_target.json", "release");
 
     // Combine binaries into one image
     let input_dir = PathBuf::from("bin");

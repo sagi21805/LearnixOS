@@ -1,11 +1,11 @@
-use core::ptr;
+use core::ptr::{self, NonNull};
 
 use crate::{registers::cr3, structures::paging::PageTableEntry};
 use common::{
     address_types::VirtualAddress,
     constants::{PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT},
     enums::{PageSize, PageTableLevel},
-    error::{EntryError, TableError},
+    error::EntryError,
 };
 
 // ANCHOR: page_table
@@ -16,6 +16,14 @@ pub struct PageTable {
     pub entries: [PageTableEntry; PAGE_DIRECTORY_ENTRIES],
 }
 // ANCHOR_END: page_table
+
+#[derive(Debug)]
+pub enum EntryIndex {
+    Entry(&'static PageTableEntry),
+    Index(usize),
+    PageDoesNotFit,
+    OutOfEntries,
+}
 
 // ANCHOR: page_table_impl
 impl PageTable {
@@ -40,35 +48,25 @@ impl PageTable {
     #[inline]
     pub unsafe fn empty_from_ptr(
         page_table_ptr: VirtualAddress,
-    ) -> Option<&'static mut PageTable> {
+    ) -> Option<NonNull<PageTable>> {
         if !page_table_ptr.is_aligned(REGULAR_PAGE_ALIGNMENT) {
             return None;
         }
         unsafe {
             ptr::write_volatile(
-                page_table_ptr.as_mut_ptr::<PageTable>(),
+                page_table_ptr.as_non_null::<PageTable>().as_ptr(),
                 PageTable::empty(),
             );
-            Some(&mut *page_table_ptr.as_mut_ptr::<PageTable>())
+            Some(page_table_ptr.as_non_null::<PageTable>())
         }
     }
     // ANCHOR_END: page_table_empty_from_ptr
 
     // ANCHOR: page_table_current_table
     #[inline]
-    pub fn current_table() -> &'static PageTable {
-        unsafe {
-            &*core::ptr::with_exposed_provenance(cr3::read() as usize)
-        }
-    }
-
-    #[inline]
-    pub fn current_table_mut() -> &'static mut PageTable {
-        unsafe {
-            &mut *core::ptr::with_exposed_provenance_mut(
-                cr3::read() as usize
-            )
-        }
+    pub fn current_table() -> NonNull<PageTable> {
+        NonNull::new(cr3::read() as usize as *mut PageTable)
+            .expect("Page table pointer is not present in cr3, found NULL")
     }
     // ANCHOR_END: page_table_current_table
 
@@ -88,70 +86,28 @@ impl PageTable {
     /// Returns the index of the found entry and the page table if found.
     // Anchor: page_table_try_fetch_table
     #[cfg(target_arch = "x86_64")]
-    fn try_fetch_table(
-        &self,
+    pub fn try_fetch_table(
+        &'static self,
         start_at: usize,
         table_level: PageTableLevel,
         page_size: PageSize,
-    ) -> (usize, Option<&PageTable>) {
+    ) -> EntryIndex {
+        if !page_size.allocatable_at(table_level) {
+            return EntryIndex::PageDoesNotFit;
+        }
+
         for (i, entry) in self.entries.iter().enumerate().skip(start_at) {
             match entry.mapped_table() {
-                Ok(v) => {
-                    if page_size.exceeds(table_level) {
-                        continue;
-                    }
-                    return (i, Some(v));
+                Ok(_) => {
+                    return EntryIndex::Entry(entry);
                 }
                 Err(EntryError::NoMapping) => {
-                    return (i, None);
+                    return EntryIndex::Index(i);
                 }
                 Err(EntryError::NotATable) => continue,
             }
         }
-        (PAGE_DIRECTORY_ENTRIES, None)
+        EntryIndex::OutOfEntries
     }
-
-    /// Find an avavilable page in the given size.
-    // ANCHOR: page_table_find_available_page
-    #[cfg(target_arch = "x86_64")]
-    pub fn find_available_page(
-        page_size: PageSize,
-    ) -> Result<VirtualAddress, TableError> {
-        const LEVELS: usize = 4;
-        let mut level_indices = [0usize; LEVELS];
-        let mut page_tables = [Self::current_table(); LEVELS];
-        let mut current_level = PageTableLevel::PML4;
-        loop {
-            let current_table = page_tables[current_level as usize];
-
-            let next_table = match current_table.try_fetch_table(
-                level_indices[current_level as usize],
-                current_level,
-                page_size,
-            ) {
-                (PAGE_DIRECTORY_ENTRIES, None) => {
-                    current_level = current_level.prev()?;
-                    level_indices[current_level as usize] += 1;
-                    continue;
-                }
-                (i, Some(table)) => {
-                    level_indices[current_level as usize] = i;
-                    table
-                }
-                (i, None) => {
-                    level_indices[current_level as usize] = i;
-                    return Ok(VirtualAddress::from_indices(
-                        level_indices,
-                    ));
-                }
-            };
-            let next_level = current_level
-                .next()
-                .expect("Can't go next on a first level table");
-            page_tables[next_level as usize] = next_table;
-            level_indices[next_level as usize] += 1;
-        }
-    }
-    // ANCHOR_END: page_table_find_available_page
 }
 // ANCHOR_END: page_table_impl

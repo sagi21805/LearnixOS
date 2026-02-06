@@ -1,3 +1,5 @@
+use core::ptr::NonNull;
+
 #[cfg(target_arch = "x86_64")]
 use crate::constants::PHYSICAL_MEMORY_OFFSET;
 use crate::enums::PageTableLevel;
@@ -61,6 +63,12 @@ impl const From<usize> for PhysicalAddress {
 #[repr(C)]
 pub struct VirtualAddress(usize);
 
+impl<T> From<NonNull<T>> for VirtualAddress {
+    fn from(value: NonNull<T>) -> Self {
+        unsafe { VirtualAddress::new_unchecked(value.as_ptr().addr()) }
+    }
+}
+
 impl const From<usize> for VirtualAddress {
     // TODO! Change into new in the future
     fn from(value: usize) -> Self {
@@ -100,26 +108,8 @@ impl VirtualAddress {
     /// 1 -> index of 1st table
     // ANCHOR: virtual_nth_pt_index_unchecked
     pub const fn index_of(&self, level: PageTableLevel) -> usize {
-        (self.0 >> (39 - 9 * (4 - level as usize))) & 0o777
+        (self.0 >> (39 - 9 * (level as usize))) & 0o777
     }
-
-    // pub fn translate(&self) -> Option<PhysicalAddress> {
-    //     let mut current_table =
-    // PageTable::current_table();     for i in 0..4 {
-    //         let index = self.rev_nth_index_unchecked(i);
-    //         match
-    // current_table.entries[index].mapped_table_mut() {
-    //             Ok(table) => current_table = table,
-    //             Err(EntryError::NotATable) => {
-    //                 return unsafe {
-    // Some(current_table.entries[index].mapped_unchecked())
-    // };             }
-    //             Err(EntryError::NoMapping) => return
-    // None,             Err(EntryError::Full) =>
-    // unreachable!(),         }
-    //     }
-    //     None
-    // }
 }
 
 impl PhysicalAddress {

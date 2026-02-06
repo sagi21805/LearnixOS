@@ -34,7 +34,7 @@ pub enum CascadedPicInterruptLine {
     Irq7 = 1 << 7,
     Irq8 = 1 << 8,
     Irq9 = 1 << 9,
-    Irq10 = 1 << 10,
+    Ahci = 1 << 10,
     Irq11 = 1 << 11,
     Irq12 = 1 << 12,
     Irq13 = 1 << 13,
