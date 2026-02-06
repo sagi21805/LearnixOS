@@ -44,7 +44,7 @@ macro_rules! table_entry_flags {
 
 // ANCHOR: page_entry_flags
 /// A wrapper for `PageTableEntry` flags for easier use
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct PageEntryFlags(pub u64);
 // ANCHOR_END: page_entry_flags
 
