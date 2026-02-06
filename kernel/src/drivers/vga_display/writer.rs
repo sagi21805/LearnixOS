@@ -1,5 +1,4 @@
 use core::ascii::Char;
-use core::ptr::NonNull;
 
 use super::color_code::ColorCode;
 use super::screen_char::ScreenChar;
@@ -12,7 +11,7 @@ use cpu_utils::instructions::port::PortExt;
 pub struct Writer<const W: usize, const H: usize> {
     pub cursor_position: usize,
     pub color: ColorCode,
-    pub screen: NonNull<[ScreenChar]>,
+    pub screen: &'static mut [ScreenChar],
 }
 // ANCHOR_END: writer
 

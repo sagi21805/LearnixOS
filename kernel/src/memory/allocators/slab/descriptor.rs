@@ -69,15 +69,11 @@ impl<T: Slab> SlabDescriptor<T> {
     ) -> SlabDescriptor<T> {
         let address = unsafe { alloc_pages!(1 << order).translate() };
 
-        let mut objects = unsafe {
-            NonNull::slice_from_raw_parts(
-                NonNull::new_unchecked(
-                    address.as_mut_ptr::<PreallocatedObject<T>>(),
-                ),
-                ((1 << order) * REGULAR_PAGE_SIZE)
-                    / size_of::<PreallocatedObject<T>>(),
-            )
-        };
+        let mut objects = NonNull::slice_from_raw_parts(
+            address.as_non_null::<PreallocatedObject<T>>(),
+            ((1 << order) * REGULAR_PAGE_SIZE)
+                / size_of::<PreallocatedObject<T>>(),
+        );
 
         for (i, object) in
             unsafe { objects.as_mut() }.iter_mut().enumerate()

@@ -16,13 +16,15 @@ macro_rules! parsed_memory_map {
                         as usize,
                 )
                 .translate()
-                .as_mut_ptr::<$crate::memory::memory_map::MemoryRegion>(),
+                .as_non_null::<$crate::memory::memory_map::MemoryRegion>()
+                .as_ptr(),
                 *(common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::PARSED_MEMORY_MAP_LENGTH
                         as usize,
                 )
                 .translate()
-                .as_mut_ptr::<u32>()) as usize,
+                .as_non_null::<u32>()
+                .as_ptr()) as usize,
             )
         }
     };
@@ -38,12 +40,14 @@ macro_rules! raw_memory_map {
                     common::constants::addresses::MEMORY_MAP_OFFSET as usize,
                 )
                 .translate()
-                .as_mut_ptr::<$crate::memory::memory_map::MemoryRegionExtended>(),
+                .as_non_null::<$crate::memory::memory_map::MemoryRegionExtended>()
+                .as_ptr(),
                 *(common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::MEMORY_MAP_LENGTH as usize,
                 )
                 .translate()
-                .as_mut_ptr::<u32>()) as usize,
+                .as_non_null::<u32>()
+                .as_ptr()) as usize,
             )
         }
     };

@@ -51,23 +51,19 @@ pub impl PageTableEntry {
     /// Else, it will override what is inside the entry and
     /// map a new table to it so valid table is guaranteed
     /// to be returned.
-    fn force_resolve_table_mut(&mut self) -> Option<&mut PageTable> {
-        match self.mapped_table_mut() {
+    fn force_resolve_table_mut(&mut self) -> Option<NonNull<PageTable>> {
+        match self.mapped_table() {
             Ok(table) => Some(table),
             Err(EntryError::NotATable) => None,
             Err(EntryError::NoMapping) => unsafe {
                 let resolved_table = BUDDY_ALLOCATOR.alloc_table();
                 self.map_unchecked(
                     PhysicalAddress::new_unchecked(
-                        resolved_table.address().as_usize(),
+                        resolved_table.addr().get(),
                     ),
                     PageEntryFlags::table_flags(),
                 );
-                Some(
-                    &mut *self
-                        .mapped_unchecked()
-                        .as_mut_ptr::<PageTable>(),
-                )
+                Some(self.mapped_unchecked().as_non_null::<PageTable>())
             },
         }
     }
@@ -95,19 +91,19 @@ pub impl VirtualAddress {
         if address.is_aligned(page_size.alignment())
             && self.is_aligned(page_size.alignment())
         {
-            let mut table = PageTable::current_table_mut();
+            let mut table = PageTable::current_table();
             for level in
                 PageTableLevel::VARIANTS[0..=page_size as usize].iter()
             {
                 let index = self.index_of(*level);
-                let entry = &mut table.entries[index];
+                let entry = unsafe { &mut table.as_mut().entries[index] };
                 let resolved_table = entry
                     .force_resolve_table_mut()
                     .expect("Tried to create table on a mapped entry");
                 table = resolved_table;
             }
             unsafe {
-                table.entries[self.index_of(
+                table.as_mut().entries[self.index_of(
                     PageTableLevel::VARIANTS[page_size as usize + 1],
                 )]
                 .map(address, flags);
@@ -153,23 +149,25 @@ pub impl VirtualAddress {
         &self,
         wanted: PageTableLevel,
     ) -> Result<NonNull<PageTable>, EntryError> {
-        let mut table = PageTable::current_table_mut();
+        let mut table = PageTable::current_table();
 
         for level in PageTableLevel::VARIANTS[0..wanted as usize].iter() {
-            let entry = &table.entries[self.index_of(*level)];
-            table = entry.mapped_table_mut()?;
+            let entry =
+                unsafe { &table.as_ref().entries[self.index_of(*level)] };
+            table = entry.mapped_table()?;
         }
 
-        Ok(NonNull::from_mut(table))
+        Ok(table)
     }
 
     fn translate(&self) -> Option<PhysicalAddress> {
-        let mut table = PageTable::current_table_mut();
+        let mut table = PageTable::current_table();
 
         for level in PageTableLevel::VARIANTS.iter() {
-            let entry = &table.entries[self.index_of(*level)];
-            match entry.mapped_table_mut() {
-                Ok(t) => table = t,
+            let entry =
+                unsafe { &table.as_mut().entries[self.index_of(*level)] };
+            match entry.mapped_table() {
+                Ok(mapped) => table = mapped,
                 Err(EntryError::NotATable) => {
                     return unsafe { Some(entry.mapped_unchecked()) };
                 }
@@ -182,6 +180,7 @@ pub impl VirtualAddress {
 
 #[ext]
 pub impl PageTable {
+    // TODO: trn into a tail called function with become
     /// Find an avavilable page in the given size.
     // ANCHOR: page_table_find_available_page
     #[cfg(target_arch = "x86_64")]
@@ -193,14 +192,16 @@ pub impl PageTable {
         let mut page_tables = [Self::current_table(); TOTAL_LEVELS];
         let mut current_level = PageTableLevel::PML4;
         loop {
-            let current_table =
+            let mut current_table =
                 page_tables[TOTAL_LEVELS - current_level as usize];
 
-            let ti = current_table.try_fetch_table(
-                level_indices[TOTAL_LEVELS - current_level as usize],
-                current_level,
-                page_size,
-            );
+            let ti = unsafe {
+                current_table.as_mut().try_fetch_table(
+                    level_indices[TOTAL_LEVELS - current_level as usize],
+                    current_level,
+                    page_size,
+                )
+            };
 
             let next_table = match ti {
                 EntryIndex::OutOfEntries | EntryIndex::PageDoesNotFit => {
@@ -213,7 +214,7 @@ pub impl PageTable {
                     level_indices[TOTAL_LEVELS - current_level as usize] =
                         entry.table_index();
                     unsafe {
-                        &*entry.mapped_unchecked().as_ptr::<PageTable>()
+                        entry.mapped_unchecked().as_non_null::<PageTable>()
                     }
                 }
                 EntryIndex::Index(i) => {
@@ -233,6 +234,7 @@ pub impl PageTable {
     }
     // ANCHOR_END: page_table_find_available_page
 
+    // TODO: turn into a tail called function with become
     /// Map the region of memory from 0 to `mem_size_bytes`
     /// at the top of the page table so that
     ///
@@ -254,20 +256,23 @@ pub impl PageTable {
         for forth_entry in &mut self.entries[(PAGE_DIRECTORY_ENTRIES / 2)
             ..(forth_level_entries_count + (PAGE_DIRECTORY_ENTRIES / 2))]
         {
-            let third_table =
+            let mut third_table =
                 forth_entry.force_resolve_table_mut().unwrap();
 
-            for third_entry in &mut third_table.entries
-                [0..third_level_entries_count.min(PAGE_DIRECTORY_ENTRIES)]
-            {
-                let second_table =
+            for third_entry in unsafe {
+                &mut third_table.as_mut().entries[0
+                    ..third_level_entries_count
+                        .min(PAGE_DIRECTORY_ENTRIES)]
+            } {
+                let mut second_table =
                     third_entry.force_resolve_table_mut().unwrap();
 
                 third_level_entries_count -= 1;
-                for second_entry in &mut second_table.entries[0
-                    ..second_level_entries_count
-                        .min(PAGE_DIRECTORY_ENTRIES)]
-                {
+                for second_entry in unsafe {
+                    &mut second_table.as_mut().entries[0
+                        ..second_level_entries_count
+                            .min(PAGE_DIRECTORY_ENTRIES)]
+                } {
                     if !second_entry.is_present() {
                         unsafe {
                             second_entry.map(

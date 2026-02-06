@@ -182,7 +182,7 @@ impl BitMap {
         BitMap {
             map: unsafe {
                 slice::from_raw_parts_mut(
-                    map_address.as_mut_ptr::<u64>(),
+                    map_address.as_non_null::<u64>().as_mut(),
                     map_size,
                 )
             },

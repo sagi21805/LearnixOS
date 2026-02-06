@@ -104,14 +104,14 @@ impl BuddyAllocator {
         }
     }
 
-    pub fn alloc_table(&mut self) -> &'static mut PageTable {
+    pub fn alloc_table(&mut self) -> NonNull<PageTable> {
         unsafe {
             let address = self.alloc_pages(1).translate();
             ptr::write_volatile(
-                address.as_mut_ptr::<PageTable>(),
+                address.as_non_null::<PageTable>().as_ptr(),
                 PageTable::empty(),
             );
-            &mut *address.as_mut_ptr::<PageTable>()
+            address.as_non_null::<PageTable>()
         }
     }
 
