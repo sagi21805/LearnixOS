@@ -9,7 +9,7 @@ use derive_more::{
     Add, AddAssign, AsMut, AsRef, Div, DivAssign, Mul, MulAssign, Sub,
     SubAssign,
 };
-use learnix_macros::CommonAddressFunctions;
+use macros::CommonAddressFunctions;
 // ANCHOR_END: trait_imports
 
 // ANCHOR: physical_address

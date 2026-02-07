@@ -1,6 +1,6 @@
 use common::enums::ProtectionLevel;
 use core::arch::asm;
-use learnix_macros::flag;
+use macros::flag;
 
 #[derive(Debug)]
 #[repr(C)]
