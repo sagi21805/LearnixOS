@@ -2,42 +2,42 @@
 macro_rules! table_entry_flags {
     () => {
         // Is this page present?
-        learnix_macros::flag!(present, 0);
+        macros::flag!(present, 0);
 
         // Is this page writable?
-        learnix_macros::flag!(writable, 1);
+        macros::flag!(writable, 1);
 
         // Can this page be accessed from user mode
-        learnix_macros::flag!(usr_access, 2);
+        macros::flag!(usr_access, 2);
 
         // Writes go directly to memory
-        learnix_macros::flag!(write_through_cache, 3);
+        macros::flag!(write_through_cache, 3);
 
         // Disable cache for this page
-        learnix_macros::flag!(disable_cache, 4);
+        macros::flag!(disable_cache, 4);
 
         // This flag can help identifying if an entry is the
         // last one, or it is pointing to another directory
         // Is this page points to a custom memory address
         // and not a page table?
-        learnix_macros::flag!(huge_page, 7);
+        macros::flag!(huge_page, 7);
 
         // Page isn't flushed from caches on address space
         // switch (PGE bit of CR4 register must be set)
-        learnix_macros::flag!(global, 8);
+        macros::flag!(global, 8);
 
         // 9-11 are custom custom flags for our use
         // mark a table as full
-        learnix_macros::flag!(full, 9);
+        macros::flag!(full, 9);
 
         // This entry points to a table
-        learnix_macros::flag!(table, 10);
+        macros::flag!(table, 10);
 
         // This entry is at the top of the hierarchy.
-        learnix_macros::flag!(root_entry, 11);
+        macros::flag!(root_entry, 11);
 
         // This page is holding data and is not executable
-        learnix_macros::flag!(not_executable, 63);
+        macros::flag!(not_executable, 63);
     };
 }
 // ANCHOR_END: table_entry_flags

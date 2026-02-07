@@ -1,7 +1,7 @@
+use crate::structures::interrupt_descriptor_table::InterruptStackFrame;
 use common::enums::CascadedPicInterruptLine;
-use cpu_utils::structures::interrupt_descriptor_table::InterruptStackFrame;
 
-use crate::drivers::pic8259::PIC;
+use crate::pic8259::PIC;
 
 pub extern "x86-interrupt" fn timer_handler(
     _stack_frame: InterruptStackFrame,

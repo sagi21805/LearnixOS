@@ -16,7 +16,7 @@ macro_rules! parsed_memory_map {
                         as usize,
                 )
                 .translate()
-                .as_non_null::<$crate::memory::memory_map::MemoryRegion>()
+                .as_non_null::<$crate::memory_map::MemoryRegion>()
                 .as_ptr(),
                 *(common::address_types::PhysicalAddress::new_unchecked(
                     common::constants::addresses::PARSED_MEMORY_MAP_LENGTH
@@ -37,13 +37,15 @@ macro_rules! raw_memory_map {
         unsafe {
             ::core::slice::from_raw_parts_mut(
                 common::address_types::PhysicalAddress::new_unchecked(
-                    common::constants::addresses::MEMORY_MAP_OFFSET as usize,
+                    common::constants::addresses::MEMORY_MAP_OFFSET
+                        as usize,
                 )
                 .translate()
-                .as_non_null::<$crate::memory::memory_map::MemoryRegionExtended>()
+                .as_non_null::<$crate::memory_map::MemoryRegionExtended>()
                 .as_ptr(),
                 *(common::address_types::PhysicalAddress::new_unchecked(
-                    common::constants::addresses::MEMORY_MAP_LENGTH as usize,
+                    common::constants::addresses::MEMORY_MAP_LENGTH
+                        as usize,
                 )
                 .translate()
                 .as_non_null::<u32>()

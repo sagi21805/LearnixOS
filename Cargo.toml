@@ -1,15 +1,21 @@
 [workspace]
 members = [
-    "shared/common",
-    "kernel/stages/first_stage",
-    "kernel/stages/second_stage",
-    "shared/cpu_utils",
-    "kernel",
-    "build",
-    "learnix-macros", "crates/learnix-alloc", "crates/learnix-arch", "crates/learnix-common", "crates/learnix-buddy", "crates/memory/page", "crates/memory/slab", "crates/memory/buddy", "crates/drivers/keyboard", "crates/drivers/vga-displau", "crates/drivers/pci", "crates/drivers/ata", "crates/arch/x86", "crates/arch/x86_64",
+    # "bootloader/first_stage",
+    # "bootloader/second_stage",
+    "crates/arch/x86",
+    "crates/common",
+    # "crates/drivers/ahci",
+    # "crates/drivers/keyboard",
+    # "crates/drivers/pci",
+    # "crates/drivers/vga-display",
+    # "crates/macros",
+    # "crates/memory/buddy",
+    # "crates/memory/slab",
+    # "crates/memory/page",
+    "learnix",
 ]
 resolver = "3"
-default-members = ["build"]
+default-members = ["learnix"]
 
 [workspace.dependencies]
 

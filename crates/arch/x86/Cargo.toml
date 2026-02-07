@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+common = { path = "../../common" }
+extend = "1.2.0"
+derive_more = { version = "2.0.1", default-features = false, features = [
+    "full",
+] }
+macros = { path = "../../macros" }

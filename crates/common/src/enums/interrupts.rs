@@ -1,4 +1,4 @@
-use learnix_macros::flag;
+use macros::flag;
 
 #[repr(u8)]
 pub enum Interrupt {

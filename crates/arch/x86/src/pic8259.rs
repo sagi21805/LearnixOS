@@ -1,10 +1,10 @@
+use crate::instructions::port::PortExt;
 /// The code in this module is inspired from osdev
 /// 8259_PIC guide.
 use common::enums::{
     CascadedPicInterruptLine, PicCommandCode, PicInterruptLine,
     PicInterruptVectorOffset, PicMode, Port,
 };
-use cpu_utils::instructions::port::PortExt;
 
 pub static mut PIC: CascadedPIC = CascadedPIC::default();
 
