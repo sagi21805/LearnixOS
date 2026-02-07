@@ -29,6 +29,8 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
         self.write_idx = (self.write_idx + 1) % self.buffer.len();
     }
 
+    // TODO: remove sti and cli from here to the keyboard or interrupt
+    // handle logic
     pub fn read(&mut self) -> Option<T> {
         unsafe { core::arch::asm!("cli") };
         if self.write_idx != self.read_idx {
