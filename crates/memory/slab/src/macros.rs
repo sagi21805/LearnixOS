@@ -5,21 +5,21 @@ macro_rules! register_slabs {
     };
 
     (@step $idx:expr; $head:ty, $($tail:ty),+) => {
-        impl $crate::memory::allocators::slab::traits::SlabPosition for $head {
+        impl $crate::traits::SlabPosition for $head {
             const SLAB_POSITION: usize = $idx;
         }
 
-        impl $crate::memory::allocators::slab::traits::Slab for $head {}
+        impl $crate::traits::Slab for $head {}
 
         $crate::register_slabs!(@step $idx + 1; $($tail),*);
     };
 
     (@step $idx:expr; $head:ty) => {
-        impl $crate::memory::allocators::slab::traits::SlabPosition for $head {
+        impl $crate::traits::SlabPosition for $head {
             const SLAB_POSITION: usize = $idx;
         }
 
-        impl $crate::memory::allocators::slab::traits::Slab for $head {}
+        impl $crate::traits::Slab for $head {}
     };
 
     (@step $idx:expr; ) => {};
@@ -29,7 +29,7 @@ macro_rules! register_slabs {
 macro_rules! define_slab_system {
     ($($t:ty),* $(,)?) => {
         use common::constants::REGULAR_PAGE_SIZE;
-        use $crate::memory::allocators::slab::traits::SlabCacheConstructor;
+        use $crate::traits::SlabCacheConstructor;
 
         $crate::register_slabs!($($t),*);
 

@@ -16,12 +16,15 @@ pub fn enable() -> Option<()> {
     // These tables will hold the initial identity mapping
     let identity_page_table_l4 = unsafe {
         PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L4_OFFSET.into())?
+            .as_mut()
     };
     let identity_page_table_l3 = unsafe {
         PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L3_OFFSET.into())?
+            .as_mut()
     };
     let identity_page_table_l2 = unsafe {
         PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L2_OFFSET.into())?
+            .as_mut()
     };
     // ANCHOR_END: initialize_page_tables
 
@@ -32,11 +35,13 @@ pub fn enable() -> Option<()> {
         PageTable::empty_from_ptr(
             TOP_IDENTITY_PAGE_TABLE_L3_OFFSET.into(),
         )?
+        .as_mut()
     };
     let top_identity_page_table_l2 = unsafe {
         PageTable::empty_from_ptr(
             TOP_IDENTITY_PAGE_TABLE_L2_OFFSET.into(),
         )?
+        .as_mut()
     };
     // ANCHOR_END: initialize_top_page_tables
 

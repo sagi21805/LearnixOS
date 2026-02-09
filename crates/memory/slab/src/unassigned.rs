@@ -1,4 +1,4 @@
-use crate::memory::allocators::slab::traits::Slab;
+use crate::traits::Slab;
 
 pub trait UnassignSlab {
     type Target;

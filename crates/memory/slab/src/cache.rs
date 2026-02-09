@@ -2,14 +2,7 @@ use core::{num::NonZero, ptr::NonNull};
 
 use common::address_types::VirtualAddress;
 
-use crate::memory::{
-    allocators::{
-        extensions::VirtualAddressExt,
-        slab::{SLAB_ALLOCATOR, traits::Slab},
-    },
-    page::UnassignedPage,
-    unassigned::{AssignSlab, UnassignSlab},
-};
+use crate::{traits::Slab, unassigned::UnassignSlab};
 
 use super::{descriptor::SlabDescriptor, traits::SlabCacheConstructor};
 
@@ -34,20 +27,23 @@ impl<T: Slab> UnassignSlab for NonNull<SlabCache<T>> {
 impl<T: Slab> SlabCache<T> {
     /// Allocate a new slab descriptor, attaches it to the free slab list,
     /// and initialize it's page.
+    ///
+    /// TODO: THIS FUNCTION SHOULD MOVE TO THE SLAB ALLOCATOR AND GET A
+    /// TYPE OF A SPECIFIC SLAB
     pub fn grow(&mut self) {
         // Allocate a new slab descriptor for this slab
-        let mut slab = unsafe {
-            SLAB_ALLOCATOR.kmalloc::<SlabDescriptor<()>>().assign::<T>()
-        };
+        // let mut slab = unsafe {
+        //     SLAB_ALLOCATOR.kmalloc::<SlabDescriptor<()>>().assign::<T>()
+        // };
 
-        unsafe {
-            *slab.as_mut() =
-                SlabDescriptor::<T>::new(self.buddy_order, self.free)
-        }
+        // unsafe {
+        //     *slab.as_mut() =
+        //         SlabDescriptor::<T>::new(self.buddy_order, self.free)
+        // }
 
-        self.take_ownership(slab);
+        // self.take_ownership(slab);
 
-        self.free = Some(slab);
+        // self.free = Some(slab);
     }
 
     pub fn take_ownership(&self, slab: NonNull<SlabDescriptor<T>>) {

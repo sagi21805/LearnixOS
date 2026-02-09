@@ -1,23 +1,24 @@
 [workspace]
 members = [
-    # "bootloader/first_stage",
-    # "bootloader/second_stage",
+    "bootloader/first_stage",
+    "bootloader/second_stage",
     "crates/arch/x86",
     "crates/common",
-    # "crates/drivers/ahci",
-    # "crates/drivers/keyboard",
-    # "crates/drivers/pci",
-    # "crates/drivers/vga-display",
-    # "crates/macros",
-    # "crates/memory/buddy",
-    # "crates/memory/slab",
-    # "crates/memory/page",
+    "crates/drivers/ahci",
+    "crates/drivers/keyboard",
+    "crates/drivers/pci",
+    "crates/drivers/vga-display",
+    "crates/macros",
+    "crates/memory/buddy",
+    "crates/memory/slab",
+    "crates/memory/page",
     "learnix",
 ]
 resolver = "3"
 default-members = ["learnix"]
 
-[workspace.dependencies]
+[workspace.lints.clippy]
+all = "deny"
 
 [profile.release]
 opt-level = 's'

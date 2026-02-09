@@ -1,14 +1,20 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+#![no_std]
+#![feature(abi_x86_interrupt)]
+#![feature(ascii_char)]
+#![allow(static_mut_refs)]
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod fis;
+pub mod hba;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+use common::enums::CascadedPicInterruptLine;
+pub use fis::*;
+pub use hba::*;
+use x86::structures::interrupt_descriptor_table::InterruptStackFrame;
+
+use x86::pic8259::PIC;
+
+pub extern "x86-interrupt" fn ahci_interrupt(
+    _stack_frame: InterruptStackFrame,
+) {
+    unsafe { PIC.end_of_interrupt(CascadedPicInterruptLine::Ahci) };
 }
