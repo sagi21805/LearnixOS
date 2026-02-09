@@ -4,7 +4,7 @@ use super::color_code::ColorCode;
 use super::screen_char::ScreenChar;
 use common::constants::addresses::VGA_BUFFER_PTR;
 use common::enums::{Port, VgaCommand};
-use cpu_utils::instructions::port::PortExt;
+use x86::instructions::port::PortExt;
 
 // ANCHOR: writer
 /// Writer implementation for the VGA driver.

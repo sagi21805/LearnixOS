@@ -1,10 +1,10 @@
-use core::{ascii::Char, fmt::Debug, num::NonZero};
+use core::{ascii::Char, fmt::Debug};
 
 use common::{
     enums::{AtaCommand, FisType},
     volatile::Volatile,
 };
-use learnix_macros::{flag, ro_flag};
+use macros::ro_flag;
 
 #[repr(C, align(4))]
 #[derive(Clone, Copy, Debug)]

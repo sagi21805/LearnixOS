@@ -1,10 +1,10 @@
-use core::{mem::MaybeUninit, num::NonZero};
+use core::{mem::MaybeUninit, num::NonZero, ptr::NonNull};
 
 use common::{
     address_types::VirtualAddress, enums::PS2ScanCode,
     ring_buffer::RingBuffer,
 };
-use learnix_macros::flag;
+use macros::flag;
 
 pub struct KeyboardFlags(u8);
 
@@ -26,13 +26,9 @@ pub struct Keyboard {
 }
 
 impl Keyboard {
-    pub fn init(
-        uninit: &mut MaybeUninit<Self>,
-        buffer: VirtualAddress,
-        length: NonZero<usize>,
-    ) {
+    pub fn init(uninit: &mut MaybeUninit<Self>, buffer: NonNull<[u8]>) {
         uninit.write(Keyboard {
-            buffer: RingBuffer::new(buffer, length),
+            buffer: RingBuffer::new(buffer),
             flags: KeyboardFlags::default(),
         });
     }

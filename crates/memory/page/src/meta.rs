@@ -1,65 +1,20 @@
-use core::{mem::ManuallyDrop, ptr::NonNull};
+use core::mem::ManuallyDrop;
 
-use common::enums::BuddyOrder;
-
-use crate::memory::{
-    allocators::slab::{
-        cache::SlabCache, descriptor::SlabDescriptor, traits::Slab,
-    },
-    page::{Page, UnassignedPage},
-    unassigned::{AssignSlab, UnassignSlab},
-};
+use buddy::meta::{BuddyPage, BuddyPageMeta};
 
 pub union PageMeta {
-    pub buddy: ManuallyDrop<BuddyPageMeta>,
-    pub slab: ManuallyDrop<SlabPageMeta<()>>,
+    pub buddy: ManuallyDrop<BuddyPageMeta<PageMeta>>,
 }
 
-#[derive(Debug)]
-pub struct BuddyPageMeta {
-    pub next: Option<NonNull<UnassignedPage>>,
-    pub prev: Option<NonNull<UnassignedPage>>,
-    pub order: Option<BuddyOrder>,
-}
-
-impl const Default for BuddyPageMeta {
-    fn default() -> Self {
-        Self {
-            next: None,
-            prev: None,
-            order: None,
-        }
+impl BuddyPage for PageMeta {
+    #[inline]
+    fn meta(&mut self) -> &mut BuddyPageMeta<Self> {
+        unsafe { &mut self.buddy }
     }
 }
 
-impl BuddyPageMeta {
-    pub fn detach<T: Slab>(&mut self) -> Option<NonNull<Page<T>>> {
-        let detached = self.next?; // None if there is no page to detach
-
-        self.next = unsafe { detached.as_ref().meta.buddy.next };
-
-        if let Some(mut next) = self.next {
-            unsafe { (*next.as_mut().meta.buddy).prev = None }
-        }
-
-        Some(detached.assign::<T>())
-    }
-
-    pub fn attach<T: Slab>(&mut self, mut p: NonNull<Page<T>>) {
-        unsafe { (*p.as_mut().meta.buddy).next = self.next };
-
-        if let Some(mut next) = self.next {
-            unsafe {
-                (*next.as_mut().meta.buddy).prev = Some(p.as_unassigned())
-            };
-        }
-
-        self.next = Some(p.as_unassigned())
-    }
-}
-
-#[derive(Debug)]
-pub struct SlabPageMeta<T: Slab> {
-    pub owner: NonNull<SlabCache<T>>,
-    pub freelist: NonNull<SlabDescriptor<T>>,
-}
+// #[derive(Debug)]
+// pub struct SlabPageMeta<T: Slab> {
+//     pub owner: NonNull<SlabCache<T>>,
+//     pub freelist: NonNull<SlabDescriptor<T>>,
+// }

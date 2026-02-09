@@ -7,11 +7,9 @@ use core::{fmt::Debug, num::NonZero, panic, ptr::NonNull};
 
 use common::{
     address_types::PhysicalAddress,
-    constants::{
-        PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
-    },
+    constants::REGULAR_PAGE_ALIGNMENT,
     enums::{
-        AtaCommand, Color, DeviceDetection, DeviceType,
+        AtaCommand, DeviceDetection, DeviceType,
         InterfaceCommunicationControl, InterfaceInitialization,
         InterfacePowerManagement, InterfaceSpeed,
         InterfaceSpeedRestriction, PageSize,
@@ -21,23 +19,14 @@ use common::{
     volatile::Volatile,
     write_volatile,
 };
-use cpu_utils::structures::paging::PageEntryFlags;
-use learnix_macros::{flag, ro_flag, rw1_flag, rwc_flag};
+use macros::{flag, ro_flag, rw1_flag, rwc_flag};
 use num_enum::UnsafeFromPrimitive;
 use strum::IntoEnumIterator;
+use x86::structures::paging::PageEntryFlags;
 
 use crate::{
-    alloc_pages,
-    drivers::{
-        ata::ahci::{
-            DmaSetup, Fis, IdentityPacketData, PioSetupD2H, RegisterD2H,
-            RegisterH2D, SetDeviceBits,
-        },
-        vga_display::color_code::ColorCode,
-    },
-    eprintln,
-    memory::allocators::extensions::PhysicalAddressExt,
-    print, println,
+    DmaSetup, Fis, IdentityPacketData, PioSetupD2H, RegisterD2H,
+    RegisterH2D, SetDeviceBits,
 };
 
 #[repr(transparent)]
@@ -947,7 +936,6 @@ impl PortControlRegisters {
     }
 
     pub fn set_cmd_list_address(&mut self, ptr: usize) {
-        println!("CLB: {:x?}", ptr);
         self.clb.write((ptr & 0xffffffff) as u32);
         self.clbu.write((ptr >> 32) as u32);
     }
@@ -961,7 +949,6 @@ impl PortControlRegisters {
     }
 
     pub fn set_received_fis_address(&mut self, ptr: usize) {
-        println!("FB: {:x?}", ptr);
         self.fb.write((ptr & 0xffffffff) as u32);
         self.fbu.write((ptr >> 32) as u32);
     }
@@ -987,65 +974,64 @@ impl PortControlRegisters {
         None
     }
 
-    pub fn identity_packet(&mut self, buf: *mut IdentityPacketData) {
-        let fis = RegisterH2D::new(
-            1 << 7,
-            AtaCommand::IdentifyDevice,
-            0,
-            0,
-            0,
-            0,
-            0,
-        );
-        let cmd = &mut self.cmd_list().entries[0];
-        let cmd_table = &mut cmd.cmd_table::<8>();
-        let prdt_ent = &mut cmd_table.table[0];
-        write_volatile!(cmd_table.cfis, Fis { h2d: fis });
-        prdt_ent.set_buffer(buf);
-        prdt_ent.dbc.set_dbc(511);
-        cmd.info.set_command_fis_len(size_of::<RegisterH2D>());
-        cmd.info.set_prdtl(1);
-        println!("Sending command!");
-        self.ci.issue_cmd(0);
+    // pub fn identity_packet(&mut self, buf: *mut IdentityPacketData) {
+    //     let fis = RegisterH2D::new(
+    //         1 << 7,
+    //         AtaCommand::IdentifyDevice,
+    //         0,
+    //         0,
+    //         0,
+    //         0,
+    //         0,
+    //     );
+    //     let cmd = &mut self.cmd_list().entries[0];
+    //     let cmd_table = &mut cmd.cmd_table::<8>();
+    //     let prdt_ent = &mut cmd_table.table[0];
+    //     write_volatile!(cmd_table.cfis, Fis { h2d: fis });
+    //     prdt_ent.set_buffer(buf);
+    //     prdt_ent.dbc.set_dbc(511);
+    //     cmd.info.set_command_fis_len(size_of::<RegisterH2D>());
+    //     cmd.info.set_prdtl(1);
+    //     self.ci.issue_cmd(0);
 
-        let mut timeout = 0xfffff;
-        loop {
-            if self.is.0 != 0 {
-                if self.is.is_tfes() {
-                    eprintln!("ERROR READING FROM DISK");
-                    for error in self.serr.error() {
-                        println!("{:?}", error);
-                    }
-                    if self.tfd.is_err() {
-                        println!(
-                            "TASK FILE DATA ERROR STATE\nERROR: {:08b}",
-                            self.tfd.error()
-                        );
-                    }
-                }
-                println!("Finished!");
-                println!("{:032b}", self.is.0);
-                break;
-            } else {
-                timeout -= 1
-            }
+    //     let mut timeout = 0xfffff;
+    //     loop {
+    //         if self.is.0 != 0 {
+    //             if self.is.is_tfes() {
+    //                 eprintln!("ERROR READING FROM DISK");
+    //                 for error in self.serr.error() {
+    //                     println!("{:?}", error);
+    //                 }
+    //                 if self.tfd.is_err() {
+    //                     println!(
+    //                         "TASK FILE DATA ERROR STATE\nERROR: {:08b}",
+    //                         self.tfd.error()
+    //                     );
+    //                 }
+    //             }
+    //             println!("Finished!");
+    //             println!("{:032b}", self.is.0);
+    //             break;
+    //         } else {
+    //             timeout -= 1
+    //         }
 
-            if timeout == 0 {
-                panic!("Timeout on identity packet read")
-            }
-        }
-        unsafe {
-            for w in (&mut *buf).serial_number.chunks_exact_mut(2) {
-                w.swap(0, 1);
-            }
-            for w in (&mut *buf).model_num.chunks_exact_mut(2) {
-                w.swap(0, 1);
-            }
-            for w in (&mut *buf).firmware_rev.chunks_exact_mut(2) {
-                w.swap(0, 1);
-            }
-        }
-    }
+    //         if timeout == 0 {
+    //             panic!("Timeout on identity packet read")
+    //         }
+    //     }
+    //     unsafe {
+    //         for w in (&mut *buf).serial_number.chunks_exact_mut(2) {
+    //             w.swap(0, 1);
+    //         }
+    //         for w in (&mut *buf).model_num.chunks_exact_mut(2) {
+    //             w.swap(0, 1);
+    //         }
+    //         for w in (&mut *buf).firmware_rev.chunks_exact_mut(2) {
+    //             w.swap(0, 1);
+    //         }
+    //     }
+    // }
 }
 
 /// TODO, DECIDE IF ITS OK THAT THIS IS ONE BYTE GREATER IN SIZE
@@ -1132,7 +1118,6 @@ impl CmdHeader {
     }
 
     pub fn set_cmd_table(&mut self, ptr: usize) {
-        println!("CMD TBL: {:x?}", ptr);
         self.ctba.write((ptr & 0xffffffff) as u32);
         self.ctbau.write((ptr >> 32) as u32);
     }
@@ -1205,11 +1190,12 @@ impl HBAMemoryRegisters {
             return Err(HbaError::AddressNotAligned);
         }
 
-        a.map(
-            a.translate(),
-            PageEntryFlags::regular_io_page_flags(),
-            PageSize::Regular,
-        );
+        // TODO: map this address
+        // a.map(
+        //     a.translate(),
+        //     PageEntryFlags::regular_io_page_flags(),
+        //     PageSize::Regular,
+        // );
 
         let mut hba_ptr =
             a.translate().as_non_null::<HBAMemoryRegisters>();
@@ -1222,8 +1208,6 @@ impl HBAMemoryRegisters {
         if hba.ghc.pi.0 >= (1 << 31) {
             panic!("There is no support for HBA's with more then 30 ports")
         }
-
-        println!("BIOS / OS Handoff: {}", hba.ghc.cap_ext.is_boh());
 
         if hba.ghc.cap_ext.is_boh() {
             unimplemented!("Didn't implement bios os handoff")

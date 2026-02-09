@@ -2,6 +2,7 @@
 build-std = ["core", "alloc"]
 build-std-features = ["compiler-builtins-mem"]
 unstable-options = true
+bindeps = true
 [build]
 rustflags = ["-Zpolonius"]
 

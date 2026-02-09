@@ -8,7 +8,7 @@
 #![deny(clippy::all)]
 use common::{constants::addresses::KERNEL_OFFSET, enums::Sections};
 use core::{arch::asm, panic::PanicInfo};
-use cpu_utils::structures::global_descriptor_table::GlobalDescriptorTableLong;
+use x86::structures::global_descriptor_table::GlobalDescriptorTableLong;
 
 // ANCHOR: gdt_long
 static GLOBAL_DESCRIPTOR_TABLE_LONG_MODE: GlobalDescriptorTableLong =
@@ -26,7 +26,7 @@ pub unsafe extern "C" fn second_stage() -> ! {
     // Enable paging and load page tables with an identity
     // mapping
     #[cfg(target_arch = "x86")]
-    cpu_utils::structures::paging::enable();
+    x86::structures::paging::enable();
     // Load the global descriptor table for long mode
     GLOBAL_DESCRIPTOR_TABLE_LONG_MODE.load();
     // Update global descriptor table to enable long mode

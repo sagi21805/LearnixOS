@@ -17,8 +17,8 @@ use core::{
     arch::{asm, global_asm, naked_asm},
     panic::PanicInfo,
 };
-use cpu_utils::structures::global_descriptor_table::GlobalDescriptorTableProtected;
 use disk::DiskAddressPacket;
+use x86::structures::global_descriptor_table::GlobalDescriptorTableProtected;
 
 // ANCHOR: gdt_static
 static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTableProtected =
