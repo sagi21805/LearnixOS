@@ -1,5 +1,5 @@
 [package]
-name = "vga-display"
+name = "vga_display"
 version = "0.1.0"
 edition = "2024"
 
