@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-common = { path = "../common" }
-x86 = { path = "../arch/x86" }
+common = { path = "../crates/common" }
+x86 = { path = "../crates/arch/x86" }
 derive_more = { version = "2.0.1", default-features = false, features = [
     "full",
 ] }
@@ -13,7 +13,11 @@ num_enum = { version = "0.7.5", default-features = false, features = [
     "complex-expressions",
 ] }
 extend = "1.2.0"
-macros = { path = "../macros" }
+macros = { path = "../crates/macros" }
 strum_macros = { version = "0.27", default-features = false }
 strum = { version = "0.27", default-features = false }
 nonmax = { version = "0.5.5", default-features = false }
+ahci = { path = "../crates/drivers/ahci" }
+keyboard = { path = "../crates/drivers/keyboard" }
+pci = { path = "../crates/drivers/pci" }
+vga_display = { path = "../crates/drivers/vga-display" }

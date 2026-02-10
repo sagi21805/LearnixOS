@@ -45,12 +45,12 @@ pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
 macro_rules! print {
     // Case 1: Standard print with optional arguments.
     ($fmt:expr $(, $arg:expr)* $(;)?) => {{
-        $crate::drivers::vga_display::vga_print(format_args!($fmt, $($arg,)*), None)
+        vga_display::vga_print(format_args!($fmt, $($arg,)*), None)
     }};
 
     // Case 2: Print with custom color.
     ($fmt:expr $(, $arg:expr)* ; color = $color:expr) => {{
-        $crate::drivers::vga_display::vga_print(format_args!($fmt, $($arg,)*), Some($color))
+        vga_display::vga_print(format_args!($fmt, $($arg,)*), Some($color))
     }};
 }
 
@@ -100,7 +100,7 @@ macro_rules! eprintln {
 macro_rules! okprintln {
     // Case 1: Print "OK" with formatted message.
     ($fmt:expr $(, $arg:tt)*) => {{
-        use $crate::drivers::vga_display::color_code::ColorCode;
+        use vga_display::color_code::ColorCode;
         use common::enums::Color;
         $crate::print!("[");
         $crate::print!(" OK " ; color = ColorCode::new(Color::Green, Color::Black));

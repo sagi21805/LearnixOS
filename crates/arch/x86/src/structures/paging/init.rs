@@ -31,18 +31,18 @@ pub fn enable() -> Option<()> {
     // ANCHOR: initialize_top_page_tables
     // These tables will hold identity mapping for the kernel on the top
     // half of the address space
-    let top_identity_page_table_l3 = unsafe {
-        PageTable::empty_from_ptr(
-            TOP_IDENTITY_PAGE_TABLE_L3_OFFSET.into(),
-        )?
-        .as_mut()
-    };
-    let top_identity_page_table_l2 = unsafe {
-        PageTable::empty_from_ptr(
-            TOP_IDENTITY_PAGE_TABLE_L2_OFFSET.into(),
-        )?
-        .as_mut()
-    };
+    // let top_identity_page_table_l3 = unsafe {
+    //     PageTable::empty_from_ptr(
+    //         TOP_IDENTITY_PAGE_TABLE_L3_OFFSET.into(),
+    //     )?
+    //     .as_mut()
+    // };
+    // let top_identity_page_table_l2 = unsafe {
+    //     PageTable::empty_from_ptr(
+    //         TOP_IDENTITY_PAGE_TABLE_L2_OFFSET.into(),
+    //     )?
+    //     .as_mut()
+    // };
     // ANCHOR_END: initialize_top_page_tables
 
     // ANCHOR: setup_page_tables
@@ -72,22 +72,22 @@ pub fn enable() -> Option<()> {
         // 0x000000-0x1fffff
         // This mapping will allow the kernel to access physical addresses
         // without any dependency on the current mapping
-        identity_page_table_l4.entries[256].map_unchecked(
-            PhysicalAddress::new_unchecked(
-                TOP_IDENTITY_PAGE_TABLE_L3_OFFSET,
-            ),
-            PageEntryFlags::table_flags(),
-        );
-        top_identity_page_table_l3.entries[0].map_unchecked(
-            PhysicalAddress::new_unchecked(
-                TOP_IDENTITY_PAGE_TABLE_L2_OFFSET,
-            ),
-            PageEntryFlags::table_flags(),
-        );
-        top_identity_page_table_l2.entries[0].map_unchecked(
-            PhysicalAddress::new_unchecked(0),
-            PageEntryFlags::huge_io_page_flags(),
-        );
+        // identity_page_table_l4.entries[256].map_unchecked(
+        //     PhysicalAddress::new_unchecked(
+        //         TOP_IDENTITY_PAGE_TABLE_L3_OFFSET,
+        //     ),
+        //     PageEntryFlags::table_flags(),
+        // );
+        // top_identity_page_table_l3.entries[0].map_unchecked(
+        //     PhysicalAddress::new_unchecked(
+        //         TOP_IDENTITY_PAGE_TABLE_L2_OFFSET,
+        //     ),
+        //     PageEntryFlags::table_flags(),
+        // );
+        // top_identity_page_table_l2.entries[0].map_unchecked(
+        //     PhysicalAddress::new_unchecked(0),
+        //     PageEntryFlags::huge_io_page_flags(),
+        // );
     }
     // ANCHOR_END: setup_top_page_tables
     // ANCHOR: set_cr3

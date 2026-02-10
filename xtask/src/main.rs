@@ -100,26 +100,28 @@ fn build_os(sh: &Shell, release: bool) -> Result<()> {
         &flags,
     );
 
-    let profile = if profile.is_empty() {
-        "debug"
-    } else {
-        "release"
-    };
+    let target = "targets/64bit_target.json";
+    let _ = build_target(sh, "kernel", target, "--release", &flags);
 
     let stage1_bin = "target/16bit_target/bootloader/first_stage";
     let stage2_bin = "target/32bit_target/bootloader/second_stage";
-
+    let kernel = "target/64bit_target/release/kernel";
     let mut image =
-        sh.read_binary_file(&stage1_bin).with_context(|| {
+        sh.read_binary_file(stage1_bin).with_context(|| {
             format!("Could not find stage1 binary at {}", stage1_bin)
         })?;
 
-    let stage2 = sh.read_binary_file(&stage2_bin).with_context(|| {
+    let stage2 = sh.read_binary_file(stage2_bin).with_context(|| {
         format!("Could not find stage2 binary at {}", stage2_bin)
     })?;
 
     image.extend(stage2);
 
+    let kernel = sh.read_binary_file(kernel).with_context(|| {
+        format!("Could not find kernel binary at {}", kernel)
+    })?;
+
+    image.extend(kernel);
     // 4. Padding to MIN_SIZE (512KB + header/offset)
     const MIN_SIZE: usize = 515_585;
     if image.len() < MIN_SIZE {
@@ -132,8 +134,6 @@ fn build_os(sh: &Shell, release: bool) -> Result<()> {
 }
 
 fn run_qemu() -> anyhow::Result<()> {
-    println!("🚀 Starting QEMU (q35)...");
-
     let status = Command::new("qemu-system-x86_64")
         // Machine type
         .arg("-M")
