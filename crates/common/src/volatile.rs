@@ -5,7 +5,7 @@ use core::fmt::Debug;
 pub struct Volatile<T>(T);
 
 impl<T> Volatile<T> {
-    pub fn new(vol: T) -> Volatile<T> {
+    pub const fn new(vol: T) -> Volatile<T> {
         Volatile(vol)
     }
 

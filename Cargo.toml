@@ -12,13 +12,19 @@ members = [
     "crates/memory/buddy",
     "crates/memory/slab",
     "crates/memory/page",
-    "learnix",
+    "xtask",
 ]
+
 resolver = "3"
-default-members = ["learnix"]
 
 [workspace.lints.clippy]
 all = "deny"
+
+[profile.bootloader]
+inherits = "release"
+opt-level = 's'
+overflow-checks = false
+panic = "abort"
 
 [profile.release]
 opt-level = 's'

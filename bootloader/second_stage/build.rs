@@ -5,9 +5,6 @@ fn main() {
 
     println!("cargo::rerun-if-changed={:?}/src", local_path);
     println!(
-        "cargo::rerun-if-changed=../../../build/linker_scripts/32bit.ld"
-    );
-    println!(
         "cargo:rustc-link-arg-bins=--script={}",
         local_path.join("32bit.ld").display()
     )

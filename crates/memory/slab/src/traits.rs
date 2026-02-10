@@ -1,5 +1,5 @@
 use common::enums::PageSize;
-use cpu_utils::structures::paging::PageEntryFlags;
+use x86::structures::paging::PageEntryFlags;
 
 /// Get the position on the slab array, for a slab of the given type.
 ///
