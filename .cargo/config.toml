@@ -1,2 +1,15 @@
-[alias]
-xtask = "run --manifest-path xtask/Cargo.toml --"
+[unstable]
+build-std = ["core", "alloc"]
+build-std-features = ["compiler-builtins-mem"]
+unstable-options = true
+[build]
+rustflags = ["-Zpolonius"]
+
+[target.'cfg(target_os = "windows")']
+runner = ".\\build\\runner\\runner.bat"
+
+[target.'cfg(target_os = "macos")']
+runner = ["sh", "./build/runner/runner.sh"]
+
+[target.'cfg(target_os = "linux")']
+runner = ["sh", "./build/runner/runner.sh"]

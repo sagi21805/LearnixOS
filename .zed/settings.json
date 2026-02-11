@@ -1,0 +1,63 @@
+// Folder-specific settings
+//
+// For a full list of overridable settings, and general information on folder-specific settings,
+// see the documentation: https://zed.dev/docs/configuring-zed#settings-files
+{
+  "minimap": {
+    "display_in": "active_editor",
+    "show": "always",
+  },
+  "inlay_hints": {
+    "show_background": true,
+    "enabled": true,
+  },
+  "relative_line_numbers": "enabled",
+  "show_edit_predictions": false,
+  "terminal": {},
+  "lsp_document_colors": "inlay",
+  "indent_guides": {
+    "coloring": "fixed",
+    "background_coloring": "disabled",
+  },
+  "colorize_brackets": true,
+  "features": {
+    "edit_prediction_provider": "zed",
+  },
+  "telemetry": {
+    "diagnostics": true,
+    "metrics": true,
+  },
+  "vim_mode": true,
+  "icon_theme": {
+    "mode": "dark",
+    "light": "Zed (Default)",
+    "dark": "Material Icon Theme",
+  },
+  "base_keymap": "VSCode",
+  "ui_font_size": 16,
+  "buffer_font_size": 15,
+  "theme": {
+    "mode": "dark",
+    "light": "One Dark",
+    "dark": "One Dark Pro",
+  },
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "inlayHints": {
+          "maxLength": null,
+          "lifetimeElisionHints": {
+            "useParameterNames": true,
+          },
+          "closureReturnTypeHints": {
+            "enable": "always",
+          },
+        },
+        "check": {
+          "command": "clippy",
+          "extraArgs": ["--release"],
+        },
+      },
+    },
+  },
+}
