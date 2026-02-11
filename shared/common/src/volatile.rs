@@ -32,6 +32,34 @@ impl<T> Debug for Volatile<T> {
     }
 }
 
+macro_rules! impl_volatile_assign {
+    ($trait:ident, $method:ident, $op_trait:ident, $op_method:ident) => {
+        impl<T> core::ops::$trait<T> for Volatile<T>
+        where
+            T: core::ops::$op_trait<T, Output = T>,
+        {
+            fn $method(&mut self, rhs: T) {
+                self.write(core::ops::$op_trait::$op_method(
+                    self.read(),
+                    rhs,
+                ));
+            }
+        }
+    };
+}
+
+impl_volatile_assign!(AddAssign, add_assign, Add, add);
+impl_volatile_assign!(SubAssign, sub_assign, Sub, sub);
+impl_volatile_assign!(MulAssign, mul_assign, Mul, mul);
+impl_volatile_assign!(DivAssign, div_assign, Div, div);
+impl_volatile_assign!(RemAssign, rem_assign, Rem, rem);
+
+impl_volatile_assign!(BitAndAssign, bitand_assign, BitAnd, bitand);
+impl_volatile_assign!(BitOrAssign, bitor_assign, BitOr, bitor);
+impl_volatile_assign!(BitXorAssign, bitxor_assign, BitXor, bitxor);
+impl_volatile_assign!(ShlAssign, shl_assign, Shl, shl);
+impl_volatile_assign!(ShrAssign, shr_assign, Shr, shr);
+
 #[macro_export]
 macro_rules! read_volatile {
     ($arg: expr) => {
