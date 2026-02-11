@@ -1,0 +1,8 @@
+[package]
+edition = "2024"
+name = "second_stage"
+version = "0.1.0"
+
+[dependencies]
+common = { path = "../../../shared/common" }
+cpu_utils = { path = "../../../shared/cpu_utils" }

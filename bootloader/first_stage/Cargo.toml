@@ -1,8 +1,0 @@
-[package]
-edition = "2024"
-name = "first_stage"
-version = "0.1.0"
-
-[dependencies]
-common = { path = "../../crates/common" }
-x86 = { path = "../../crates/arch/x86" }

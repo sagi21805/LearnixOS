@@ -4,5 +4,3 @@
 backup/**
 build/bin
 **/image.bin
-.vscode/*
-.zed/*
