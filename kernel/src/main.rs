@@ -1,55 +1,12 @@
-#![no_std] // don't link the Rust standard library
-#![no_main] // disable all Rust-level entry points
-#![allow(dead_code)]
-#![deny(unsafe_op_in_unsafe_fn)]
-#![feature(ptr_as_ref_unchecked)]
-#![allow(static_mut_refs)]
-#![feature(unsafe_cell_access)]
-#![feature(ptr_alignment_type)]
-#![feature(const_trait_impl)]
-#![feature(stmt_expr_attributes)]
-#![feature(abi_x86_interrupt)]
-#![feature(macro_metavar_expr_concat)]
-#![feature(allocator_api)]
-#![feature(never_type)]
-#![feature(vec_push_within_capacity)]
-#![feature(const_default)]
-#![feature(ascii_char_variants)]
-#![feature(ascii_char)]
-#![feature(const_convert)]
-#![feature(slice_ptr_get)]
-#![feature(core_intrinsics)]
-#![feature(explicit_tail_calls)]
-#![feature(specialization)]
-#![deny(clippy::all)]
-mod drivers;
-mod memory;
-use core::{num::NonZero, panic::PanicInfo};
+#![no_std]
+#![no_main]
+use core::panic::PanicInfo;
 
-use crate::{
-    drivers::{
-        interrupt_handlers,
-        keyboard::{KEYBOARD, ps2_keyboard::Keyboard},
-        pic8259::{CascadedPIC, PIC},
-        vga_display::color_code::ColorCode,
-    },
-    memory::{
-        allocators::{
-            buddy::BUDDY_ALLOCATOR, extensions::PageTableExt,
-            slab::SLAB_ALLOCATOR,
-        },
-        memory_map::{MemoryMap, parse_map},
-        page::{PAGES, map::PageMap},
-    },
-};
-
-use common::{constants::REGULAR_PAGE_SIZE, enums::Color};
-use cpu_utils::{
-    instructions::interrupts::{self},
-    structures::{
-        interrupt_descriptor_table::{IDT, InterruptDescriptorTable},
-        paging::PageTable,
-    },
+use keyboard::ps2_keyboard::Keyboard;
+use vga_display::{okprintln, println};
+use x86::{
+    memory_map::{MemoryMap, parse_map},
+    parsed_memory_map,
 };
 
 #[unsafe(no_mangle)]
@@ -60,43 +17,45 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Enabled Paging");
     okprintln!("Entered Long Mode");
     parse_map();
-    okprintln!("Obtained Memory Map");
-    println!("{}", MemoryMap(parsed_memory_map!()));
+    // okprintln!("Obtained Memory Map");
+    // println!("{}", MemoryMap(parsed_memory_map!()));
 
-    PageMap::init(unsafe { &mut PAGES }, MemoryMap(parsed_memory_map!()));
-    unsafe { BUDDY_ALLOCATOR.init(MemoryMap(parsed_memory_map!()), 0) };
+    // PageMap::init(unsafe { &mut PAGES },
+    // MemoryMap(parsed_memory_map!())); unsafe { BUDDY_ALLOCATOR.
+    // init(MemoryMap(parsed_memory_map!()), 0) };
 
-    let last = MemoryMap(parsed_memory_map!()).last().unwrap();
+    // let last = MemoryMap(parsed_memory_map!()).last().unwrap();
 
-    unsafe {
-        PageTable::current_table().as_mut().map_physical_memory(
-            (last.base_address + last.length) as usize,
-        );
-    }
-    okprintln!("Initialized buddy allocator");
-    unsafe {
-        InterruptDescriptorTable::init(
-            &mut IDT,
-            alloc_pages!(1).translate(),
-        );
-        okprintln!("Initialized interrupt descriptor table");
-        interrupt_handlers::init(IDT.assume_init_mut());
-        okprintln!("Initialized interrupts handlers");
-        CascadedPIC::init(&mut PIC);
+    // unsafe {
+    //     PageTable::current_table().as_mut().map_physical_memory(
+    //         (last.base_address + last.length) as usize,
+    //     );
+    // }
+    // okprintln!("Initialized buddy allocator");
+    // unsafe {
+    //     InterruptDescriptorTable::init(
+    //         &mut IDT,
+    //         alloc_pages!(1).translate(),
+    //     );
+    //     okprintln!("Initialized interrupt descriptor table");
+    //     interrupt_handlers::init(IDT.assume_init_mut());
+    //     okprintln!("Initialized interrupts handlers");
+    //     CascadedPIC::init(&mut PIC);
 
-        okprintln!("Initialized Programmable Interrupt Controller");
-        let keyboard_buffer_address: common::address_types::VirtualAddress = alloc_pages!(1).translate();
-        Keyboard::init(
-            &mut KEYBOARD,
-            keyboard_buffer_address,
-            NonZero::new(REGULAR_PAGE_SIZE).unwrap(),
-        );
-        okprintln!("Initialized Keyboard");
-        interrupts::enable();
-    }
+    //     okprintln!("Initialized Programmable Interrupt Controller");
+    //     let keyboard_buffer_address:
+    // common::address_types::VirtualAddress = alloc_pages!(1).translate();
+    //     Keyboard::init(
+    //         &mut KEYBOARD,
+    //         keyboard_buffer_address,
+    //         NonZero::new(REGULAR_PAGE_SIZE).unwrap(),
+    //     );
+    //     okprintln!("Initialized Keyboard");
+    //     interrupts::enable();
+    // }
 
-    unsafe { SLAB_ALLOCATOR.init() }
-    okprintln!("Initialized slab allocator");
+    // unsafe { SLAB_ALLOCATOR.init() }
+    // okprintln!("Initialized slab allocator");
 
     // panic!("")
     // let mut pci_devices = pci::scan_pci();
@@ -170,20 +129,22 @@ pub unsafe extern "C" fn _start() -> ! {
     //     }
     // }
 
-    loop {
-        unsafe {
-            print!("{}", KEYBOARD.assume_init_mut().read_char() ; color
-    = ColorCode::new(Color::Green, Color::Black));
-        }
-    }
+    // loop {
+    //     unsafe {
+    //         print!("{}", KEYBOARD.assume_init_mut().read_char() ; color
+    // = ColorCode::new(Color::Green, Color::Black));
+    //     }
+    // }
+    loop {}
 }
 
 /// This function is called on panic.
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {
-    unsafe {
-        interrupts::disable();
-    }
-    eprintln!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
+    // unsafe {
+    //     interrupts::disable();
+    // }
+    // eprintln!("{}", _info ; color = ColorCode::new(Color::Yellow,
+    // Color::Black));
     loop {}
 }
