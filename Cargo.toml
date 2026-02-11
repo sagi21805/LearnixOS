@@ -1,17 +1,31 @@
 [workspace]
 members = [
-    "shared/common",
-    "kernel/stages/first_stage",
-    "kernel/stages/second_stage",
-    "shared/cpu_utils",
+    "bootloader/first_stage",
+    "bootloader/second_stage",
+    "crates/arch/x86",
+    "crates/common",
+    "crates/drivers/ahci",
+    "crates/drivers/keyboard",
+    "crates/drivers/pci",
+    "crates/drivers/vga-display",
+    "crates/macros",
+    "crates/memory/buddy",
+    "crates/memory/slab",
+    "crates/memory/page",
     "kernel",
-    "build",
-    "learnix-macros",
+    "xtask",
 ]
-resolver = "3"
-default-members = ["build"]
 
-[workspace.dependencies]
+resolver = "3"
+
+[workspace.lints.clippy]
+all = "deny"
+
+[profile.bootloader]
+inherits = "release"
+opt-level = 's'
+overflow-checks = false
+panic = "abort"
 
 [profile.release]
 opt-level = 's'
