@@ -5,6 +5,7 @@ use common::{
     address_types::PhysicalAddress,
     constants::{ENTRY_ADDRESS_MASK, REGULAR_PAGE_ALIGNMENT},
     error::EntryError,
+    volatile::Volatile,
 };
 
 use crate::structures::paging::PageTable;
@@ -13,7 +14,7 @@ use super::PageEntryFlags;
 
 // ANCHOR: page_table_entry
 #[derive(Debug, Clone)]
-pub struct PageTableEntry(pub u64);
+pub struct PageTableEntry(pub Volatile<u64>);
 // ANCHOR_END: page_table_entry
 
 // ANCHOR: impl_page_table_entry
@@ -25,13 +26,13 @@ impl PageTableEntry {
     // ANCHOR: page_table_entry_empty
     #[inline]
     pub(crate) const fn empty() -> Self {
-        Self(0)
+        Self(Volatile::new(0))
     }
     // ANCHOR_END: page_table_entry_empty
 
     /// Set all of the flags to zero.
     // ANCHOR: page_table_entry_reset_flags
-    pub const fn reset_flags(&mut self) {
+    pub fn reset_flags(&mut self) {
         self.0 &= ENTRY_ADDRESS_MASK;
     }
     // ANCHOR_END: page_table_entry_reset_flags
@@ -42,17 +43,14 @@ impl PageTableEntry {
     /// If there are some flags set prior to this, it will
     /// lead to undefined behavior
     // ANCHOR: page_table_entry_set_flags_unchecked
-    pub const unsafe fn set_flags_unchecked(
-        &mut self,
-        flags: PageEntryFlags,
-    ) {
+    pub unsafe fn set_flags_unchecked(&mut self, flags: PageEntryFlags) {
         self.0 |= flags.0;
     }
     // ANCHOR_END: page_table_entry_set_flags_unchecked
 
     /// Set the flags of the entry
     // ANCHOR: page_table_entry_set_flags
-    pub const fn set_flags(&mut self, flags: PageEntryFlags) {
+    pub fn set_flags(&mut self, flags: PageEntryFlags) {
         self.reset_flags();
         unsafe { self.set_flags_unchecked(flags) };
     }
@@ -117,10 +115,10 @@ impl PageTableEntry {
     /// This function doesn't check if the entry is actually mapped.
     // ANCHOR: page_table_entry_mapped_unchecked
     #[inline]
-    pub const unsafe fn mapped_unchecked(&self) -> PhysicalAddress {
+    pub unsafe fn mapped_unchecked(&self) -> PhysicalAddress {
         unsafe {
             PhysicalAddress::new_unchecked(
-                (self.0 & ENTRY_ADDRESS_MASK) as usize,
+                (self.0.read() & ENTRY_ADDRESS_MASK) as usize,
             )
         }
     }
