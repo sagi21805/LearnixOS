@@ -2,11 +2,15 @@ use flag::FlagInput;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    DeriveInput, LitInt, Token, parse_macro_input, punctuated::Punctuated,
+    Block, DeriveInput, FieldMutability, FnArg, Ident, ItemFn, ItemStruct,
+    LitInt, ReturnType, Signature, Token, parse_macro_input,
+    punctuated::Punctuated, token::Token,
 };
 
-mod flag;
+use crate::bitflags::bitfields_impl;
 
+mod bitflags;
+mod flag;
 // ANCHOR: common_address_functions
 #[proc_macro_derive(CommonAddressFunctions)]
 pub fn common_address_functions(input: TokenStream) -> TokenStream {
@@ -282,4 +286,10 @@ pub fn generate_generics(input: TokenStream) -> TokenStream {
     }
 
     TokenStream::from(expanded)
+}
+
+#[proc_macro_attribute]
+pub fn bitfields(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let s = parse_macro_input!(item as ItemStruct);
+    bitfields_impl(s).into()
 }
