@@ -291,5 +291,5 @@ pub fn generate_generics(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn bitfields(attr: TokenStream, item: TokenStream) -> TokenStream {
     let s = parse_macro_input!(item as ItemStruct);
-    bitfields_impl(s).into()
+    bitfields_impl(s).unwrap().into()
 }
