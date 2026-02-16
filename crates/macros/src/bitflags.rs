@@ -1,10 +1,11 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote};
 use syn::{
-    AttrStyle, Attribute, Block, Ident, ItemStruct, LitInt, Meta, Path,
-    ReturnType, Token,
+    AttrStyle, Attribute, Block, Field, Ident, ItemStruct, LitInt, Meta,
+    Path, ReturnType, Token, Type,
     parse::{Parse, Peek},
-    token::Paren,
+    parse_quote,
+    token::{Paren, Token},
 };
 
 pub struct BitFields {
@@ -124,30 +125,33 @@ impl Parse for FlagAttribute {
     }
 }
 
-pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
-    let min_uint = quote! { u8 };
-    // let mut read_fn_names: Vec<Ident> = Vec::new();
-    // let mut return_types: Vec<ReturnType> = Vec::new();
-    // let mut write_fn_names: Vec<Ident> = Vec::new();
-    // let mut read_bodies: Vec<Block> = Vec::new();
-    // let mut write_bodies: Vec<Block> = Vec::new();
+pub struct BitflagField<'a> {
+    attr: FlagAttribute,
+    field: &'a Field,
+}
 
-    // let mut size = 0;
+impl<'a> TryFrom<&'a Field> for BitflagField<'a> {
+    type Error = syn::Error;
 
-    for f in &s.fields {
-        if f.attrs.len() == 0 {
-            // todo!();
-            continue;
+    fn try_from(value: &'a Field) -> Result<Self, Self::Error> {
+        if value.attrs.len() == 0 {
+            return Ok(BitflagField {
+                attr: FlagAttribute {
+                    permissions: FlagPermission::ReadWrite,
+                    flag_type: None,
+                },
+                field: value,
+            });
         }
 
-        if f.attrs.len() > 1 {
+        if value.attrs.len() > 1 {
             return Err(syn::Error::new_spanned(
-                f,
+                value,
                 "Fields must have at most one attribute",
             ));
         }
 
-        let attr = &f.attrs[0];
+        let attr = &value.attrs[0];
         let flag_attr = if let Meta::List(list) = &attr.meta {
             if list.path.get_ident().ok_or(syn::Error::new_spanned(
                 list,
@@ -170,14 +174,143 @@ pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
             ))
         }?;
 
-        println!("Attr: {:?}", flag_attr)
+        Ok(BitflagField {
+            attr: flag_attr,
+            field: value,
+        })
+    }
+}
+
+impl<'a> BitflagField<'a> {
+    // fn into_functions(min_uint: Type) -> syn::Result<TokenStream2> {}
+
+    fn gen_read_function(
+        &self,
+        offset: usize,
+        struct_name: &Ident,
+    ) -> syn::Result<TokenStream2> {
+        match self.attr.permissions {
+            FlagPermission::Read
+            | FlagPermission::ReadWrite
+            | FlagPermission::ReadClear(_)
+            | FlagPermission::ReadWriteClear(_) => {
+                let name = format_ident!(
+                    "get_{}",
+                    self.field.ident.as_ref().unwrap()
+                );
+                let return_type = self.get_closest_uint()?;
+                Ok(quote! {
+                    impl #struct_name {
+                        pub fn #name(&self) -> #return_type {
+                            self.0 | (1 << #offset)
+                        }
+                    }
+                })
+            }
+            _ => Err(syn::Error::new_spanned(
+                &self.field.ty,
+                "Flag attribute does not contain read permission",
+            )),
+        }
     }
 
+    fn next_offset(&self) -> syn::Result<usize> {
+        if let Type::Path(p) = &self.field.ty {
+            let ident = p
+                .path
+                .get_ident()
+                .ok_or(syn::Error::new_spanned(
+                    p,
+                    "Expected type to be single ident",
+                ))?
+                .to_string();
+
+            Ok(ident[1..].parse::<usize>().map_err(|_| {
+                syn::Error::new_spanned(p, "Failed to parse into from num")
+            })?)
+        } else {
+            Err(syn::Error::new_spanned(
+                &self.field.ty,
+                "Type is not path",
+            ))
+        }
+    }
+    // fn gen_write_function(&self) -> syn::Result<TokenStream2> {}
+
+    // fn gen_clear_function(&self) -> syn::Result<TokenStream2> {}
+
+    fn get_closest_uint(&self) -> syn::Result<Type> {
+        if let Type::Path(type_path) = &self.field.ty {
+            let ident = type_path.path.get_ident().ok_or(
+                syn::Error::new_spanned(
+                    &self.field.ty,
+                    "Expected single ident type",
+                ),
+            )?;
+            let type_name = ident.to_string();
+
+            if type_name.starts_with('B') {
+                let bit_str = &type_name[1..];
+                if let Ok(bits) = bit_str.parse::<u8>() {
+                    return Ok(match bits {
+                        0..=8 => parse_quote!(u8),
+                        9..=16 => parse_quote!(u16),
+                        17..=32 => parse_quote!(u32),
+                        33..=64 => parse_quote!(u64),
+                        65..=128 => parse_quote!(u128),
+                        _ => {
+                            return Err(syn::Error::new_spanned(
+                                &self.field.ty,
+                                "Expected bit to be between 0 - 128",
+                            ));
+                        }
+                    });
+                } else {
+                    Err(syn::Error::new_spanned(
+                        ident,
+                        "Cannot parse int from type",
+                    ))
+                }
+            } else {
+                Err(syn::Error::new_spanned(
+                    ident,
+                    "Expected type to start with a B",
+                ))
+            }
+        } else {
+            Err(syn::Error::new_spanned(
+                &self.field.ty,
+                format_args!(
+                    "Expected type to be a single ident path. Found: {:?}",
+                    &self.field.ty
+                ),
+            ))
+        }
+    }
+}
+
+pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
+    let min_uint = quote! { u8 };
+    // let mut read_fn_names: Vec<Ident> = Vec::new();
+    // let mut return_types: Vec<ReturnType> = Vec::new();
+    // let mut write_fn_names: Vec<Ident> = Vec::new();
+    // let mut read_bodies: Vec<Block> = Vec::new();
+    // let mut write_bodies: Vec<Block> = Vec::new();
+
+    // let mut size = 0;
     let vis = &s.vis;
     let ident = &s.ident;
-    let struct_def = quote! {
+    let mut struct_def = quote! {
         #vis struct #ident ( #min_uint );
     };
+
+    for f in &s.fields {
+        let bitflag = BitflagField::try_from(f)?;
+
+        let read = bitflag.gen_read_function(0, ident);
+        struct_def.extend(read.unwrap());
+    }
+
     //     #(
     //         pub fn #write_fn_names() {
 
@@ -211,13 +344,13 @@ mod tests {
             #[bitfields]
             pub struct MyFlags {
                 #[flag(rwc(40), flag_type = Some::Type)]
-                a: u32,
+                a: B3,
 
                 #[flag(rw)]
-                b: u32,
+                b: B1,
 
                 #[flag(rw)]
-                c: u32
+                c: B1
             }
 
         };
