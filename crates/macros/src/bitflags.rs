@@ -185,7 +185,8 @@ pub struct BitField<'a> {
     permissions: FlagPermission,
     vis: &'a Visibility,
     name: &'a Ident,
-    ty: Box<TypePath>,
+    uint_ty: Box<TypePath>,
+    additional_ty: Option<Box<TypePath>>,
     size: usize,
     offset: Option<usize>,
 }
@@ -206,7 +207,8 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
                     .ident
                     .as_ref()
                     .expect("Fields must have a name"),
-                ty: min_uint_ty,
+                uint_ty: min_uint_ty,
+                additional_ty: None,
                 size,
                 offset: None,
             });
@@ -231,12 +233,6 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
                     flag_type,
                 } = syn::parse2::<FlagAttribute>(list.tokens.clone())?;
 
-                let ty = if let Some((_, ty)) = flag_type {
-                    ty.ty
-                } else {
-                    min_uint_ty
-                };
-
                 Ok(BitField {
                     permissions,
                     vis: &value.vis,
@@ -244,7 +240,8 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
                         .ident
                         .as_ref()
                         .expect("Field must have a name`"),
-                    ty,
+                    uint_ty: min_uint_ty,
+                    additional_ty: flag_type.map(|(_, ftype)| ftype.ty),
                     size,
                     offset: None,
                 })
@@ -271,7 +268,8 @@ impl<'a> Bitflags<'a> {
             permissions: _,
             vis,
             name,
-            ty,
+            uint_ty,
+            additional_ty: _,
             size,
             offset,
         } = field;
@@ -280,13 +278,10 @@ impl<'a> Bitflags<'a> {
             offset.expect("Fields not initialized offset not found.");
 
         let name = format_ident!("get_{}", name);
-        let struct_name = self.struct_name;
         if field.permissions.has_read() {
             quote! {
-                impl #struct_name {
-                    #vis fn #name(&self) -> #ty {
-                        ((self.0 >> #offset) | ((1 << #size) - 1)) as #ty
-                    }
+                #vis fn #name(&self) -> #uint_ty {
+                    ((self.0 >> #offset) & ((1 << #size) - 1)) as #uint_ty
                 }
             }
         } else {
@@ -299,7 +294,8 @@ impl<'a> Bitflags<'a> {
             permissions: _,
             vis,
             name,
-            ty,
+            uint_ty,
+            additional_ty,
             size,
             offset,
         } = field;
@@ -308,18 +304,22 @@ impl<'a> Bitflags<'a> {
             offset.expect("Fields not initialized offset not found.");
 
         let name = format_ident!("set_{}", name);
-        let struct_name = self.struct_name;
         let struct_type = &self.struct_type;
+
+        let ty = if let Some(additional) = additional_ty {
+            additional
+        } else {
+            uint_ty
+        };
+
         if field.permissions.has_write() {
             quote! {
-                impl #struct_name {
-                    #vis fn #name(&mut self, v: #ty) {
-                        debug_assert!(
-                            (v as usize) < 1 << #size,
-                            "Size of value is bigger then possible"
-                        );
-                        self.0 |= ((v as #struct_type) << #offset) as #struct_type
-                    }
+                #vis fn #name(&mut self, v: #ty) {
+                    debug_assert!(
+                        (v as usize) < 1 << #size,
+                        "Size of value is bigger then possible"
+                    );
+                    self.0 |= ((v as #struct_type) << #offset) as #struct_type
                 }
             }
         } else {
@@ -332,8 +332,9 @@ impl<'a> Bitflags<'a> {
             permissions: _,
             vis,
             name,
-            ty,
-            size,
+            uint_ty: _,
+            additional_ty: _,
+            size: _,
             offset,
         } = field;
 
@@ -341,15 +342,12 @@ impl<'a> Bitflags<'a> {
             offset.expect("Fields not initialized offset not found.");
 
         let name = format_ident!("clear_{}", name);
-        let struct_name = self.struct_name;
         let struct_type = &self.struct_type;
 
         if let Some(val) = field.permissions.has_clear() {
             quote! {
-                impl #struct_name {
-                    #vis fn #name(&mut self) {
-                        self.0 |= (#val as #struct_type) << #offset
-                    }
+                #vis fn #name(&mut self) {
+                    self.0 |= (#val as #struct_type) << #offset
                 }
             }
         } else {
@@ -407,27 +405,43 @@ fn get_closest_uint(ty: &Type) -> syn::Result<(TypePath, usize)> {
     }
 }
 pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
-    // let mut read_fn_names: Vec<Ident> = Vec::new();
-    // let mut return_types: Vec<ReturnType> = Vec::new();
-    // let mut write_fn_names: Vec<Ident> = Vec::new();
-    // let mut read_bodies: Vec<Block> = Vec::new();
-    // let mut write_bodies: Vec<Block> = Vec::new();
-
-    // let mut size = 0;
     let bitfield = Bitflags::try_from(&s)?;
     let min_uint = &bitfield.struct_type;
     let vis = &s.vis;
     let ident = &s.ident;
-    let mut struct_def = quote! {
+
+    let functions = bitfield
+        .fields
+        .iter()
+        .map(|b| {
+            vec![
+                bitfield.fn_read(b),
+                bitfield.fn_write(b),
+                bitfield.fn_clear(b),
+            ]
+        })
+        .collect::<Vec<Vec<TokenStream2>>>();
+
+    let struct_def = quote! {
         #vis struct #ident ( #min_uint );
+
+        impl #ident {
+
+            #( #(#functions)* )*
+
+        }
+
+
     };
 
-    for b in &bitfield.fields {
-        struct_def.extend(bitfield.fn_read(b));
-        struct_def.extend(bitfield.fn_write(b));
-        struct_def.extend(bitfield.fn_clear(b));
-    }
+    // impl std::fmt::Debug for #ident {
 
+    //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) ->
+    // std::fmt::Result {         f.debug_struct(stringify!(#ident))
+    //          .field("a", &self.get_a())
+    //          .finish()
+    //     }
+    // }
     return Ok(struct_def);
 }
 
