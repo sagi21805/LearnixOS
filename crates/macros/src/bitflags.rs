@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote};
 use syn::{
-    Field, Ident, ItemStruct, LitInt, Meta, Path, Token, Type, TypePath,
+    Field, Ident, ItemStruct, LitInt, Meta, Token, Type, TypePath,
     Visibility, parse::Parse, parse_quote,
 };
 
@@ -101,16 +101,16 @@ impl Parse for FlagPermission {
 
 #[derive(Debug)]
 pub struct FlagType {
-    flag_type_token: keyword::flag_type,
-    equal: Token![=],
+    _flag_type_token: keyword::flag_type,
+    _equal: Token![=],
     ty: Box<TypePath>,
 }
 
 impl Parse for FlagType {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         Ok(FlagType {
-            flag_type_token: input.parse()?,
-            equal: input.parse()?,
+            _flag_type_token: input.parse()?,
+            _equal: input.parse()?,
             ty: input.parse()?,
         })
     }
@@ -261,7 +261,6 @@ impl<'a> TryFrom<&'a ItemStruct> for Bitflags<'a> {
     }
 }
 
-
 impl<'a> Bitflags<'a> {
     fn fn_read(&self, field: &'a BitField) -> TokenStream2 {
         if !field.permissions.has_read() {
@@ -285,7 +284,7 @@ impl<'a> Bitflags<'a> {
             #vis fn #fn_name(&self) -> #uint_ty {
                 unsafe {
                     let addr = self as *const _ as *mut #struct_type;
-                    let val = std::ptr::read_volatile(addr);
+                    let val = core::ptr::read_volatile(addr);
                     ((val >> #offset) & ((1 << #size) - 1)) as #uint_ty
                 }
             }
@@ -313,7 +312,6 @@ impl<'a> Bitflags<'a> {
         let ty = additional_ty
             .as_ref()
             .map_or(uint_ty as &dyn ToTokens, |a| a);
-
         quote! {
             #vis fn #fn_name(&mut self, v: #ty) {
                 debug_assert!(
@@ -322,10 +320,10 @@ impl<'a> Bitflags<'a> {
                 );
                 unsafe {
                     let addr = self as *const _ as *mut #struct_type;
-                    let val = std::ptr::read_volatile(addr);
+                    let val = core::ptr::read_volatile(addr);
                     let cleared = val & !(((1 << #size) - 1) << #offset);
                     let new = cleared | ((v as #struct_type) << #offset);
-                    std::ptr::write_volatile(addr, new);
+                    core::ptr::write_volatile(addr, new);
                 }
             }
         }
@@ -355,7 +353,7 @@ impl<'a> Bitflags<'a> {
                     let val = core::ptr::read_volatile(addr);
                     let cleared = val & !(((1 << #size) - 1) << #offset);
                     let new = cleared | ((#clear_val as #struct_type) << #offset);
-                    std::ptr::write_volatile(addr, new);
+                    core::ptr::write_volatile(addr, new);
                 }
             }
         }
@@ -371,8 +369,8 @@ impl<'a> Bitflags<'a> {
             .collect();
 
         quote! {
-            impl std::fmt::Debug for #struct_name {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            impl core::fmt::Debug for #struct_name {
+                fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                     f.debug_struct(stringify!(#struct_name))
                         #(.field(stringify!(#field_names), &self.#getters()))*
                         .finish()
@@ -381,9 +379,6 @@ impl<'a> Bitflags<'a> {
         }
     }
 }
-
-// ─── Helpers
-// ──────────────────────────────────────────────────────────────────
 
 /// Given a type of the form `B<n>`, returns the smallest `u*` type that
 /// fits `n` bits, along with `n` itself.
