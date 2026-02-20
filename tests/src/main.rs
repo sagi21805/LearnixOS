@@ -5,14 +5,16 @@ use macros::bitfields;
 fn main() {
     println!("Hello, world!");
 
-    let mut f = MyFlags(0);
+    let mut f = MyFlags::new();
     f.set_a(t::Test::Two);
+    f.set_d(3);
+    f.set_c(3);
     println!("{:#?}", f);
 }
 mod t {
 
     #[repr(u8)]
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy)]
     pub enum Test {
         One = 1,
         Two = 2,
@@ -22,14 +24,8 @@ mod t {
 #[bitfields]
 pub struct MyFlags {
     #[flag(rw, flag_type = t::Test)]
-    pub a: B3,
-    pub b: B3,
-    pub c: B3,
-    pub d: B9,
-}
-
-impl Debug for MyFlags {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MyFlags").field("a", &self.get_a()).finish()
-    }
+    a: B3,
+    b: B3,
+    c: B3,
+    d: B9,
 }
