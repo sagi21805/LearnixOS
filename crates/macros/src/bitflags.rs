@@ -278,10 +278,15 @@ impl<'a> Bitflags<'a> {
             offset.expect("Fields not initialized offset not found.");
 
         let name = format_ident!("get_{}", name);
+        let struct_type = &self.struct_type;
         if field.permissions.has_read() {
             quote! {
                 #vis fn #name(&self) -> #uint_ty {
-                    ((self.0 >> #offset) & ((1 << #size) - 1)) as #uint_ty
+                    unsafe {
+                        let addr = self as *const _ as *mut #struct_type;
+                        let val = std::ptr::read_volatile(addr);
+                        (((val >> #offset) & ((1 << #size) - 1))) as #uint_ty
+                    }
                 }
             }
         } else {
@@ -300,10 +305,12 @@ impl<'a> Bitflags<'a> {
             offset,
         } = field;
 
-        let offset =
-            offset.expect("Fields not initialized offset not found.");
+        let offset = offset
+            .as_ref()
+            .expect("Fields not initialized offset not found.");
 
         let name = format_ident!("set_{}", name);
+        let struct_type = &self.struct_type;
         let struct_type = &self.struct_type;
 
         let ty = if let Some(additional) = additional_ty {
@@ -319,7 +326,13 @@ impl<'a> Bitflags<'a> {
                         (v as usize) < 1 << #size,
                         "Size of value is bigger then possible"
                     );
-                    self.0 |= ((v as #struct_type) << #offset) as #struct_type
+                    unsafe {
+                        let addr = self as *const _ as *mut #struct_type;
+                        let val = std::ptr::read_volatile(addr);
+                        let clear = val & !(((1 << #size) - 1) << #offset);
+                        let new = clear | (((v as #struct_type) << #offset) as #struct_type);
+                        std::ptr::write_volatile(addr, new);
+                    }
                 }
             }
         } else {
@@ -334,7 +347,7 @@ impl<'a> Bitflags<'a> {
             name,
             uint_ty: _,
             additional_ty: _,
-            size: _,
+            size,
             offset,
         } = field;
 
@@ -344,10 +357,16 @@ impl<'a> Bitflags<'a> {
         let name = format_ident!("clear_{}", name);
         let struct_type = &self.struct_type;
 
-        if let Some(val) = field.permissions.has_clear() {
+        if let Some(clear_val) = field.permissions.has_clear() {
             quote! {
                 #vis fn #name(&mut self) {
-                    self.0 |= (#val as #struct_type) << #offset
+                    unsafe {
+                        let addr = self as *const _ as *mut #struct_type;
+                        let val = core::ptr::read_volatile(addr);
+                        let clear = val & !(((1 << #size) - 1) << #offset);
+                        let new = clear | (((#clear_val as #struct_type) << #offset) as #struct_type);
+                        std::ptr::write_volatile(addr, new);
+                    }
                 }
             }
         } else {
@@ -355,36 +374,49 @@ impl<'a> Bitflags<'a> {
         }
     }
 
-    // fn gen_write_function(&self) -> syn::Result<TokenStream2> {}
+    fn debug_impl(&self) -> TokenStream2 {
+        let field_names =
+            self.fields.iter().map(|f| f.name).collect::<Vec<_>>();
+        let field_get = field_names
+            .iter()
+            .map(|n| format_ident!("get_{}", n))
+            .collect::<Vec<_>>();
 
-    // fn gen_clear_function(&self) -> syn::Result<TokenStream2> {}
+        let struct_name = self.struct_name;
+        quote! {
+            impl std::fmt::Debug for #struct_name {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    f.debug_struct(stringify!(#struct_name))
+                        #(.field(stringify!(#field_names), &self.#field_get()))*
+                        .finish()
+                }
+            }
+        }
+    }
 }
 
 // TODO REMOVE NESTING
 fn get_closest_uint(ty: &Type) -> syn::Result<(TypePath, usize)> {
     if let Type::Path(ty) = ty {
         let ident = ty.path.get_ident().ok_or(syn::Error::new_spanned(
-            &ty,
+            ty,
             "Expected single ident type",
         ))?;
         let type_name = ident.to_string();
 
-        if type_name.starts_with('B') {
-            let bit_str = &type_name[1..];
+        if let Some(bit_str) = type_name.strip_prefix('B') {
             if let Ok(bits) = bit_str.parse::<usize>() {
-                return Ok(match bits {
-                    0..=8 => (parse_quote!(u8), bits),
-                    9..=16 => (parse_quote!(u16), bits),
-                    17..=32 => (parse_quote!(u32), bits),
-                    33..=64 => (parse_quote!(u64), bits),
-                    65..=128 => (parse_quote!(u128), bits),
-                    _ => {
-                        return Err(syn::Error::new_spanned(
-                            &ty,
-                            "Expected bit to be between 0 - 128",
-                        ));
-                    }
-                });
+                match bits {
+                    0..=8 => Ok((parse_quote!(u8), bits)),
+                    9..=16 => Ok((parse_quote!(u16), bits)),
+                    17..=32 => Ok((parse_quote!(u32), bits)),
+                    33..=64 => Ok((parse_quote!(u64), bits)),
+                    65..=128 => Ok((parse_quote!(u128), bits)),
+                    _ => Err(syn::Error::new_spanned(
+                        ty,
+                        "Expected bit to be between 0 - 128",
+                    )),
+                }
             } else {
                 Err(syn::Error::new_spanned(
                     ident,
@@ -417,31 +449,30 @@ pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
             vec![
                 bitfield.fn_read(b),
                 bitfield.fn_write(b),
-                bitfield.fn_clear(b),
+                // bitfield.fn_clear(b),
             ]
         })
         .collect::<Vec<Vec<TokenStream2>>>();
+
+    let debug_impl = bitfield.debug_impl();
 
     let struct_def = quote! {
         #vis struct #ident ( #min_uint );
 
         impl #ident {
 
+            pub fn new() -> Self {
+                Self(0)
+            }
+
             #( #(#functions)* )*
 
         }
 
+        #debug_impl
 
     };
 
-    // impl std::fmt::Debug for #ident {
-
-    //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) ->
-    // std::fmt::Result {         f.debug_struct(stringify!(#ident))
-    //          .field("a", &self.get_a())
-    //          .finish()
-    //     }
-    // }
     return Ok(struct_def);
 }
 
