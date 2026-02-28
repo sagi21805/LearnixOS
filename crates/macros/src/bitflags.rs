@@ -2,7 +2,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote};
 use syn::{
     Field, Ident, ItemStruct, LitInt, Meta, Token, Type, TypePath,
-    Visibility, parse::Parse, parse_quote,
+    Visibility, parse::Parse, parse_quote, token::Question,
 };
 
 mod keyword {
@@ -280,14 +280,23 @@ impl<'a> Bitflags<'a> {
             offset.expect("offset must be set before code generation");
         let struct_type = &self.struct_type;
         let ty = additional_ty.as_ref().unwrap_or(uint_ty);
-        quote! {
-            #vis const fn #name(mut self, v: #ty) -> Self {
-                debug_assert!(
-                    (v as usize) < (1 << #size),
-                    "Value is too large for this bitfield"
-                );
-                self.0 |= ((v as #struct_type) << #offset);
-                self
+        if *size == 1 {
+            quote! {
+                #vis const fn #name(mut self) -> Self {
+                    self.0 |= (1 << #offset);
+                    self
+                }
+            }
+        } else {
+            quote! {
+                #vis const fn #name(mut self, v: #ty) -> Self {
+                    debug_assert!(
+                        (v as usize) < (1 << #size),
+                        "Value is too large for this bitfield"
+                    );
+                    self.0 |= ((v as #struct_type) << #offset);
+                    self
+                }
             }
         }
     }
@@ -474,7 +483,6 @@ pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
     let debug_impl = bitfield.debug_impl();
 
     Ok(quote! {
-        #[derive(Default)]
         #vis struct #ident(#min_uint);
 
         impl #ident {
@@ -483,6 +491,12 @@ pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
             }
 
             #(#methods)*
+        }
+
+        impl const Default for #ident {
+            fn default() -> Self {
+                Self(0)
+            }
         }
 
         #debug_impl
