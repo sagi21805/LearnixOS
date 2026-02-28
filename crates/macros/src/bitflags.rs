@@ -262,6 +262,36 @@ impl<'a> TryFrom<&'a ItemStruct> for Bitflags<'a> {
 }
 
 impl<'a> Bitflags<'a> {
+    fn fn_build(&self, field: &'a BitField) -> TokenStream2 {
+        if !field.permissions.has_write() {
+            return TokenStream2::new();
+        }
+
+        let BitField {
+            vis,
+            name,
+            uint_ty,
+            additional_ty,
+            size,
+            offset,
+            ..
+        } = field;
+        let offset =
+            offset.expect("offset must be set before code generation");
+        let struct_type = &self.struct_type;
+        let ty = additional_ty.as_ref().unwrap_or(uint_ty);
+        quote! {
+            #vis const fn #name(mut self, v: #ty) -> Self {
+                debug_assert!(
+                    (v as usize) < (1 << #size),
+                    "Value is too large for this bitfield"
+                );
+                self.0 |= ((v as #struct_type) << #offset);
+                self
+            }
+        }
+    }
+
     fn fn_read(&self, field: &'a BitField) -> TokenStream2 {
         if !field.permissions.has_read() {
             return TokenStream2::new();
@@ -309,9 +339,7 @@ impl<'a> Bitflags<'a> {
             offset.expect("offset must be set before code generation");
         let fn_name = format_ident!("set_{}", name);
         let struct_type = &self.struct_type;
-        let ty = additional_ty
-            .as_ref()
-            .map_or(uint_ty as &dyn ToTokens, |a| a);
+        let ty = additional_ty.as_ref().unwrap_or(uint_ty);
         quote! {
             #vis fn #fn_name(&mut self, v: #ty) {
                 debug_assert!(
@@ -439,12 +467,14 @@ pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
         let read = bitfield.fn_read(b);
         let write = bitfield.fn_write(b);
         let clear = bitfield.fn_clear(b);
-        quote! { #read #write #clear }
+        let build = bitfield.fn_build(b);
+        quote! { #read #write #clear #build }
     });
 
     let debug_impl = bitfield.debug_impl();
 
     Ok(quote! {
+        #[derive(Default)]
         #vis struct #ident(#min_uint);
 
         impl #ident {
