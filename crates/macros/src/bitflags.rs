@@ -1,52 +1,32 @@
-use proc_macro2::TokenStream as TokenStream2;
-use quote::{ToTokens, format_ident, quote};
+use proc_macro2::{Span, TokenStream as TokenStream2};
+use quote::{format_ident, quote};
 use syn::{
     Field, Ident, ItemStruct, LitInt, Meta, Token, Type, TypePath,
-    Visibility, parse::Parse, parse_quote, token::Question,
+    Visibility,
+    parse::{Parse, discouraged::Speculative},
+    parse_quote,
+    spanned::Spanned,
 };
 
 mod keyword {
     syn::custom_keyword!(flag);
     syn::custom_keyword!(flag_type);
+    syn::custom_keyword!(dont_shift);
 }
 
-/// Permission flags for a bitfield member.
-///
-/// The enum discriminant encodes R/W/C as a 3-bit mask:
-///   bit 0 → Read, bit 1 → Write, bit 2 → Clear
-#[repr(u8)]
-#[derive(Debug, Default)]
-pub enum FlagPermission {
-    Read = 1,
-    Write = 2,
-    #[default]
-    ReadWrite = 3,
-    Clear(usize) = 4,
-    ReadClear(usize) = 5,
-    WriteClear(usize) = 6,
-    ReadWriteClear(usize) = 7,
+#[derive(Debug)]
+struct FlagPermission {
+    read: bool,
+    write: bool,
+    clear: Option<usize>,
 }
 
-impl FlagPermission {
-    fn tag(&self) -> u8 {
-        unsafe { *(self as *const Self as *const u8) }
-    }
-
-    pub fn has_read(&self) -> bool {
-        (self.tag() & 0b001) != 0
-    }
-
-    pub fn has_write(&self) -> bool {
-        (self.tag() & 0b010) != 0
-    }
-
-    pub fn has_clear(&self) -> Option<usize> {
-        match self {
-            FlagPermission::Clear(val)
-            | FlagPermission::ReadClear(val)
-            | FlagPermission::WriteClear(val)
-            | FlagPermission::ReadWriteClear(val) => Some(*val),
-            _ => None,
+impl Default for FlagPermission {
+    fn default() -> FlagPermission {
+        FlagPermission {
+            read: true,
+            write: true,
+            clear: None,
         }
     }
 }
@@ -58,15 +38,26 @@ impl Parse for FlagPermission {
     /// Valid inputs: `r`, `w`, `rw`, `c(<n>)`, `rc(<n>)`, `wc(<n>)`,
     /// `rwc(<n>)` (case-insensitive).
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut flag_permissions = FlagPermission::default();
+
         let permission =
             input.parse::<Ident>()?.to_string().to_lowercase();
 
-        let rw = match (permission.contains('r'), permission.contains('w'))
-        {
-            (true, false) => Some(FlagPermission::Read),
-            (false, true) => Some(FlagPermission::Write),
-            (true, true) => Some(FlagPermission::ReadWrite),
-            (false, false) => None,
+        if !permission.chars().all(|c| matches!(c, 'r' | 'w' | 'c')) {
+            return Err(syn::Error::new_spanned(
+                &permission,
+                "expected permission string (e.g. `rw`, `r`, `wc(0)`)",
+            ));
+        }
+
+        match (permission.contains('r'), permission.contains('w')) {
+            (true, false) => flag_permissions.write = false,
+            (false, true) => flag_permissions.read = false,
+            (false, false) => {
+                flag_permissions.read = false;
+                flag_permissions.write = false;
+            }
+            (true, true) => { /*default*/ }
         };
 
         if permission.contains('c') {
@@ -74,28 +65,10 @@ impl Parse for FlagPermission {
             let _ = syn::parenthesized!(content in input);
             let int =
                 content.parse::<LitInt>()?.base10_parse::<usize>()?;
-
-            match rw {
-                Some(FlagPermission::Read) => {
-                    Ok(FlagPermission::ReadClear(int))
-                }
-                Some(FlagPermission::Write) => {
-                    Ok(FlagPermission::WriteClear(int))
-                }
-                Some(FlagPermission::ReadWrite) => {
-                    Ok(FlagPermission::ReadWriteClear(int))
-                }
-                None => Ok(FlagPermission::Clear(int)),
-                _ => unreachable!(),
-            }
-        } else {
-            rw.ok_or_else(|| {
-                input.error(
-                    "No valid flag specified. Please use a combination \
-                     of R, W, or C(<val>).",
-                )
-            })
+            flag_permissions.clear = Some(int);
         }
+
+        Ok(flag_permissions)
     }
 }
 
@@ -116,27 +89,96 @@ impl Parse for FlagType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct FlagAttribute {
     permissions: FlagPermission,
-    flag_type: Option<(Token![,], FlagType)>,
+    flag_type: Option<Box<TypePath>>,
+    dont_shift: bool,
 }
 
 impl Parse for FlagAttribute {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let permissions = input.parse()?;
-        let flag_type = if input.peek(Token![,]) {
-            Some((input.parse()?, input.parse()?))
-        } else {
-            None
-        };
-        Ok(FlagAttribute {
-            permissions,
-            flag_type,
-        })
+        let mut attributes = FlagAttribute::default();
+
+        // Track what's already been parsed
+        let mut seen_permissions: Option<proc_macro2::Span> = None;
+        let mut seen_flag_type: Option<proc_macro2::Span> = None;
+        let mut seen_dont_shift: Option<proc_macro2::Span> = None;
+
+        while !input.is_empty() {
+            let mut error_count = 0;
+            'next: {
+                let fork = input.fork();
+                match fork.parse::<FlagPermission>() {
+                    Ok(permissions) => {
+                        if let Some(first_span) = seen_permissions {
+                            return Err(syn::Error::new(
+                                first_span,
+                                "duplicate `permissions` option",
+                            ));
+                        }
+                        seen_permissions = Some(input.span());
+                        attributes.permissions = permissions;
+                        input.advance_to(&fork);
+                        break 'next;
+                    }
+                    Err(_) => error_count += 1,
+                }
+
+                let fork = input.fork();
+                match fork.parse::<FlagType>() {
+                    Ok(flag_type) => {
+                        if let Some(first_span) = seen_flag_type {
+                            return Err(syn::Error::new(
+                                first_span,
+                                "duplicate `flag_type` option",
+                            ));
+                        }
+                        seen_flag_type = Some(input.span());
+                        attributes.flag_type = Some(flag_type.ty);
+                        input.advance_to(&fork);
+                        break 'next;
+                    }
+                    Err(_) => error_count += 1,
+                }
+
+                let fork = input.fork();
+                match fork.parse::<keyword::dont_shift>() {
+                    Ok(kw) => {
+                        if let Some(first_span) = seen_dont_shift {
+                            return Err(syn::Error::new(
+                                first_span,
+                                "duplicate `dont_shift` option",
+                            ));
+                        }
+                        seen_dont_shift = Some(input.span());
+                        attributes.dont_shift = true;
+                        input.advance_to(&fork);
+                        break 'next;
+                    }
+                    Err(_) => error_count += 1,
+                }
+            }
+
+            if error_count == 3 {
+                let unknown: proc_macro2::TokenTree = input.parse()?;
+                return Err(syn::Error::new_spanned(
+                    &unknown,
+                    format!("unknown option: {}", unknown),
+                ));
+            }
+
+            eprintln!("ERROR COUNT: {}", error_count);
+            if input.peek(Token![,]) {
+                let _ = input.parse::<Token![,]>()?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(attributes)
     }
 }
-
 pub struct BitField<'a> {
     permissions: FlagPermission,
     vis: &'a Visibility,
@@ -145,6 +187,7 @@ pub struct BitField<'a> {
     uint_ty: Box<TypePath>,
     /// Optional user-supplied type for setter arguments (e.g. a newtype).
     additional_ty: Option<Box<TypePath>>,
+    dont_shift: bool,
     size: usize,
     offset: Option<usize>,
 }
@@ -159,9 +202,10 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
         // No attribute → default ReadWrite permissions.
         if value.attrs.is_empty() {
             return Ok(BitField {
-                permissions: FlagPermission::ReadWrite,
+                permissions: FlagPermission::default(),
                 vis: &value.vis,
                 name,
+                dont_shift: false,
                 uint_ty: Box::new(min_uint),
                 additional_ty: None,
                 size,
@@ -196,6 +240,7 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
             let FlagAttribute {
                 permissions,
                 flag_type,
+                dont_shift,
             } = syn::parse2::<FlagAttribute>(list.tokens.clone())?;
 
             Ok(BitField {
@@ -203,7 +248,8 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
                 vis: &value.vis,
                 name,
                 uint_ty: Box::new(min_uint),
-                additional_ty: flag_type.map(|(_, ft)| ft.ty),
+                additional_ty: flag_type,
+                dont_shift,
                 size,
                 offset: None,
             })
@@ -263,7 +309,7 @@ impl<'a> TryFrom<&'a ItemStruct> for Bitflags<'a> {
 
 impl<'a> Bitflags<'a> {
     fn fn_build(&self, field: &'a BitField) -> TokenStream2 {
-        if !field.permissions.has_write() {
+        if !field.permissions.write {
             return TokenStream2::new();
         }
 
@@ -302,7 +348,7 @@ impl<'a> Bitflags<'a> {
     }
 
     fn fn_read(&self, field: &'a BitField) -> TokenStream2 {
-        if !field.permissions.has_read() {
+        if !field.permissions.read {
             return TokenStream2::new();
         }
 
@@ -331,7 +377,7 @@ impl<'a> Bitflags<'a> {
     }
 
     fn fn_write(&self, field: &BitField) -> TokenStream2 {
-        if !field.permissions.has_write() {
+        if !field.permissions.write {
             return TokenStream2::new();
         }
 
@@ -367,7 +413,7 @@ impl<'a> Bitflags<'a> {
     }
 
     fn fn_clear(&self, field: &'a BitField) -> TokenStream2 {
-        let Some(clear_val) = field.permissions.has_clear() else {
+        let Some(clear_val) = field.permissions.clear else {
             return TokenStream2::new();
         };
 
