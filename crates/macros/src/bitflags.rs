@@ -328,6 +328,7 @@ impl<'a> Bitflags<'a> {
         let ty = additional_ty.as_ref().unwrap_or(uint_ty);
         if *size == 1 {
             quote! {
+                #[inline]
                 #vis const fn #name(mut self) -> Self {
                     self.0 |= (1 << #offset);
                     self
@@ -335,6 +336,7 @@ impl<'a> Bitflags<'a> {
             }
         } else {
             quote! {
+                #[inline]
                 #vis const fn #name(mut self, v: #ty) -> Self {
                     debug_assert!(
                         (v as usize) < (1 << #size),
@@ -358,19 +360,47 @@ impl<'a> Bitflags<'a> {
             uint_ty,
             size,
             offset,
+            dont_shift,
             ..
         } = field;
         let offset =
             offset.expect("offset must be set before code generation");
-        let fn_name = format_ident!("get_{}", name);
         let struct_type = &self.struct_type;
-
-        quote! {
-            #vis fn #fn_name(&self) -> #uint_ty {
-                unsafe {
-                    let addr = self as *const _ as *mut #struct_type;
-                    let val = core::ptr::read_volatile(addr);
-                    ((val >> #offset) & ((1 << #size) - 1)) as #uint_ty
+        if *size == 1 {
+            let fn_name = format_ident!("is_{}", name);
+            quote! {
+                #[inline]
+                #vis fn #fn_name(&self) -> bool{
+                    unsafe {
+                        let addr = self as *const _ as *mut #struct_type;
+                        let val = core::ptr::read_volatile(addr);
+                        val & (1 << #offset) != 0
+                    }
+                }
+            }
+        } else {
+            let fn_name = format_ident!("get_{}", name);
+            if *dont_shift {
+                quote! {
+                    #[inline]
+                    #vis fn #fn_name(&self) -> #uint_ty {
+                        unsafe {
+                            let addr = self as *const _ as *mut #struct_type;
+                            let val = core::ptr::read_volatile(addr);
+                            (val & (((1 << #size) - 1) << #offset)) as #uint_ty
+                        }
+                    }
+                }
+            } else {
+                quote! {
+                    #[inline]
+                    #vis fn #fn_name(&self) -> #uint_ty {
+                        unsafe {
+                            let addr = self as *const _ as *mut #struct_type;
+                            let val = core::ptr::read_volatile(addr);
+                            ((val >> #offset) & ((1 << #size) - 1)) as #uint_ty
+                        }
+                    }
                 }
             }
         }
@@ -388,6 +418,7 @@ impl<'a> Bitflags<'a> {
             additional_ty,
             size,
             offset,
+            dont_shift,
             ..
         } = field;
         let offset =
@@ -395,18 +426,45 @@ impl<'a> Bitflags<'a> {
         let fn_name = format_ident!("set_{}", name);
         let struct_type = &self.struct_type;
         let ty = additional_ty.as_ref().unwrap_or(uint_ty);
-        quote! {
-            #vis fn #fn_name(&mut self, v: #ty) {
-                debug_assert!(
-                    (v as usize) < (1 << #size),
-                    "Value is too large for this bitfield"
-                );
-                unsafe {
-                    let addr = self as *const _ as *mut #struct_type;
-                    let val = core::ptr::read_volatile(addr);
-                    let cleared = val & !(((1 << #size) - 1) << #offset);
-                    let new = cleared | ((v as #struct_type) << #offset);
-                    core::ptr::write_volatile(addr, new);
+        if *dont_shift {
+            quote! {
+                #[inline]
+                #vis fn #fn_name(&mut self, v: #ty) {
+                    debug_assert!(
+                        (v as usize) < (1 << #size),
+                        "Value: {:?} is too large for this bitfield",
+                        v
+                    );
+                    debug_assert!(
+                        (v as #struct_type & !((((1 << #size) - 1) as #struct_type) << #offset)) == 0,
+                        "Value: {:?} overrides flags on positions that are not in bounds of flag {}",
+                        v, stringify!(#name)
+                    );
+                    unsafe {
+                        let addr = self as *const _ as *mut #struct_type;
+                        let val = core::ptr::read_volatile(addr);
+                        let cleared = val & !(((1 << #size) - 1) << #offset);
+                        let new = cleared | (v as #struct_type);
+                        core::ptr::write_volatile(addr, new);
+                    }
+                }
+            }
+        } else {
+            quote! {
+                #[inline]
+                #vis fn #fn_name(&mut self, v: #ty) {
+                    debug_assert!(
+                        (v as usize) < (1 << #size),
+                        "Value: {:?} is too large for this bitfield",
+                        v
+                    );
+                    unsafe {
+                        let addr = self as *const _ as *mut #struct_type;
+                        let val = core::ptr::read_volatile(addr);
+                        let cleared = val & !(((1 << #size) - 1) << #offset);
+                        let new = cleared | ((v as #struct_type) << #offset);
+                        core::ptr::write_volatile(addr, new);
+                    }
                 }
             }
         }
@@ -430,6 +488,7 @@ impl<'a> Bitflags<'a> {
         let struct_type = &self.struct_type;
 
         quote! {
+            #[inline]
             #vis fn #fn_name(&mut self) {
                 unsafe {
                     let addr = self as *const _ as *mut #struct_type;
@@ -532,6 +591,7 @@ pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
         #vis struct #ident(#min_uint);
 
         impl #ident {
+            #[inline]
             pub fn new() -> Self {
                 Self(0)
             }
