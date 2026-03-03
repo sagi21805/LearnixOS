@@ -1,7 +1,7 @@
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
 use syn::{
-    Field, Ident, ItemStruct, LitInt, Meta, Token, Type, TypePath,
+    Field, Ident, ItemStruct, LitInt, Meta, Path, Token, Type, TypePath,
     Visibility,
     parse::{Parse, discouraged::Speculative},
     parse_quote,
@@ -318,6 +318,7 @@ impl<'a> Bitflags<'a> {
             name,
             uint_ty,
             additional_ty,
+            dont_shift,
             size,
             offset,
             ..
@@ -331,6 +332,22 @@ impl<'a> Bitflags<'a> {
                 #[inline]
                 #vis const fn #name(mut self) -> Self {
                     self.0 |= (1 << #offset);
+                    self
+                }
+            }
+        } else if *dont_shift {
+            quote! {
+                #[inline]
+                #vis const fn #name(mut self, v: #struct_type) -> Self {
+                    debug_assert!(
+                        (v as usize >> #offset) < (1 << #size),
+                        "Value is too large for this bitfield"
+                    );
+                    debug_assert!(
+                        (v & !((((1 << #size) - 1) as #struct_type) << #offset)) == 0,
+                        "Value overrides flags on positions that are not in bounds of flag",
+                    );
+                    self.0 |= v as #struct_type;
                     self
                 }
             }
@@ -361,12 +378,13 @@ impl<'a> Bitflags<'a> {
             size,
             offset,
             dont_shift,
+            additional_ty,
             ..
         } = field;
         let offset =
             offset.expect("offset must be set before code generation");
         let struct_type = &self.struct_type;
-        if *size == 1 {
+        if *size == 1 && additional_ty.is_none() {
             let fn_name = format_ident!("is_{}", name);
             quote! {
                 #[inline]
@@ -383,11 +401,11 @@ impl<'a> Bitflags<'a> {
             if *dont_shift {
                 quote! {
                     #[inline]
-                    #vis fn #fn_name(&self) -> #uint_ty {
+                    #vis fn #fn_name(&self) -> #struct_type {
                         unsafe {
                             let addr = self as *const _ as *mut #struct_type;
                             let val = core::ptr::read_volatile(addr);
-                            (val & (((1 << #size) - 1) << #offset)) as #uint_ty
+                            (val & (((1 << #size) - 1) << #offset)) as #struct_type
                         }
                     }
                 }
@@ -417,26 +435,27 @@ impl<'a> Bitflags<'a> {
             uint_ty,
             additional_ty,
             size,
-            offset,
             dont_shift,
+            offset,
             ..
         } = field;
         let offset =
             offset.expect("offset must be set before code generation");
         let fn_name = format_ident!("set_{}", name);
         let struct_type = &self.struct_type;
-        let ty = additional_ty.as_ref().unwrap_or(uint_ty);
-        if *dont_shift {
+        let mut ty = additional_ty.as_ref().unwrap_or(uint_ty);
+
+        if *dont_shift && *size != 1 {
             quote! {
                 #[inline]
-                #vis fn #fn_name(&mut self, v: #ty) {
+                #vis fn #fn_name(&mut self, v: #struct_type) {
                     debug_assert!(
-                        (v as usize) < (1 << #size),
+                        (v as usize >> #offset) < (1 << #size),
                         "Value: {:?} is too large for this bitfield",
-                        v
+                        v >> #offset
                     );
                     debug_assert!(
-                        (v as #struct_type & !((((1 << #size) - 1) as #struct_type) << #offset)) == 0,
+                        (v & !((((1 << #size) - 1) as #struct_type) << #offset)) == 0,
                         "Value: {:?} overrides flags on positions that are not in bounds of flag {}",
                         v, stringify!(#name)
                     );
@@ -450,6 +469,10 @@ impl<'a> Bitflags<'a> {
                 }
             }
         } else {
+            let bool_type: Box<TypePath> = Box::new(parse_quote!(bool));
+            if *size == 1 {
+                ty = &bool_type
+            }
             quote! {
                 #[inline]
                 #vis fn #fn_name(&mut self, v: #ty) {
@@ -503,18 +526,25 @@ impl<'a> Bitflags<'a> {
 
     fn debug_impl(&self) -> TokenStream2 {
         let struct_name = self.struct_name;
-        let field_names: Vec<_> =
-            self.fields.iter().map(|f| f.name).collect();
-        let getters: Vec<_> = field_names
+        let field_args: Vec<_> = self
+            .fields
             .iter()
-            .map(|n| format_ident!("get_{}", n))
+            .map(|f| {
+                let getter = if f.size == 1 {
+                    format_ident!("is_{}", f.name)
+                } else {
+                    format_ident!("get_{}", f.name)
+                };
+                let name = f.name;
+                quote! { stringify!(#name), &self.#getter() }
+            })
             .collect();
 
         quote! {
             impl core::fmt::Debug for #struct_name {
                 fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                     f.debug_struct(stringify!(#struct_name))
-                        #(.field(stringify!(#field_names), &self.#getters()))*
+                        #(.field(#field_args))*
                         .finish()
                 }
             }
