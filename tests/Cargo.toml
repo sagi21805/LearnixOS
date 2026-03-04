@@ -5,6 +5,3 @@ edition = "2024"
 
 [dependencies]
 macros = { path = "../crates/macros" }
-
-[lints]
-workspace = true
