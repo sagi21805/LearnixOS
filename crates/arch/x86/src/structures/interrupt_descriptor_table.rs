@@ -7,7 +7,6 @@ use common::{
 };
 use core::{arch::asm, panic};
 use core::{mem::MaybeUninit, ptr};
-use macros::flag;
 
 /// Global reference into the interrupt table
 pub static mut IDT: MaybeUninit<&mut InterruptDescriptorTable> =

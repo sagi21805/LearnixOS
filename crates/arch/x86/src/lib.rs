@@ -4,6 +4,9 @@
 #![feature(const_trait_impl)]
 #![feature(abi_x86_interrupt)]
 #![feature(const_default)]
+#![feature(const_convert)]
+#![feature(const_result_trait_fn)]
+
 pub mod instructions;
 #[cfg(target_arch = "x86_64")]
 pub mod memory_map;
