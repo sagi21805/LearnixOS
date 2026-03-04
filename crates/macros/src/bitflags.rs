@@ -340,14 +340,14 @@ impl<'a> Bitflags<'a> {
                 #[inline]
                 #vis const fn #name(mut self, v: #struct_type) -> Self {
                     debug_assert!(
-                        (#struct_type::try_from(v).ok().expect("Can't convery value 'v' into the struct type") >> #offset)< (1 << #size) as #struct_type,
+                        (#uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type >> #offset) < (1 << #size) as #struct_type,
                         "Value is too large for this bitfield"
                     );
                     debug_assert!(
                         (v & !((((1 << #size) - 1) as #struct_type) << #offset)) == 0,
                         "Value overrides flags on positions that are not in bounds of flag",
                     );
-                    self.0 |= #struct_type::try_from(v).ok().expect("Can't convery value 'v' into the struct type");
+                    self.0 |= #uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type;
                     self
                 }
             }
@@ -356,10 +356,10 @@ impl<'a> Bitflags<'a> {
                 #[inline]
                 #vis const fn #name(mut self, v: #ty) -> Self {
                     debug_assert!(
-                        (#struct_type::try_from(v).ok().expect("Can't convery value 'v' into the struct type")) < (1 << #size) as #struct_type,
+                        (#uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type)  < (1 << #size) as #struct_type,
                         "Value is too large for this bitfield"
                     );
-                    self.0 |= ((#struct_type::try_from(v).ok().expect("Can't convery value 'v' into the struct type")) << #offset);
+                    self.0 |= ((#uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type) << #offset);
                     self
                 }
             }
@@ -450,7 +450,7 @@ impl<'a> Bitflags<'a> {
                 #[inline]
                 #vis fn #fn_name(&mut self, v: #struct_type) {
                     debug_assert!(
-                        (#struct_type::try_from(v).ok().expect("Can't convery value 'v' into the struct type") >> #offset)< (1 << #size) as #struct_type,
+                        (#uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type >> #offset) < (1 << #size) as #struct_type,
                         "Value: {:?} is too large for this bitfield",
                         v >> #offset
                     );
@@ -463,7 +463,7 @@ impl<'a> Bitflags<'a> {
                         let addr = self as *const _ as *mut #struct_type;
                         let val = core::ptr::read_volatile(addr);
                         let cleared = val & !(((1 << #size) - 1) << #offset);
-                        let new = cleared | (#struct_type::try_from(v).unwrap());
+                        let new = cleared | (#uint_ty::try_from(v).unwrap() as #struct_type);
                         core::ptr::write_volatile(addr, new);
                     }
                 }
@@ -477,7 +477,7 @@ impl<'a> Bitflags<'a> {
                 #[inline]
                 #vis fn #fn_name(&mut self, v: #ty) {
                     debug_assert!(
-                        (#struct_type::try_from(v).ok().expect("Can't convery value 'v' into the struct type")) < (1 << #size) as #struct_type,
+                        (#uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type) < (1 << #size) as #struct_type,
                         "Value: {:?} is too large for this bitfield",
                         v
                     );
@@ -485,7 +485,7 @@ impl<'a> Bitflags<'a> {
                         let addr = self as *const _ as *mut #struct_type;
                         let val = core::ptr::read_volatile(addr);
                         let cleared = val & !(((1 << #size) - 1) << #offset);
-                        let new = cleared | ((#struct_type::try_from(v).unwrap()) << #offset);
+                        let new = cleared | ((#uint_ty::try_from(v).unwrap() as #struct_type) << #offset);
                         core::ptr::write_volatile(addr, new);
                     }
                 }
@@ -547,6 +547,36 @@ impl<'a> Bitflags<'a> {
                     f.debug_struct(stringify!(#struct_name))
                         #(.field(#field_args))*
                         .finish()
+                }
+            }
+        }
+    }
+
+    fn from_impl(&self) -> TokenStream2 {
+        let Bitflags {
+            struct_name,
+            struct_type,
+            ..
+        } = self;
+        quote! {
+            impl const From<#struct_type> for #struct_name {
+                fn from(value: #struct_type) -> Self {
+                    #struct_name(value)
+                }
+            }
+        }
+    }
+
+    fn into_impl(&self) -> TokenStream2 {
+        let Bitflags {
+            struct_name,
+            struct_type,
+            ..
+        } = self;
+        quote! {
+            impl const Into<#struct_type> for #struct_name {
+                fn into(self) -> #struct_type {
+                    self.0
                 }
             }
         }
@@ -617,6 +647,8 @@ pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
     });
 
     let debug_impl = bitfield.debug_impl();
+    let from_impl = bitfield.from_impl();
+    let into_impl = bitfield.into_impl();
 
     Ok(quote! {
         #[derive(Copy, Clone)]
@@ -636,6 +668,10 @@ pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
                 Self(0)
             }
         }
+
+        #from_impl
+
+        #into_impl
 
         #debug_impl
     })
