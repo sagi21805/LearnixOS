@@ -1,5 +1,3 @@
-use macros::flag;
-
 #[repr(u8)]
 pub enum Interrupt {
     DivisionError = 0x0,
@@ -48,16 +46,103 @@ pub enum InterruptType {
     Trap = 0xf,
 }
 
-pub struct PageFaultError(u64);
+mod page_fault {
 
-impl PageFaultError {
-    page_flag!(0, not_present, protection_violation);
-    page_flag!(1, caused_by_write, caused_by_read);
-    page_flag!(2, caused_by_user, caused_by_kernel);
-    flag!(reserved_bit_accessed, 3);
-    flag!(caused_by_instruction_fetch, 4);
-    flag!(caused_by_bad_protection_key, 5);
-    flag!(caused_by_shadow_stack_access, 6);
-    flag!(no_hlat_translation, 7);
-    flag!(sgx_violation, 15);
+    use crate::error::ConversionError;
+    use macros::bitfields;
+    use num_enum::TryFromPrimitive;
+
+    #[repr(u8)]
+    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+    pub enum P {
+        NonPresentPage = 0,
+        ProtectionViolation = 1,
+    }
+
+    #[repr(u8)]
+    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+    pub enum WR {
+        ReadOperation = 0,
+        WriteOperation = 1,
+    }
+
+    #[repr(u8)]
+    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+    pub enum US {
+        SuperviserCauseFault = 0,
+        UserCausedFault = 1,
+    }
+
+    #[repr(u8)]
+    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+    pub enum Reserved {
+        NotReservedBit = 0,
+        ReservedBitWasSet = 1,
+    }
+
+    #[repr(u8)]
+    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+    pub enum Fetch {
+        NotCauseByInstructionFetch = 0,
+        CauseByInstructionFetch = 1,
+    }
+
+    #[repr(u8)]
+    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+    pub enum PK {
+        NotCauseByProtectionKey = 0,
+        CauseByProtectionKey = 1,
+    }
+
+    #[repr(u8)]
+    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+    pub enum SS {
+        NotShadowStackAccess = 0,
+        CauseByShadowStackAccess = 1,
+    }
+
+    #[repr(u8)]
+    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+    pub enum Hlat {
+        CauseDuringOrdinaryPagingAccess = 0,
+        CausedDuringHLATPaging = 1,
+    }
+
+    #[repr(u8)]
+    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+    pub enum Sgx {
+        NotRelatedToSgx = 0,
+        RelatedToS = 1,
+    }
+
+    #[bitfields]
+    struct PageFaultError {
+        #[flag(r, flag_type = P)]
+        p: B1,
+        #[flag(r, flag_type = WR)]
+        wr: B1,
+        #[flag(r, flag_type = US)]
+        us: B1,
+        #[flag(r, flag_type = Reserved)]
+        rsvd: B1,
+        #[flag(r, flag_type = Fetch)]
+        fetch: B1,
+        #[flag(r, flag_type = PK)]
+        pk: B1,
+        #[flag(r, flag_type = SS)]
+        ss: B1,
+        #[flag(r, flag_type = Hlat)]
+        hlat: B1,
+        #[flag(r, flag_type = Sgx)]
+        sgx: B1,
+    }
 }

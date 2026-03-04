@@ -1,31 +1,31 @@
-use std::fmt::Debug;
+#![feature(const_default)]
+#![feature(const_trait_impl)]
+#![feature(never_type)]
+#![feature(const_convert)]
+#![feature(const_result_trait_fn)]
 
 use macros::bitfields;
+
+mod test;
+use test::{Nested, Test};
 
 fn main() {
     println!("Hello, world!");
 
     let mut f = MyFlags::new();
-    f.set_a(t::Test::Two);
-    f.set_d(3);
-    f.set_c(3);
-    println!("{:#?}", f);
-}
-mod t {
+    let nested = Nested::new().a().b(Test::SomeRandomName);
+    f.set_d(true);
+    f.set_c(true);
+    f.set_d(false);
+    println!("{:#x?}", f);
 
-    #[repr(u8)]
-    #[derive(Clone, Copy)]
-    pub enum Test {
-        One = 1,
-        Two = 2,
-    }
+    let x: u8 = 242;
 }
 
 #[bitfields]
 pub struct MyFlags {
-    #[flag(rw, flag_type = t::Test)]
-    a: B3,
-    b: B3,
-    c: B3,
-    d: B9,
+    a: B1,
+    b: B1,
+    c: B1,
+    d: B1,
 }
