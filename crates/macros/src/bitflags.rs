@@ -168,7 +168,6 @@ impl Parse for FlagAttribute {
                 ));
             }
 
-            eprintln!("ERROR COUNT: {}", error_count);
             if input.peek(Token![,]) {
                 let _ = input.parse::<Token![,]>()?;
             } else {
@@ -399,24 +398,26 @@ impl<'a> Bitflags<'a> {
         } else {
             let fn_name = format_ident!("get_{}", name);
             if *dont_shift {
+                let ty = additional_ty.as_ref().unwrap_or(struct_type);
                 quote! {
                     #[inline]
-                    #vis fn #fn_name(&self) -> #struct_type {
+                    #vis fn #fn_name(&self) -> #ty {
                         unsafe {
                             let addr = self as *const _ as *mut #struct_type;
                             let val = core::ptr::read_volatile(addr);
-                            (val & (((1 << #size) - 1) << #offset)) as #struct_type
+                            #ty::try_from((val & (((1 << #size) - 1) << #offset))).expect("Cannot convert bit representation into the given type")
                         }
                     }
                 }
             } else {
+                let ty = additional_ty.as_ref().unwrap_or(uint_ty);
                 quote! {
                     #[inline]
-                    #vis fn #fn_name(&self) -> #uint_ty {
+                    #vis fn #fn_name(&self) -> #ty {
                         unsafe {
                             let addr = self as *const _ as *mut #struct_type;
                             let val = core::ptr::read_volatile(addr);
-                            ((val >> #offset) & ((1 << #size) - 1)) as #uint_ty
+                            #ty::try_from(((val >> #offset) & ((1 << #size) - 1)) as #uint_ty).expect("Cannot convert bit representation into the given type")
                         }
                     }
                 }
@@ -530,7 +531,7 @@ impl<'a> Bitflags<'a> {
             .fields
             .iter()
             .map(|f| {
-                let getter = if f.size == 1 {
+                let getter = if f.size == 1 && f.additional_ty.is_none() {
                     format_ident!("is_{}", f.name)
                 } else {
                     format_ident!("get_{}", f.name)
