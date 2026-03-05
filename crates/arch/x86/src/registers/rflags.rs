@@ -1,9 +1,37 @@
 use common::enums::ProtectionLevel;
 use core::arch::asm;
+use macros::bitfields;
 
-#[derive(Debug)]
-#[repr(C)]
-pub struct Rflags(u64);
+#[bitfields]
+pub struct Rflags {
+    carry: B1,
+    #[flag(r)]
+    reserved1: B1,
+    parity: B1,
+    #[flag(r)]
+    reserved2: B1,
+    auxiliary: B1,
+    #[flag(r)]
+    reserved3: B1,
+    zero: B1,
+    sign: B1,
+    tap: B1,
+    interrupt: B1,
+    direction: B1,
+    overflow: B1,
+    #[flag(flag_type = ProtectionLevel)]
+    iopl: B2,
+    nested_task: B1,
+    reserved4: B1,
+    resume: B1,
+    virtual_8086_mode: B1,
+    alignment_check: B1,
+    virtual_interrupt: B1,
+    virtual_interrupt_pending: B1,
+    cpuid_support: B1,
+    #[flag(r)]
+    reserved5: B41,
+}
 
 impl Rflags {
     pub fn read() -> Self {
@@ -18,29 +46,6 @@ impl Rflags {
         }
         Self(r)
     }
-
-    flag!(carry, 0);
-    flag!(parity, 2);
-    flag!(auxiliary, 4);
-    flag!(zero, 6);
-    flag!(sign, 7);
-    flag!(tap, 8);
-    flag!(interrupt, 9);
-    flag!(direction, 10);
-    flag!(overflow, 11);
-
-    /// Set I/O privilege level
-    pub fn set_iopl(&mut self, privilege_level: ProtectionLevel) {
-        self.0 |= (privilege_level as u64) << 12;
-    }
-
-    flag!(nested_task, 14);
-    flag!(resume, 16);
-    flag!(virtual_8086_mode, 17);
-    flag!(alignment_check, 18);
-    flag!(virtual_interrupt, 19);
-    flag!(virtual_interrupt_pending, 20);
-    flag!(cpuid_support, 21);
 
     /// Write the given flags to the cpu flags overriding current flags
     ///
