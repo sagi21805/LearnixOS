@@ -9,7 +9,7 @@ x86 = { path = "../crates/arch/x86" }
 derive_more = { version = "2.0.1", default-features = false, features = [
     "full",
 ] }
-num_enum = { version = "0.7.5", default-features = false, features = [
+num_enum = { git = "https://github.com/sagi21805/num_enum.git", rev = "2e53bd356ae93c537f3345f38679617bb977633c", default-features = false, features = [
     "complex-expressions",
 ] }
 extend = "1.2.0"
