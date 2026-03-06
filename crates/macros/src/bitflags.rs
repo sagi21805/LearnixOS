@@ -5,7 +5,6 @@ use syn::{
     Visibility,
     parse::{Parse, discouraged::Speculative},
     parse_quote,
-    spanned::Spanned,
 };
 
 mod keyword {
@@ -326,7 +325,7 @@ impl<'a> Bitflags<'a> {
             offset.expect("offset must be set before code generation");
         let struct_type = &self.struct_type;
         let ty = additional_ty.as_ref().unwrap_or(uint_ty);
-        if *size == 1 {
+        if *size == 1 && additional_ty.is_none() {
             quote! {
                 #[inline]
                 #vis const fn #name(mut self) -> Self {
@@ -568,6 +567,7 @@ impl<'a> Bitflags<'a> {
         }
     }
 
+    // impls from for the other type instead of into.
     fn into_impl(&self) -> TokenStream2 {
         let Bitflags {
             struct_name,
@@ -575,9 +575,9 @@ impl<'a> Bitflags<'a> {
             ..
         } = self;
         quote! {
-            impl const Into<#struct_type> for #struct_name {
-                fn into(self) -> #struct_type {
-                    self.0
+            impl const From<#struct_name> for #struct_type {
+                fn from(value: #struct_name) -> #struct_type {
+                    value.0
                 }
             }
         }
