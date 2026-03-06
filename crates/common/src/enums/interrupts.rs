@@ -1,3 +1,7 @@
+use crate::error::ConversionError;
+use macros::bitfields;
+use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
+
 #[repr(u8)]
 pub enum Interrupt {
     DivisionError = 0x0,
@@ -41,6 +45,10 @@ pub enum InterruptStackTable {
 }
 
 #[repr(u8)]
+#[derive(
+    Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
+)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum InterruptType {
     Fault = 0xe,
     Trap = 0xf,
@@ -50,10 +58,10 @@ mod page_fault {
 
     use crate::error::ConversionError;
     use macros::bitfields;
-    use num_enum::TryFromPrimitive;
+    use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
 
     #[repr(u8)]
-    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[derive(Debug, Clone, Copy, ConstTryFromPrimitive)]
     #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
     pub enum P {
         NonPresentPage = 0,
@@ -61,7 +69,7 @@ mod page_fault {
     }
 
     #[repr(u8)]
-    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[derive(Debug, Clone, Copy, ConstTryFromPrimitive)]
     #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
     pub enum WR {
         ReadOperation = 0,
@@ -69,7 +77,7 @@ mod page_fault {
     }
 
     #[repr(u8)]
-    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[derive(Debug, Clone, Copy, ConstTryFromPrimitive)]
     #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
     pub enum US {
         SuperviserCauseFault = 0,
@@ -77,7 +85,7 @@ mod page_fault {
     }
 
     #[repr(u8)]
-    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[derive(Debug, Clone, Copy, ConstTryFromPrimitive)]
     #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
     pub enum Reserved {
         NotReservedBit = 0,
@@ -85,7 +93,7 @@ mod page_fault {
     }
 
     #[repr(u8)]
-    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[derive(Debug, Clone, Copy, ConstTryFromPrimitive)]
     #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
     pub enum Fetch {
         NotCauseByInstructionFetch = 0,
@@ -93,7 +101,7 @@ mod page_fault {
     }
 
     #[repr(u8)]
-    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[derive(Debug, Clone, Copy, ConstTryFromPrimitive)]
     #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
     pub enum PK {
         NotCauseByProtectionKey = 0,
@@ -101,7 +109,7 @@ mod page_fault {
     }
 
     #[repr(u8)]
-    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[derive(Debug, Clone, Copy, ConstTryFromPrimitive)]
     #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
     pub enum SS {
         NotShadowStackAccess = 0,
@@ -109,7 +117,7 @@ mod page_fault {
     }
 
     #[repr(u8)]
-    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[derive(Debug, Clone, Copy, ConstTryFromPrimitive)]
     #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
     pub enum Hlat {
         CauseDuringOrdinaryPagingAccess = 0,
@@ -117,7 +125,7 @@ mod page_fault {
     }
 
     #[repr(u8)]
-    #[derive(Debug, Clone, Copy, TryFromPrimitive)]
+    #[derive(Debug, Clone, Copy, ConstTryFromPrimitive)]
     #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
     pub enum Sgx {
         NotRelatedToSgx = 0,
