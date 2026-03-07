@@ -1,8 +1,8 @@
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
 use syn::{
-    Field, Ident, ItemStruct, LitInt, Meta, Path, Token, Type, TypePath,
-    Visibility,
+    Attribute, Field, Ident, ItemStruct, LitInt, Meta, Path, Token, Type,
+    TypePath, Visibility,
     parse::{Parse, discouraged::Speculative},
     parse_quote,
 };
@@ -277,6 +277,7 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
 }
 
 pub struct Bitflags<'a> {
+    attrs: &'a Vec<Attribute>,
     struct_name: &'a Ident,
     struct_type: Box<TypePath>,
     fields: Vec<BitField<'a>>,
@@ -313,6 +314,7 @@ impl<'a> TryFrom<&'a ItemStruct> for Bitflags<'a> {
         };
 
         Ok(Bitflags {
+            attrs: &value.attrs,
             struct_name: &value.ident,
             struct_type: Box::new(struct_type),
             fields,
@@ -661,10 +663,14 @@ fn get_closest_uint(ty: &Type) -> syn::Result<(TypePath, usize)> {
 }
 
 pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
-    let bitfield = Bitflags::try_from(&s)?;
-    let min_uint = &bitfield.struct_type;
+    let bitfield @ Bitflags {
+        attrs,
+        struct_name,
+        struct_type,
+        ..
+    } = &Bitflags::try_from(&s)?;
+
     let vis = &s.vis;
-    let ident = &s.ident;
 
     let methods = bitfield.fields.iter().map(|b| {
         let read = bitfield.fn_read(b);
@@ -679,11 +685,13 @@ pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
     let into_impl = bitfield.into_impl();
 
     Ok(quote! {
+
+        #(#attrs)*
         #[repr(transparent)]
         #[derive(Copy, Clone)]
-        #vis struct #ident(#min_uint);
+        #vis struct #struct_name(#struct_type);
 
-        impl #ident {
+        impl #struct_name {
             #[inline]
             pub fn new() -> Self {
                 Self(0)
@@ -692,7 +700,7 @@ pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
             #(#methods)*
         }
 
-        impl const Default for #ident {
+        impl const Default for #struct_name {
             fn default() -> Self {
                 Self(0)
             }
