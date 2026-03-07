@@ -652,6 +652,7 @@ pub fn bitfields_impl(s: ItemStruct) -> syn::Result<TokenStream2> {
     let into_impl = bitfield.into_impl();
 
     Ok(quote! {
+        #[repr(transparent)]
         #[derive(Copy, Clone)]
         #vis struct #ident(#min_uint);
 
