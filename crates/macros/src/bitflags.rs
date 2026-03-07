@@ -188,6 +188,7 @@ pub struct BitField<'a> {
     dont_shift: bool,
     size: usize,
     offset: Option<usize>,
+    doc_attrs: Vec<syn::Attribute>,
 }
 
 impl<'a> TryFrom<&'a Field> for BitField<'a> {
@@ -197,7 +198,19 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
         let (min_uint, size) = get_closest_uint(&value.ty)?;
         let name = value.ident.as_ref().expect("Fields must have a name");
 
-        // No attribute → default ReadWrite permissions.
+        let doc_attrs: Vec<syn::Attribute> = value
+            .attrs
+            .iter()
+            .filter(|a| a.path().is_ident("doc"))
+            .cloned()
+            .collect();
+
+        let flag_attrs: Vec<&syn::Attribute> = value
+            .attrs
+            .iter()
+            .filter(|a| !a.path().is_ident("doc"))
+            .collect();
+
         if value.attrs.is_empty() {
             return Ok(BitField {
                 permissions: FlagPermission::default(),
@@ -208,17 +221,18 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
                 additional_ty: None,
                 size,
                 offset: None,
+                doc_attrs,
             });
         }
 
-        if value.attrs.len() > 1 {
+        if flag_attrs.len() > 1 {
             return Err(syn::Error::new_spanned(
                 value,
                 "Fields must have at most one attribute",
             ));
         }
 
-        let attr = &value.attrs[0];
+        let attr = flag_attrs[0];
         if let Meta::List(list) = &attr.meta {
             let attr_ident = list.path.get_ident().ok_or_else(|| {
                 syn::Error::new_spanned(
@@ -250,6 +264,7 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
                 dont_shift,
                 size,
                 offset: None,
+                doc_attrs,
             })
         } else {
             Err(syn::Error::new_spanned(
@@ -319,6 +334,7 @@ impl<'a> Bitflags<'a> {
             dont_shift,
             size,
             offset,
+            doc_attrs,
             ..
         } = field;
         let offset =
@@ -335,6 +351,7 @@ impl<'a> Bitflags<'a> {
             }
         } else if *dont_shift {
             quote! {
+                #(#doc_attrs)*
                 #[inline]
                 #vis const fn #name(mut self, v: #struct_type) -> Self {
                     debug_assert!(
@@ -351,6 +368,7 @@ impl<'a> Bitflags<'a> {
             }
         } else {
             quote! {
+                #(#doc_attrs)*
                 #[inline]
                 #vis const fn #name(mut self, v: #ty) -> Self {
                     debug_assert!(
@@ -377,6 +395,7 @@ impl<'a> Bitflags<'a> {
             offset,
             dont_shift,
             additional_ty,
+            doc_attrs,
             ..
         } = field;
         let offset =
@@ -385,6 +404,7 @@ impl<'a> Bitflags<'a> {
         if *size == 1 && additional_ty.is_none() {
             let fn_name = format_ident!("is_{}", name);
             quote! {
+                #(#doc_attrs)*
                 #[inline]
                 #vis fn #fn_name(&self) -> bool {
                     unsafe {
@@ -399,6 +419,7 @@ impl<'a> Bitflags<'a> {
             if *dont_shift {
                 let ty = additional_ty.as_ref().unwrap_or(struct_type);
                 quote! {
+                    #(#doc_attrs)*
                     #[inline]
                     #vis fn #fn_name(&self) -> #ty {
                         unsafe {
@@ -411,6 +432,7 @@ impl<'a> Bitflags<'a> {
             } else {
                 let ty = additional_ty.as_ref().unwrap_or(uint_ty);
                 quote! {
+                    #(#doc_attrs)*
                     #[inline]
                     #vis fn #fn_name(&self) -> #ty {
                         unsafe {
@@ -437,6 +459,7 @@ impl<'a> Bitflags<'a> {
             size,
             dont_shift,
             offset,
+            doc_attrs,
             ..
         } = field;
         let offset =
@@ -447,6 +470,7 @@ impl<'a> Bitflags<'a> {
 
         if *dont_shift && *size != 1 {
             quote! {
+                #(#doc_attrs)*
                 #[inline]
                 #vis fn #fn_name(&mut self, v: #struct_type) {
                     debug_assert!(
@@ -474,6 +498,7 @@ impl<'a> Bitflags<'a> {
                 ty = &bool_type
             }
             quote! {
+                #(#doc_attrs)*
                 #[inline]
                 #vis fn #fn_name(&mut self, v: #ty) {
                     debug_assert!(
@@ -503,6 +528,7 @@ impl<'a> Bitflags<'a> {
             name,
             size,
             offset,
+            doc_attrs,
             ..
         } = field;
         let offset =
@@ -511,6 +537,7 @@ impl<'a> Bitflags<'a> {
         let struct_type = &self.struct_type;
 
         quote! {
+            #(#doc_attrs)*
             #[inline]
             #vis fn #fn_name(&mut self) {
                 unsafe {
