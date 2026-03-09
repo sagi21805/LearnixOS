@@ -54,83 +54,92 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn build_target(
-    sh: &Shell,
-    package: &str,
-    target: &str,
-    profile: &str,
-    flags: &[&'static str],
-) -> Result<()> {
-    cmd!(
-        sh,
-        "cargo build -p {package} {profile} --target {target} {flags...}"
-    )
-    .run()
-    .context("Failed to build first_stage")?;
+#[extend::ext]
+impl Shell {
+    fn build_target(
+        &self,
+        manifest: &str,
+        target: &str,
+        profile: &str,
+        flags: &[&'static str],
+    ) -> Result<()> {
+        cmd!(
+            self,
+            "
+            cargo build
+                -manifest-path {manifest}
+                --profile {profile}
+                --target {target}
+             {flags...}
+            "
+        )
+        .run()
+        .context("Failed to build first_stage")?;
 
-    Ok(())
-}
-
-fn build_os(sh: &Shell, release: bool) -> Result<()> {
-    let profile = if release { "--release" } else { "" };
-
-    let target = "targets/16bit_target.json";
-
-    let flags = [
-        "-Z",
-        "build-std=core,alloc",
-        "-Z",
-        "build-std-features=compiler-builtins-mem",
-    ];
-
-    let _ = build_target(
-        sh,
-        "first_stage",
-        target,
-        "--profile=bootloader",
-        &flags,
-    );
-
-    let target = "targets/32bit_target.json";
-    let _ = build_target(
-        sh,
-        "second_stage",
-        target,
-        "--profile=bootloader",
-        &flags,
-    );
-
-    let target = "targets/64bit_target.json";
-    let _ = build_target(sh, "kernel", target, "--release", &flags);
-
-    let stage1_bin = "target/16bit_target/bootloader/first_stage";
-    let stage2_bin = "target/32bit_target/bootloader/second_stage";
-    let kernel = "target/64bit_target/release/kernel";
-    let mut image =
-        sh.read_binary_file(stage1_bin).with_context(|| {
-            format!("Could not find stage1 binary at {}", stage1_bin)
-        })?;
-
-    let stage2 = sh.read_binary_file(stage2_bin).with_context(|| {
-        format!("Could not find stage2 binary at {}", stage2_bin)
-    })?;
-
-    image.extend(stage2);
-
-    let kernel = sh.read_binary_file(kernel).with_context(|| {
-        format!("Could not find kernel binary at {}", kernel)
-    })?;
-
-    image.extend(kernel);
-    // 4. Padding to MIN_SIZE (512KB + header/offset)
-    const MIN_SIZE: usize = 515_585;
-    if image.len() < MIN_SIZE {
-        image.resize(MIN_SIZE, 0);
+        Ok(())
     }
 
-    sh.write_file("image.bin", image)?;
+    fn build_os(&self, release: bool) -> Result<()> {
+        let flags = [
+            "-Z",
+            "build-std=core,alloc",
+            "-Z",
+            "build-std-features=compiler-builtins-mem",
+        ];
 
-    Ok(())
+        self.build_target(
+            "bootloader/first_stage/Cargo.toml",
+            "bootloader/first_stage/16bit_target.json",
+            "release",
+            &flags,
+        )?;
+
+        self.build_target(
+            "bootloader/second_stage/Cargo.toml",
+            "bootloader/second_stage/32bit_target.json",
+            "release",
+            &flags,
+        )?;
+
+        self.build_target(
+            "kernel/Cargo.toml",
+            "kernel/64bit_target.json",
+            "release",
+            &flags,
+        );
+
+        let stage1_bin =
+            "bootloader/target/16bit_target/release/first_stage";
+        let stage2_bin =
+            "bootloader/target/32bit_target/release/second_stage";
+        let kernel = "kernel/target/64bit_target/release/kernel";
+        let mut image =
+            self.read_binary_file(stage1_bin).with_context(|| {
+                format!("Could not find stage1 binary at {}", stage1_bin)
+            })?;
+
+        let stage2 =
+            self.read_binary_file(stage2_bin).with_context(|| {
+                format!("Could not find stage2 binary at {}", stage2_bin)
+            })?;
+
+        image.extend(stage2);
+
+        let kernel = self.read_binary_file(kernel).with_context(|| {
+            format!("Could not find kernel binary at {}", kernel)
+        })?;
+
+        image.extend(kernel);
+        // 4. Padding to MIN_SIZE (512KB + header/offset)
+        const MIN_SIZE: usize = 515_585;
+        if image.len() < MIN_SIZE {
+            image.resize(MIN_SIZE, 0);
+        }
+
+        self.write_file("image.bin", image)?;
+
+        Ok(())
+    }
 }
 
 fn run_qemu() -> anyhow::Result<()> {
