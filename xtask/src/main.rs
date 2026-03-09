@@ -22,8 +22,6 @@ enum Commands {
         #[arg(long)]
         release: bool,
     },
-    /// Run workspace-wide tests
-    Test,
 }
 
 fn main() -> Result<()> {
@@ -40,14 +38,10 @@ fn main() -> Result<()> {
     sh.change_dir(root);
 
     match cli.command {
-        Commands::Build { release } => build_os(&sh, release)?,
+        Commands::Build { release } => sh.build_os(release)?,
         Commands::Run { release } => {
-            build_os(&sh, release)?;
+            sh.build_os(release)?;
             run_qemu()?;
-        }
-        Commands::Test => {
-            println!("🧪 Running tests...");
-            cmd!(sh, "cargo test --workspace").run()?;
         }
     }
 
@@ -67,9 +61,9 @@ impl Shell {
             self,
             "
             cargo build
-                -manifest-path {manifest}
-                --profile {profile}
-                --target {target}
+                --manifest-path={manifest}
+                --profile={profile}
+                --target={target}
              {flags...}
             "
         )
@@ -106,12 +100,12 @@ impl Shell {
             "kernel/64bit_target.json",
             "release",
             &flags,
-        );
+        )?;
 
-        let stage1_bin =
-            "bootloader/target/16bit_target/release/first_stage";
-        let stage2_bin =
-            "bootloader/target/32bit_target/release/second_stage";
+        let stage1_bin = "bootloader/first_stage/target/16bit_target/\
+                          release/first_stage";
+        let stage2_bin = "bootloader/second_stage/target/32bit_target/\
+                          release/second_stage";
         let kernel = "kernel/target/64bit_target/release/kernel";
         let mut image =
             self.read_binary_file(stage1_bin).with_context(|| {
