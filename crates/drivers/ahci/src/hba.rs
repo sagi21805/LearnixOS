@@ -11,10 +11,9 @@ use common::{
     enums::{
         AtaCommand, DeviceDetection, DeviceType,
         InterfaceCommunicationControl, InterfaceInitialization,
-        InterfacePowerManagement, InterfaceSpeed,
-        InterfaceSpeedRestriction, PageSize,
+        InterfacePowerManagement, InterfaceSpeed, PageSize,
     },
-    error::{AhciError, ConversionError, DiagnosticError, HbaError},
+    error::{ConversionError, HbaError},
     read_volatile,
     volatile::Volatile,
     write_volatile,
@@ -782,9 +781,11 @@ pub struct SataStatus {
 #[bitfields]
 pub struct SataControl {
     /// Device initialization
-    device_init_raw: B4,
+    #[flag(flag_type = InterfaceInitialization)]
+    device_init: B4,
     /// Max interface speed restriction
-    speed_raw: B4,
+    #[flag(flag_type = InterfaceSpeed)]
+    max_speed: B4,
     /// Partial power management disabled
     #[flag(rw)]
     partial_disabled: B1,
@@ -804,62 +805,41 @@ pub struct SataControl {
     reserved1: B12,
 }
 
-impl SataControl {
-    pub fn max_speed(&self) -> InterfaceSpeedRestriction {
-        unsafe {
-            InterfaceSpeedRestriction::unchecked_transmute_from(
-                self.speed_raw() as u8,
-            )
-        }
-    }
+#[bitfields]
+pub struct DiagnosticError {
+    phyrdy_change: B1,
+    phy_internal: B1,
+    comm_wake: B1,
+    decoding_error: B1,
+    disparity_error: B1,
+    crc_error: B1,
+    handshake_error: B1,
+    link_sequence_error: B1,
+    transport_state_error: B1,
+    unknown_fistype: B1,
+    exchanged: B1,
+}
 
-    pub fn set_max_speed(&mut self, speed: InterfaceSpeed) {
-        if speed != InterfaceSpeed::DevNotPresent {
-            self.set_speed_raw(speed as u8);
-        }
-    }
-
-    pub fn device_initialization(
-        &self,
-    ) -> Result<InterfaceInitialization, ConversionError<u8>> {
-        InterfaceInitialization::try_from(self.device_init_raw() as u8)
-    }
-
-    // TODO THIS COMMAND ANY MAYBE OTHER SHOULD PROBABLY MOVE TO THE PORT
-    // SETTING BECAUSE THEY REQUIRE PxCMD.st BIT TO BE SET WHILE THEY ARE
-    // SET
-    pub fn set_device_initialization(
-        &mut self,
-        init: InterfaceInitialization,
-    ) {
-        self.set_device_init_raw(init as u8);
-    }
+#[bitfields]
+pub struct AhciError {
+    recovered_data_integrity_err: B1,
+    recovered_communication_err: B1,
+    reserved: B6,
+    data_intergrity_err: B1,
+    persistent_comm_or_data_integrity_err: B1,
+    protocol_err: B1,
+    internal_err: B1,
 }
 
 /// Port X SATA error
 #[bitfields]
 pub struct SataError {
     /// AHCI error bits
-    error_bits: B16,
+    #[flag(flag_type = AhciError)]
+    error: B16,
     /// Diagnostic error bits
-    diagnostic_bits: B16,
-}
-
-impl SataError {
-    pub fn diagnostic(&self) -> impl Iterator<Item = DiagnosticError> {
-        let diagnostic_errors = self.diagnostic_bits() as u16;
-        DiagnosticError::iter()
-            .filter(move |n| *n as u16 & diagnostic_errors != 0)
-    }
-
-    pub fn error(&self) -> impl Iterator<Item = AhciError> {
-        let ahci_error = self.error_bits() as u16;
-        AhciError::iter().filter(move |n| *n as u16 & ahci_error != 0)
-    }
-
-    pub fn zero_error(&mut self) {
-        self.set_error_bits(0);
-    }
+    #[flag(flag_type = DiagnosticError)]
+    diagnostic: B16,
 }
 
 /// Port X Sata Active
@@ -913,7 +893,7 @@ pub struct FisSwitchControl {
     #[flag(rw)]
     en: B1,
     /// Device error clear
-    #[flag(rw1)]
+    #[flag(rwc(1))]
     dec: B1,
     /// Single device error
     #[flag(r)]
@@ -970,7 +950,7 @@ pub struct DeviceSleep {
 impl DeviceSleep {
     /// The actual timeout, which is dito * (dito_multiplier + 1)
     pub fn dito_actual_ms(&self) -> u16 {
-        self.dito() as u16 * (self.dito_multiplier() as u16 + 1)
+        self.get_dito() as u16 * (self.get_dito_multiplier() as u16 + 1)
     }
 }
 
@@ -1034,7 +1014,7 @@ impl PortControlRegisters {
     }
 
     pub fn set_status(&mut self, port: u8) {
-        self.cmd.set_st();
+        self.cmd.set_st(true);
         (0x0u8..=0x1fu8).contains(&port).then(|| {
             self.sact.0 &= !(0x1f << 8);
             self.sact.0 |= (port as u32) << 8;
@@ -1128,7 +1108,6 @@ pub struct ReceivedFis {
     _reserved3: [u32; 24],
 }
 
-#[derive(Default)]
 #[bitfields]
 pub struct CmdListDescriptionInfo {
     /// Length of command FIS (internally stored as dwords)
@@ -1157,15 +1136,6 @@ pub struct CmdListDescriptionInfo {
     pm_port: B4,
     /// Physical region descriptor table length
     prdtl: B16,
-}
-
-impl CmdListDescriptionInfo {
-    /// Length of command FIS len (internally converted to dw)
-    pub fn set_command_fis_len(&mut self, len: usize) {
-        assert!(len < 64, "Len must be smaller then 64");
-        assert!(len > 8, "Len must be greater then 8 ");
-        self.set_cfl((len / size_of::<u32>()) as u8);
-    }
 }
 
 #[repr(C)]
@@ -1212,7 +1182,7 @@ pub struct PrdtDescriptionInfo {
 
 impl PrdtDescriptionInfo {
     /// Set the data byte count of the buffer on the prdt
-    pub fn set_dbc(&mut self, dbc: u32) {
+    pub fn set_dbc_checked(&mut self, dbc: u32) {
         const MB: u32 = 1 << 20;
         assert!(dbc < 4 * MB, "DBC should be smaller then 4Mib");
         self.set_dbc(dbc | 1);

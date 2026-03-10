@@ -90,25 +90,11 @@ pub enum DeviceDetection {
 }
 // ANCHOR_END: device Detection
 
-// ANCHOR: SpeedAllowed
-#[repr(u8)]
-#[derive(Display, Clone, Copy, TryFromPrimitive, UnsafeFromPrimitive)]
-#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
-pub enum InterfaceSpeedRestriction {
-    #[display("Device not present or communication not established")]
-    NoRestriction = 0,
-    #[display("Gen1: 1.5Gb/s")]
-    Gen1 = 1,
-    #[display("Gen1: 3.0Gb/s")]
-    Gen2 = 2,
-    #[display("Gen1: 6.0Gb/s")]
-    Gen3 = 3,
-}
-// ANCHOR_END: SpeedAllowed
-
 // ANCHOR: DeviceDetectionInitialization
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(
+    Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
+)]
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum InterfaceInitialization {
     NoInitializationRequested = 0,
@@ -119,7 +105,9 @@ pub enum InterfaceInitialization {
 
 // ANCHOR: FisTypes
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, FromPrimitive)]
+#[derive(
+    Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
+)]
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum FisType {
     RegisterFisHost2Device = 0x27,
