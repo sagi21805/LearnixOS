@@ -6,3 +6,8 @@ version = "0.1.0"
 [dependencies]
 common = { path = "../../crates/common" }
 x86 = { path = "../../crates/arch/x86" }
+
+[profile.release]
+opt-level = 's'
+overflow-checks = false
+panic = "abort"
