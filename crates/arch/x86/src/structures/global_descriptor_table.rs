@@ -13,9 +13,8 @@ pub struct AccessByte {
     readable_writable: B1,
     direction_conforming: B1,
     executable: B1,
-    code_or_data: B1,
     #[flag(flag_type = SegmentDescriptorType)]
-    system_type: B1,
+    segment_type: B1,
     #[flag(flag_type = ProtectionLevel)]
     dpl: B2,
     present: B1,
@@ -216,7 +215,7 @@ impl GlobalDescriptorTableProtected {
                 AccessByte::default()
                     .present()
                     .dpl(ProtectionLevel::Ring0)
-                    .code_or_data()
+                    .segment_type(SegmentDescriptorType::CodeOrData)
                     .executable()
                     .readable_writable(),
                 LimitFlags::default().granularity().protected(),
@@ -227,7 +226,7 @@ impl GlobalDescriptorTableProtected {
                 AccessByte::default()
                     .present()
                     .dpl(ProtectionLevel::Ring0)
-                    .code_or_data()
+                    .segment_type(SegmentDescriptorType::CodeOrData)
                     .readable_writable(),
                 LimitFlags::default().granularity().protected(),
             ),
@@ -280,7 +279,7 @@ impl GlobalDescriptorTableLong {
                 0,
                 0,
                 AccessByte::default()
-                    .code_or_data()
+                    .segment_type(SegmentDescriptorType::CodeOrData)
                     .present()
                     .dpl(ProtectionLevel::Ring0)
                     .readable_writable()
@@ -291,7 +290,7 @@ impl GlobalDescriptorTableLong {
                 0,
                 0,
                 AccessByte::default()
-                    .code_or_data()
+                    .segment_type(SegmentDescriptorType::CodeOrData)
                     .present()
                     .dpl(ProtectionLevel::Ring0)
                     .readable_writable(),
@@ -301,7 +300,7 @@ impl GlobalDescriptorTableLong {
                 0,
                 0,
                 AccessByte::default()
-                    .code_or_data()
+                    .segment_type(SegmentDescriptorType::CodeOrData)
                     .present()
                     .dpl(ProtectionLevel::Ring3)
                     .readable_writable()
@@ -312,7 +311,7 @@ impl GlobalDescriptorTableLong {
                 0,
                 0,
                 AccessByte::default()
-                    .code_or_data()
+                    .segment_type(SegmentDescriptorType::CodeOrData)
                     .present()
                     .dpl(ProtectionLevel::Ring3)
                     .readable_writable(),
