@@ -4,7 +4,7 @@ use common::{
     enums::{AtaCommand, FisType},
     volatile::Volatile,
 };
-use macros::ro_flag;
+use macros::bitfields;
 
 #[repr(C, align(4))]
 #[derive(Clone, Copy, Debug)]
@@ -161,24 +161,23 @@ pub struct Data<const SIZE: usize> {
     data: Volatile<[u32; SIZE]>,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[bitfields]
 pub struct SetDeviceBits {
-    fis_type: Volatile<FisType>,
-    pm_port: Volatile<u8>,
-    status: Volatile<u8>,
-    error: Volatile<u8>,
-    _reserved: u32,
-}
-
-impl SetDeviceBits {
-    pub fn status_low(&self) -> u8 {
-        self.status.read() & !0x7
-    }
-
-    pub fn status_high(&self) -> u8 {
-        (self.status.read() >> 4) & !0x7
-    }
+    #[flag(r, flag_type = FisType)]
+    fis_type: B8,
+    pm_port: B4,
+    #[flag(rc(0))]
+    reserved0: B2,
+    interrupt: B1,
+    notification: B1,
+    status_low: B3,
+    #[flag(rc(0))]
+    reserved1: B1,
+    status_high: B3,
+    reserved: B1,
+    error: B8,
+    #[flag(rc(0))]
+    reserved2: B32,
 }
 
 #[repr(C)]
@@ -199,43 +198,26 @@ impl Default for Fis {
     }
 }
 
-pub struct GeneralInfo(u16);
-
-impl GeneralInfo {
-    ro_flag!(non_magnetic, 15);
-    ro_flag!(removable_media, 7);
-    ro_flag!(not_removable_media, 6);
+#[bitfields]
+pub struct GeneralInfo {
+    reserved0: B5,
+    non_removeable_media: B1,
+    removable_media: B1,
+    reserved1: B8,
+    non_magnetic: B1,
 }
 
-impl Debug for GeneralInfo {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "Non Magnetic: {:?}", self.is_non_magnetic())?;
-        writeln!(f, "Removable Media: {:?}", self.is_removable_media())?;
-        writeln!(
-            f,
-            "Not Removable Media: {:?}",
-            self.is_not_removable_media()
-        )
-    }
+#[bitfields]
+pub struct DeviceCapabilities {
+    reserved: B9,
+    lba_dma_support: B1,
 }
 
-pub struct DeviceCapabilities(u16);
-
-impl DeviceCapabilities {
-    ro_flag!(lba_dma_support, 10);
-}
-
-impl Debug for DeviceCapabilities {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "LBA & DMA Support: {:?},", self.is_lba_dma_support())
-    }
-}
-
-pub struct ValidFields(u16);
-
-impl ValidFields {
-    ro_flag!(valid_54_58, 0);
-    ro_flag!(valid_64_70, 1);
+#[bitfields]
+pub struct ValidFields {
+    valid_54_58: B1,
+    valid_64_70: B1,
+    reserved: B14,
 }
 
 #[derive(Debug)]
