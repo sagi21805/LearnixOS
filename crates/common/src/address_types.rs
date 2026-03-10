@@ -40,6 +40,20 @@ impl const From<usize> for PhysicalAddress {
     }
 }
 
+impl const From<u64> for PhysicalAddress {
+    // TODO! Change into new in the future
+    fn from(value: u64) -> Self {
+        unsafe { Self::new_unchecked(value as usize) }
+    }
+}
+
+impl const From<PhysicalAddress> for u64 {
+    // TODO! Change into new in the future
+    fn from(value: PhysicalAddress) -> Self {
+        value.0 as u64
+    }
+}
+
 // ANCHOR_END: physical_address
 
 // ANCHOR: virtual_address

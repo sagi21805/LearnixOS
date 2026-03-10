@@ -5,6 +5,7 @@
 #![feature(ptr_alignment_type)]
 #![feature(macro_metavar_expr_concat)]
 #![feature(const_slice_make_iter)]
+#![feature(const_default)]
 
 #[macro_use]
 pub mod macros;

@@ -1,0 +1,2 @@
+[build]
+target = "./16bit_target.json"

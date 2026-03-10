@@ -1,13 +1,13 @@
 use common::{
     address_types::VirtualAddress,
     enums::{
-        ProtectionLevel, SystemSegmentType,
+        ProtectionLevel, Sections, SystemSegmentType,
         interrupts::{Interrupt, InterruptStackTable, InterruptType},
     },
 };
 use core::{arch::asm, panic};
 use core::{mem::MaybeUninit, ptr};
-use macros::flag;
+use macros::bitfields;
 
 /// Global reference into the interrupt table
 pub static mut IDT: MaybeUninit<&mut InterruptDescriptorTable> =
@@ -30,32 +30,18 @@ use crate::{
 
 /// Attributes of an interrupts entry, includes type and
 /// privilege level
-#[repr(C)]
-#[derive(Clone, Debug, Copy)]
-pub struct InterruptAttributes(u8);
-
-impl InterruptAttributes {
-    pub const fn default() -> Self {
-        Self(0)
-    }
-
-    flag!(present, 7);
-
-    /// Set the type of the interrupt.
-    pub const fn set_type(
-        mut self,
-        interrupt_type: InterruptType,
-    ) -> Self {
-        self.0 |= interrupt_type as u8;
-        self
-    }
-
-    /// Set the privilege level from where this interrupt
-    /// can be called.
-    pub const fn set_dpl(mut self, dpl: ProtectionLevel) -> Self {
-        self.0 |= (dpl as u8) << 5;
-        self
-    }
+#[bitfields]
+pub struct InterruptAttributes {
+    ist: B3,
+    #[flag(r)]
+    reserved: B5,
+    #[flag(flag_type = InterruptType)]
+    int_type: B3,
+    #[flag(rc(0))]
+    zero: B1,
+    #[flag(flag_type = ProtectionLevel)]
+    dpl: B2,
+    present: B1,
 }
 
 /// Interrupt Descriptor Table structure
@@ -158,9 +144,11 @@ impl InterruptDescriptorTable {
             InterruptStackTable::None,
             InterruptAttributes::default()
                 .present()
-                .set_dpl(dpl)
-                .set_type(handler_type),
-            SegmentSelector::kernel_code(),
+                .dpl(dpl)
+                .int_type(handler_type),
+            SegmentSelector::default()
+                .rpl(ProtectionLevel::Ring0)
+                .section(Sections::KernelCode),
         );
         self.interrupts[routine as usize] = entry;
     }
@@ -188,7 +176,7 @@ impl InterruptDescriptorTableEntry {
             segment_selector: SegmentSelector::default(),
             ist: InterruptStackTable::None,
             attributes: InterruptAttributes::default()
-                .set_type(InterruptType::Fault),
+                .int_type(InterruptType::Fault),
             handler_offset_mid: 0,
             handler_offset_high: 0,
             zero: 0,

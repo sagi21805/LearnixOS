@@ -1,6 +1,9 @@
 use crate::error::ConversionError;
 use derive_more::Display;
-use num_enum::{FromPrimitive, TryFromPrimitive, UnsafeFromPrimitive};
+use num_enum::{
+    ConstFromPrimitive, ConstIntoPrimitive, ConstTryFromPrimitive,
+    FromPrimitive, TryFromPrimitive, UnsafeFromPrimitive,
+};
 
 // ANCHOR: AHCIInterfaceSpeed
 #[repr(u8)]
@@ -10,8 +13,9 @@ use num_enum::{FromPrimitive, TryFromPrimitive, UnsafeFromPrimitive};
     Display,
     Clone,
     Copy,
-    TryFromPrimitive,
-    UnsafeFromPrimitive,
+    ConstTryFromPrimitive,
+    Debug,
+    ConstIntoPrimitive,
 )]
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum InterfaceSpeed {
@@ -28,7 +32,9 @@ pub enum InterfaceSpeed {
 
 // ANCHOR: InterfaceCommunicationControl
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(
+    Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
+)]
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum InterfaceCommunicationControl {
     Idle = 0x0,
@@ -43,7 +49,9 @@ pub enum InterfaceCommunicationControl {
 
 // ANCHOR: DeviceType
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(
+    Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
+)]
 #[num_enum(error_type(name = ConversionError<u32>, constructor = ConversionError::CantConvertFrom))]
 pub enum DeviceType {
     SataDevice = 0x00000101,
@@ -55,7 +63,9 @@ pub enum DeviceType {
 
 // ANCHOR: InterfacePowerManagement
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(
+    Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
+)]
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum InterfacePowerManagement {
     DevNotPresent = 0,
@@ -68,7 +78,9 @@ pub enum InterfacePowerManagement {
 
 // ANCHOR: DeviceDetection
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(
+    Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
+)]
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum DeviceDetection {
     NotDetected = 0,

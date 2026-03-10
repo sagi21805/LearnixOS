@@ -1,118 +1,38 @@
-use common::enums::{ProtectionLevel, SystemSegmentType};
-use macros::flag;
+use common::enums::{
+    ProtectionLevel, Sections, SegmentDescriptorType, SystemSegmentType,
+};
+use macros::bitfields;
 
 use crate::{instructions, structures::segments::SegmentSelector};
 
 // ANCHOR: access_byte
-struct AccessByte(u8);
-// ANCHOR_END: access_byte
-
-impl AccessByte {
-    // ANCHOR: access_byte_new
-    /// Creates an access byte with all flags turned off.
-    pub const fn new() -> Self {
-        Self(0)
-    }
-    // ANCHOR_END: access_byte_new
-
-    // ANCHOR: access_byte_present
-    // Is this a valid segment?
-    // for all active segments this should be turned on.
-    flag!(present, 7);
-    // ANCHOR_END: access_byte_present
-
-    // ANCHOR: access_byte_privilege_level
-    /// Sets the privilege level while returning self.
-    /// This is corresponding to the cpu ring of this
-    /// segment 0 is commonly called kernel mode, 4 is
-    /// commonly called user mode
-    pub const fn dpl(mut self, level: ProtectionLevel) -> Self {
-        self.0 |= (level as u8) << 5;
-        self
-    }
-    // ANCHOR_END: access_byte_privilege_level
-
-    // ANCHOR: access_byte_type
-    /// Set the type for a system segment.
-    ///
-    /// **Note:** This function is relevant only for system
-    /// segments
-    pub const fn set_system_type(
-        mut self,
-        system_type: SystemSegmentType,
-    ) -> Self {
-        self.0 |= system_type as u8;
-        self
-    }
-    // ANCHOR_END: access_byte_type
-
-    // ANCHOR: access_byte_code_data
-    // Is this a code / data segment or a system segment.
-    flag!(code_or_data, 4);
-    // ANCHOR_END: access_byte_code_data
-
-    // ANCHOR: access_byte_executable
-    // Will this segment contains executable code?
-    flag!(executable, 3);
-    // ANCHOR_END: access_byte_executable
-
-    // ANCHOR: access_byte_direction
-    // Will the segment grow downwards?
-    // relevant for non executable segments
-    flag!(direction, 2);
-    // ANCHOR_END: access_byte_direction
-
-    // ANCHOR: access_byte_conforming
-    // Can this code be executed from lower privilege
-    // segments. relevant to executable segments
-    flag!(conforming, 2);
-    // ANCHOR_END: access_byte_conforming
-
-    // ANCHOR: access_byte_readable
-    // Can this segment be read or it is only executable?
-    // relevant for code segment
-    flag!(readable, 1);
-    // ANCHOR_END: access_byte_readable
-
-    // ANCHOR: access_byte_writable
-    // Is this segment writable?
-    // relevant for data segments
-    flag!(writable, 1);
-    // ANCHOR_END: access_byte_writable
+#[bitfields]
+pub struct AccessByte {
+    #[flag(r)]
+    accessed: B1,
+    readable_writable: B1,
+    direction_conforming: B1,
+    executable: B1,
+    #[flag(flag_type = SegmentDescriptorType)]
+    segment_type: B1,
+    #[flag(flag_type = ProtectionLevel)]
+    dpl: B2,
+    present: B1,
 }
+// ANCHOR_END: access_byte
 
 // ANCHOR: limit_flags
 /// Low 4 bits limit high 4 bits flags
-struct LimitFlags(u8);
-// ANCHOR_END: limit_flags
-
-// ANCHOR: limit_flags_impl
-impl LimitFlags {
-    // ANCHOR: limit_flags_new
-    /// Creates a default limit flags with all flags turned
-    /// off.
-    pub const fn new() -> Self {
-        Self(0)
-    }
-    // ANCHOR_END: limit_flags_new
-
-    // ANCHOR: limit_flags_granularity
-    // Toggle on paging for this segment (limit *= 0x1000)
-    flag!(granularity, 7);
-    // ANCHOR_END: limit_flags_granularity
-
-    // ANCHOR: limit_flags_protected
-    // Is this segment going to use 32bit mode?
-    flag!(protected, 6);
-    // ANCHOR_END: limit_flags_protected
-
-    // ANCHOR: limit_flags_long
-    // Set long mode flag, this will also clear protected
-    // mode
-    flag!(long, 5);
-    // ANCHOR_END: limit_flags_long
+#[bitfields]
+struct LimitFlags {
+    limit_high: B4,
+    #[flag(r)]
+    reserved: B1,
+    long: B1,
+    protected: B1,
+    granularity: B1,
 }
-// ANCHOR_END: limit_flags_impl
+// ANCHOR_END: limit_flags
 
 // ANCHOR: gdt_entry32
 #[repr(C, packed)]
@@ -126,22 +46,21 @@ struct GlobalDescriptorTableEntry32 {
 }
 // ANCHOR_END: gdt_entry32
 
-// ANCHOR: gdt_entry32_impl
-impl GlobalDescriptorTableEntry32 {
-    /// Construct and empty entry
-    // ANCHOR: gdt_entry32_empty
-    pub const fn empty() -> Self {
-        Self {
-            limit_flags: LimitFlags::new(),
-            access_byte: AccessByte::new(),
-            base_high: 0,
+impl const Default for GlobalDescriptorTableEntry32 {
+    fn default() -> Self {
+        GlobalDescriptorTableEntry32 {
+            limit_low: 0,
             base_low: 0,
             base_mid: 0,
-            limit_low: 0,
+            access_byte: AccessByte::default(),
+            limit_flags: LimitFlags::default(),
+            base_high: 0,
         }
     }
-    // ANCHOR_END: gdt_entry32_empty
+}
 
+// ANCHOR: gdt_entry32_impl
+impl GlobalDescriptorTableEntry32 {
     /// Create a new entry
     ///
     /// # Parameters
@@ -156,7 +75,7 @@ impl GlobalDescriptorTableEntry32 {
         limit: u32,
         access_byte: AccessByte,
         flags: LimitFlags,
-    ) -> Self {
+    ) -> GlobalDescriptorTableEntry32 {
         // Split base into the appropriate parts
         let base_low = (base & 0xffff) as u16;
         let base_mid = ((base >> 0x10) & 0xff) as u8;
@@ -166,7 +85,7 @@ impl GlobalDescriptorTableEntry32 {
         let limit_high = ((limit >> 0x10) & 0xf) as u8;
         // Combine the part of the limit size with the flags
         let limit_flags = flags.0 | limit_high;
-        Self {
+        GlobalDescriptorTableEntry32 {
             limit_low,
             base_low,
             base_mid,
@@ -187,13 +106,24 @@ pub struct GlobalDescriptorTableRegister {
 }
 // ANCHOR_END: gdtr
 
+#[bitfields]
+pub struct SystemAccessByte {
+    #[flag(flag_type = SystemSegmentType)]
+    segment_type: B4,
+    #[flag(rc(0))]
+    zero: B1,
+    #[flag(flag_type = ProtectionLevel)]
+    dpl: B2,
+    present: B1,
+}
+
 // ANCHOR: system_segment_descriptor64
 #[repr(C, packed)]
 pub struct SystemSegmentDescriptor64 {
     limit_low: u16,
     base_low: u16,
     base_mid: u8,
-    access_byte: AccessByte,
+    access_byte: SystemAccessByte,
     limit_flags: LimitFlags,
     base_high: u8,
     base_extra: u32,
@@ -201,24 +131,25 @@ pub struct SystemSegmentDescriptor64 {
 }
 // ANCHOR_END: system_segment_descriptor64
 
-// ANCHOR: system_segment_descriptor64_impl
-impl SystemSegmentDescriptor64 {
-    /// Construct an empty system segment
-    // ANCHOR: system_segment_descriptor64_empty
-    pub const fn empty() -> Self {
+// ANCHOR: system_segment_descriptor64_empty
+impl const Default for SystemSegmentDescriptor64 {
+    fn default() -> Self {
         SystemSegmentDescriptor64 {
             limit_low: 0,
             base_low: 0,
             base_mid: 0,
-            access_byte: AccessByte::new(),
-            limit_flags: LimitFlags::new(),
+            access_byte: SystemAccessByte::default(),
+            limit_flags: LimitFlags::default(),
             base_high: 0,
             base_extra: 0,
             _reserved: 0,
         }
     }
-    // ANCHOR_END: system_segment_descriptor64_empty
+}
+// ANCHOR_END: system_segment_descriptor64_empty
 
+// ANCHOR: system_segment_descriptor64_impl
+impl SystemSegmentDescriptor64 {
     #[cfg(target_arch = "x86_64")]
     /// Construct a new system segment
     ///
@@ -241,10 +172,10 @@ impl SystemSegmentDescriptor64 {
         let limit_high = ((limit >> 16) & 0xf) as u8;
         let base_extra = (base >> 32) as u32;
 
-        let access_byte = AccessByte::new()
+        let access_byte = SystemAccessByte::default()
             .present()
             .dpl(ProtectionLevel::Ring0)
-            .set_system_type(segment_type);
+            .segment_type(segment_type);
 
         Self {
             limit_low,
@@ -277,27 +208,27 @@ impl GlobalDescriptorTableProtected {
     // ANCHOR: gdt_default
     pub const fn default() -> Self {
         Self {
-            null: GlobalDescriptorTableEntry32::empty(),
+            null: GlobalDescriptorTableEntry32::default(),
             code: GlobalDescriptorTableEntry32::new(
                 0,
                 0xfffff,
-                AccessByte::new()
+                AccessByte::default()
                     .present()
                     .dpl(ProtectionLevel::Ring0)
-                    .code_or_data()
+                    .segment_type(SegmentDescriptorType::CodeOrData)
                     .executable()
-                    .readable(),
-                LimitFlags::new().granularity().protected(),
+                    .readable_writable(),
+                LimitFlags::default().granularity().protected(),
             ),
             data: GlobalDescriptorTableEntry32::new(
                 0,
                 0xfffff,
-                AccessByte::new()
+                AccessByte::default()
                     .present()
                     .dpl(ProtectionLevel::Ring0)
-                    .code_or_data()
-                    .writable(),
-                LimitFlags::new().granularity().protected(),
+                    .segment_type(SegmentDescriptorType::CodeOrData)
+                    .readable_writable(),
+                LimitFlags::default().granularity().protected(),
             ),
         }
     }
@@ -343,50 +274,50 @@ impl GlobalDescriptorTableLong {
     // ANCHOR: gdt_long_default
     pub const fn default() -> Self {
         Self {
-            null: GlobalDescriptorTableEntry32::empty(),
+            null: GlobalDescriptorTableEntry32::default(),
             kernel_code: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
-                AccessByte::new()
-                    .code_or_data()
+                AccessByte::default()
+                    .segment_type(SegmentDescriptorType::CodeOrData)
                     .present()
                     .dpl(ProtectionLevel::Ring0)
-                    .writable()
+                    .readable_writable()
                     .executable(),
-                LimitFlags::new().long(),
+                LimitFlags::default().long(),
             ),
             kernel_data: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
-                AccessByte::new()
-                    .code_or_data()
+                AccessByte::default()
+                    .segment_type(SegmentDescriptorType::CodeOrData)
                     .present()
                     .dpl(ProtectionLevel::Ring0)
-                    .writable(),
-                LimitFlags::new(),
+                    .readable_writable(),
+                LimitFlags::default(),
             ),
             user_code: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
-                AccessByte::new()
-                    .code_or_data()
+                AccessByte::default()
+                    .segment_type(SegmentDescriptorType::CodeOrData)
                     .present()
                     .dpl(ProtectionLevel::Ring3)
-                    .writable()
+                    .readable_writable()
                     .executable(),
-                LimitFlags::new().long(),
+                LimitFlags::default().long(),
             ),
             user_data: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
-                AccessByte::new()
-                    .code_or_data()
+                AccessByte::default()
+                    .segment_type(SegmentDescriptorType::CodeOrData)
                     .present()
                     .dpl(ProtectionLevel::Ring3)
-                    .writable(),
-                LimitFlags::new(),
+                    .readable_writable(),
+                LimitFlags::default(),
             ),
-            tss: SystemSegmentDescriptor64::empty(),
+            tss: SystemSegmentDescriptor64::default(),
         }
     }
     // ANCHOR_END: gdt_long_default
@@ -395,7 +326,9 @@ impl GlobalDescriptorTableLong {
     // ANCHOR: gdt_long_load_tss
     pub fn load_tss(&mut self, tss: SystemSegmentDescriptor64) {
         self.tss = tss;
-        let tss_selector = SegmentSelector::default().set_table_index(5);
+        let tss_selector = SegmentSelector::default()
+            .rpl(ProtectionLevel::Ring0)
+            .section(Sections::TaskStateSegment);
         unsafe {
             instructions::ltr(tss_selector);
         }

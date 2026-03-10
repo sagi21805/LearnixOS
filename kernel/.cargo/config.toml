@@ -1,0 +1,2 @@
+[build]
+target = "./64bit_target.json"
