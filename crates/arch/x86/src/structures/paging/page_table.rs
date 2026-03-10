@@ -33,7 +33,7 @@ impl PageTable {
     pub const fn empty() -> Self {
         Self {
             entries: {
-                [const { PageTableEntry::empty() }; PAGE_DIRECTORY_ENTRIES]
+                [PageTableEntry::default(); PAGE_DIRECTORY_ENTRIES]
             },
         }
     }

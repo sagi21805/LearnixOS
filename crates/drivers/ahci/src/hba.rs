@@ -19,7 +19,7 @@ use common::{
     volatile::Volatile,
     write_volatile,
 };
-use macros::{flag, ro_flag, rw1_flag, rwc_flag};
+use macros::bitfields;
 use num_enum::UnsafeFromPrimitive;
 use strum::IntoEnumIterator;
 use x86::structures::paging::PageEntryFlags;
@@ -34,349 +34,439 @@ use crate::{
 pub struct AHCIBaseAddress(pub u32);
 
 /// CAP
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct HBACapabilities(pub u32);
-
-impl HBACapabilities {
-    // Support 64bit addressing
-    ro_flag!(s64a, 31);
-
-    // Support native command queuing
-    ro_flag!(snqc, 30);
-
-    // Support s-notification register
-    ro_flag!(ssntf, 29);
-
-    // Support mechanical presence switch
-    ro_flag!(smps, 28);
-
-    // Support staggered Spin-up
-    ro_flag!(sss, 27);
-
-    // Support aggressive link power management
-    ro_flag!(salp, 26);
-
-    // Support activity lead
-    ro_flag!(sal, 25);
-
-    pub fn interface_speed(&self) -> InterfaceSpeed {
-        unsafe {
-            core::mem::transmute(
-                (((read_volatile!(self.0)) >> 20) & 0xf) as u8,
-            )
-        }
-    }
-
-    // Support AHCI mode only
-    ro_flag!(sam, 18);
-
-    // Support port multiplier
-    ro_flag!(spm, 17);
-
-    // Frame Information Structure based switching supported
-    ro_flag!(fbss, 16);
-
-    // Programmed I/O multiple Data request block
-    ro_flag!(pmd, 15);
-
-    // Slumber state capable
-    ro_flag!(ssc, 15);
-
-    // Partial state capable
-    ro_flag!(psc, 14);
-
-    // This value is between 1 and 32
-    pub fn number_of_commands(&self) -> u8 {
-        (((read_volatile!(self.0)) >> 8) & 0x1f) as u8
-    }
-
-    // Command completion coalescing supported
-    ro_flag!(cccs, 7);
-
-    // Enclosure management supported
-    ro_flag!(ems, 6);
-
-    // Support external SATA
-    ro_flag!(sxs, 5);
-
-    /// Returns the number of ports implemented
-    pub fn number_of_ports(&self) -> u8 {
-        (read_volatile!(self.0) & 0x1f) as u8
-    }
+#[bitfields]
+pub struct HBACapabilities {
+    /// Number of ports
+    number_of_ports: B5,
+    /// Support external SATA
+    #[flag(r)]
+    sxs: B1,
+    /// Enclosure management supported
+    #[flag(r)]
+    ems: B1,
+    /// Command completion coalescing supported
+    #[flag(r)]
+    cccs: B1,
+    /// Number of commands (value is between 1 and 32)
+    number_of_commands: B5,
+    #[flag(rc(0))]
+    reserved0: B1,
+    /// Partial state capable
+    #[flag(r)]
+    psc: B1,
+    /// Programmed I/O multiple data request block
+    #[flag(r)]
+    pmd: B1,
+    /// Frame information structure based switching supported
+    #[flag(r)]
+    fbss: B1,
+    /// Support port multiplier
+    #[flag(r)]
+    spm: B1,
+    /// Support AHCI mode only
+    #[flag(r)]
+    sam: B1,
+    #[flag(rc(0))]
+    reserved1: B1,
+    /// Interface speed
+    #[flag(r, flag_type = InterfaceSpeed)]
+    interface_speed: B4,
+    #[flag(rc(0))]
+    reserved2: B1,
+    /// Support activity LED
+    #[flag(r)]
+    sal: B1,
+    /// Support aggressive link power management
+    #[flag(r)]
+    salp: B1,
+    /// Support staggered spin-up
+    #[flag(r)]
+    sss: B1,
+    /// Support mechanical presence switch
+    #[flag(r)]
+    smps: B1,
+    /// Support S-notification register
+    #[flag(r)]
+    ssntf: B1,
+    /// Support native command queuing
+    #[flag(r)]
+    snqc: B1,
+    /// Support 64-bit addressing
+    #[flag(r)]
+    s64a: B1,
 }
 
 /// GHC
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct GlobalHostControl(pub u32);
-
-impl GlobalHostControl {
-    // AHCI Enable. Must be set for the HBA to operate in AHCI mode.
-    flag!(ae, 31);
-
-    // MSI Revert to Single Message
-    // 1.3.1)
-    flag!(mrsm, 2);
-
-    // Interrupt Enable
-    flag!(ie, 1);
-
-    // HBA Reset
-    flag!(hr, 0);
+#[bitfields]
+pub struct GlobalHostControl {
+    /// HBA reset
+    hr: B1,
+    /// Interrupt enable
+    ie: B1,
+    /// MSI revert to single message
+    mrsm: B1,
+    #[flag(rc(0))]
+    reserved: B28,
+    /// AHCI enable — must be set for the HBA to operate in AHCI mode
+    ae: B1,
 }
 
 /// IS
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct InterruptStatus(pub u32);
-
-impl InterruptStatus {
-    // Port Interrupt Pending Status. Corresponds to bits of the PI
-    // register. Cleared by writing a '1' to the corresponding bit.
-    pub fn is_port_pending(&self, port_num: u8) -> bool {
-        (read_volatile!(self.0) & (1 << port_num)) != 0
-    }
-
-    pub fn clear(&mut self, port_num: u8) {
-        write_volatile!(self.0, read_volatile!(self.0) | (1 << port_num));
-    }
-
-    pub fn clear_all(&mut self) {
-        write_volatile!(self.0, 0);
-    }
-
-    // RWC flag for Port 0 Interrupt Pending Status
-    rwc_flag!(ip01, 1);
-    rwc_flag!(ip02, 2);
-    rwc_flag!(ip03, 3);
-    rwc_flag!(ip04, 4);
-    rwc_flag!(ip05, 5);
-    rwc_flag!(ip06, 6);
-    rwc_flag!(ip07, 7);
-    rwc_flag!(ip08, 8);
-    rwc_flag!(ip09, 9);
-    rwc_flag!(ip10, 10);
-    rwc_flag!(ip11, 11);
-    rwc_flag!(ip12, 12);
-    rwc_flag!(ip13, 13);
-    rwc_flag!(ip14, 14);
-    rwc_flag!(ip15, 15);
-    rwc_flag!(ip16, 16);
-    rwc_flag!(ip17, 17);
-    rwc_flag!(ip18, 18);
-    rwc_flag!(ip19, 19);
-    rwc_flag!(ip20, 20);
-    rwc_flag!(ip21, 21);
-    rwc_flag!(ip22, 22);
-    rwc_flag!(ip23, 23);
-    rwc_flag!(ip24, 24);
-    rwc_flag!(ip25, 25);
-    rwc_flag!(ip26, 26);
-    rwc_flag!(ip27, 27);
-    rwc_flag!(ip28, 28);
-    rwc_flag!(ip29, 29);
-    rwc_flag!(ip30, 30);
-    rwc_flag!(ip31, 31);
+#[bitfields]
+pub struct InterruptStatus {
+    /// Port 0 interrupt pending status
+    #[flag(rwc(1))]
+    ip00: B1,
+    /// Port 1 interrupt pending status
+    #[flag(rwc(1))]
+    ip01: B1,
+    /// Port 2 interrupt pending status
+    #[flag(rwc(1))]
+    ip02: B1,
+    /// Port 3 interrupt pending status
+    #[flag(rwc(1))]
+    ip03: B1,
+    /// Port 4 interrupt pending status
+    #[flag(rwc(1))]
+    ip04: B1,
+    /// Port 5 interrupt pending status
+    #[flag(rwc(1))]
+    ip05: B1,
+    /// Port 6 interrupt pending status
+    #[flag(rwc(1))]
+    ip06: B1,
+    /// Port 7 interrupt pending status
+    #[flag(rwc(1))]
+    ip07: B1,
+    /// Port 8 interrupt pending status
+    #[flag(rwc(1))]
+    ip08: B1,
+    /// Port 9 interrupt pending status
+    #[flag(rwc(1))]
+    ip09: B1,
+    /// Port 10 interrupt pending status
+    #[flag(rwc(1))]
+    ip10: B1,
+    /// Port 11 interrupt pending status
+    #[flag(rwc(1))]
+    ip11: B1,
+    /// Port 12 interrupt pending status
+    #[flag(rwc(1))]
+    ip12: B1,
+    /// Port 13 interrupt pending status
+    #[flag(rwc(1))]
+    ip13: B1,
+    /// Port 14 interrupt pending status
+    #[flag(rwc(1))]
+    ip14: B1,
+    /// Port 15 interrupt pending status
+    #[flag(rwc(1))]
+    ip15: B1,
+    /// Port 16 interrupt pending status
+    #[flag(rwc(1))]
+    ip16: B1,
+    /// Port 17 interrupt pending status
+    #[flag(rwc(1))]
+    ip17: B1,
+    /// Port 18 interrupt pending status
+    #[flag(rwc(1))]
+    ip18: B1,
+    /// Port 19 interrupt pending status
+    #[flag(rwc(1))]
+    ip19: B1,
+    /// Port 20 interrupt pending status
+    #[flag(rwc(1))]
+    ip20: B1,
+    /// Port 21 interrupt pending status
+    #[flag(rwc(1))]
+    ip21: B1,
+    /// Port 22 interrupt pending status
+    #[flag(rwc(1))]
+    ip22: B1,
+    /// Port 23 interrupt pending status
+    #[flag(rwc(1))]
+    ip23: B1,
+    /// Port 24 interrupt pending status
+    #[flag(rwc(1))]
+    ip24: B1,
+    /// Port 25 interrupt pending status
+    #[flag(rwc(1))]
+    ip25: B1,
+    /// Port 26 interrupt pending status
+    #[flag(rwc(1))]
+    ip26: B1,
+    /// Port 27 interrupt pending status
+    #[flag(rwc(1))]
+    ip27: B1,
+    /// Port 28 interrupt pending status
+    #[flag(rwc(1))]
+    ip28: B1,
+    /// Port 29 interrupt pending status
+    #[flag(rwc(1))]
+    ip29: B1,
+    /// Port 30 interrupt pending status
+    #[flag(rwc(1))]
+    ip30: B1,
+    /// Port 31 interrupt pending status
+    #[flag(rwc(1))]
+    ip31: B1,
 }
 
-// PI
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct PortsImplemented(pub u32);
-
-impl PortsImplemented {
-    // Port i is Implemented (P[i])
-    pub fn is_port_implemented(&self, port_num: u8) -> bool {
-        (read_volatile!(self.0) & (1 << port_num)) != 0
-    }
+/// PI
+#[bitfields]
+pub struct PortsImplemented {
+    /// Port 0 is implemented
+    p00: B1,
+    /// Port 1 is implemented
+    p01: B1,
+    /// Port 2 is implemented
+    p02: B1,
+    /// Port 3 is implemented
+    p03: B1,
+    /// Port 4 is implemented
+    p04: B1,
+    /// Port 5 is implemented
+    p05: B1,
+    /// Port 6 is implemented
+    p06: B1,
+    /// Port 7 is implemented
+    p07: B1,
+    /// Port 8 is implemented
+    p08: B1,
+    /// Port 9 is implemented
+    p09: B1,
+    /// Port 10 is implemented
+    p10: B1,
+    /// Port 11 is implemented
+    p11: B1,
+    /// Port 12 is implemented
+    p12: B1,
+    /// Port 13 is implemented
+    p13: B1,
+    /// Port 14 is implemented
+    p14: B1,
+    /// Port 15 is implemented
+    p15: B1,
+    /// Port 16 is implemented
+    p16: B1,
+    /// Port 17 is implemented
+    p17: B1,
+    /// Port 18 is implemented
+    p18: B1,
+    /// Port 19 is implemented
+    p19: B1,
+    /// Port 20 is implemented
+    p20: B1,
+    /// Port 21 is implemented
+    p21: B1,
+    /// Port 22 is implemented
+    p22: B1,
+    /// Port 23 is implemented
+    p23: B1,
+    /// Port 24 is implemented
+    p24: B1,
+    /// Port 25 is implemented
+    p25: B1,
+    /// Port 26 is implemented
+    p26: B1,
+    /// Port 27 is implemented
+    p27: B1,
+    /// Port 28 is implemented
+    p28: B1,
+    /// Port 29 is implemented
+    p29: B1,
+    /// Port 30 is implemented
+    p30: B1,
+    /// Port 31 is implemented
+    p31: B1,
 }
 
-// VS
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct Version(pub u32);
-
-impl Version {
-    // Major Version Number (Bits 31:16)
-    pub fn major_version(&self) -> u16 {
-        (read_volatile!(self.0) >> 16) as u16
-    }
-
-    // Minor Version Number (Bits 15:0)
-    pub fn minor_version(&self) -> u16 {
-        (read_volatile!(self.0) & 0xffff) as u16
-    }
+/// VS
+#[bitfields]
+pub struct Version {
+    /// Minor version number (bits 15:0)
+    minor_version: B16,
+    /// Major version number (bits 31:16)
+    major_version: B16,
 }
 
 /// CCC_CTL
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct CommandCompletionCoalescingControl(pub u32);
-
-impl CommandCompletionCoalescingControl {
-    pub fn interrupt_time_ms(&self) -> u16 {
-        ((read_volatile!(self.0) >> 16) & 0xffff) as u16
-    }
-
-    // Command Completions (CC): Number of command completions necessary to
-    // cause a CCC interrupt
-    pub fn command_completions(&self) -> u8 {
-        ((read_volatile!(self.0) >> 8) & 0xff) as u8
-    }
-
-    flag!(enable, 0);
+#[bitfields]
+pub struct CommandCompletionCoalescingControl {
+    /// Enable command completion coalescing
+    enable: B1,
+    #[flag(rc(0))]
+    reserved: B7,
+    /// Command completions — number of command completions necessary to
+    /// cause a CCC interrupt
+    command_completions: B8,
+    /// Interrupt time in milliseconds
+    interrupt_time_ms: B16,
 }
 
 /// CCC_PORTS
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct CommandCompletionCoalescingPorts(pub u32);
-
-impl CommandCompletionCoalescingPorts {
-    pub fn set_port(&mut self, port_num: u8) {
-        write_volatile!(self.0, read_volatile!(self.0) | (1 << port_num))
-    }
-
-    pub fn unset(&mut self, port_num: u8) {
-        self.0 &= !(1 << port_num)
-    }
-
-    flag!(prt01, 1);
-    flag!(prt02, 2);
-    flag!(prt03, 3);
-    flag!(prt04, 4);
-    flag!(prt05, 5);
-    flag!(prt06, 6);
-    flag!(prt07, 7);
-    flag!(prt08, 8);
-    flag!(prt09, 9);
-    flag!(prt10, 10);
-    flag!(prt11, 11);
-    flag!(prt12, 12);
-    flag!(prt13, 13);
-    flag!(prt14, 14);
-    flag!(prt15, 15);
-    flag!(prt16, 16);
-    flag!(prt17, 17);
-    flag!(prt18, 18);
-    flag!(prt19, 19);
-    flag!(prt20, 20);
-    flag!(prt21, 21);
-    flag!(prt22, 22);
-    flag!(prt23, 23);
-    flag!(prt24, 24);
-    flag!(prt25, 25);
-    flag!(prt26, 26);
-    flag!(prt27, 27);
-    flag!(prt28, 28);
-    flag!(prt29, 29);
-    flag!(prt30, 30);
-    flag!(prt31, 31);
+#[bitfields]
+pub struct CommandCompletionCoalescingPorts {
+    /// Port 0 CCC enabled
+    prt00: B1,
+    /// Port 1 CCC enabled
+    prt01: B1,
+    /// Port 2 CCC enabled
+    prt02: B1,
+    /// Port 3 CCC enabled
+    prt03: B1,
+    /// Port 4 CCC enabled
+    prt04: B1,
+    /// Port 5 CCC enabled
+    prt05: B1,
+    /// Port 6 CCC enabled
+    prt06: B1,
+    /// Port 7 CCC enabled
+    prt07: B1,
+    /// Port 8 CCC enabled
+    prt08: B1,
+    /// Port 9 CCC enabled
+    prt09: B1,
+    /// Port 10 CCC enabled
+    prt10: B1,
+    /// Port 11 CCC enabled
+    prt11: B1,
+    /// Port 12 CCC enabled
+    prt12: B1,
+    /// Port 13 CCC enabled
+    prt13: B1,
+    /// Port 14 CCC enabled
+    prt14: B1,
+    /// Port 15 CCC enabled
+    prt15: B1,
+    /// Port 16 CCC enabled
+    prt16: B1,
+    /// Port 17 CCC enabled
+    prt17: B1,
+    /// Port 18 CCC enabled
+    prt18: B1,
+    /// Port 19 CCC enabled
+    prt19: B1,
+    /// Port 20 CCC enabled
+    prt20: B1,
+    /// Port 21 CCC enabled
+    prt21: B1,
+    /// Port 22 CCC enabled
+    prt22: B1,
+    /// Port 23 CCC enabled
+    prt23: B1,
+    /// Port 24 CCC enabled
+    prt24: B1,
+    /// Port 25 CCC enabled
+    prt25: B1,
+    /// Port 26 CCC enabled
+    prt26: B1,
+    /// Port 27 CCC enabled
+    prt27: B1,
+    /// Port 28 CCC enabled
+    prt28: B1,
+    /// Port 29 CCC enabled
+    prt29: B1,
+    /// Port 30 CCC enabled
+    prt30: B1,
+    /// Port 31 CCC enabled
+    prt31: B1,
 }
 
 /// EM_LOC
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct EnclosureManagementLocation(pub u32);
-
-impl EnclosureManagementLocation {
-    pub fn dword_offset_from_abar(&self) -> usize {
-        (read_volatile!(self.0) >> 16) as usize
-    }
-
-    /// ZERO is invalid
-    /// TODO understand how to check if i have both receive and transmit
-    pub fn buffet_size(&self) -> Option<NonZero<usize>> {
-        NonZero::new((read_volatile!(self.0) & 0xffff) as usize)
-    }
+#[bitfields]
+pub struct EnclosureManagementLocation {
+    /// Buffer size in dwords (zero is invalid)
+    buffer_size: B16,
+    /// Dword offset of the EM buffer from ABAR
+    dword_offset_from_abar: B16,
 }
 
 /// EM_CTL
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct EnclosureManagementControl(pub u32);
-
-impl EnclosureManagementControl {
-    // Port multiplier support
-    ro_flag!(pm, 27);
-
-    // Activity LED hardware driven
-    ro_flag!(alhd, 26);
-
-    // Transmit only
-    ro_flag!(xmt, 25);
-
-    // Single message buffer
-    ro_flag!(smb, 24);
-
-    // SGPIO Enclosure management messages
-    ro_flag!(sgpio, 19);
-
-    // SES2 Enclosure management massages
-    ro_flag!(ses2, 18);
-
-    // SAF-TE Enclosure management massages
-    ro_flag!(safte, 17);
-
-    // Led message type
-    ro_flag!(led, 16);
-
-    // Reset
-    rw1_flag!(reset, 9);
-
-    // Transmit massage
-    rw1_flag!(tm, 8);
-
-    // Message received
-    rwc_flag!(mr, 0);
+#[bitfields]
+pub struct EnclosureManagementControl {
+    /// Message received
+    #[flag(rwc(0))]
+    mr: B1,
+    #[flag(rc(0))]
+    reserved0: B7,
+    /// Transmit message
+    tm: B1,
+    /// Reset enclosure management
+    reset: B1,
+    #[flag(rc(0))]
+    reserved1: B6,
+    /// LED message type supported
+    #[flag(r)]
+    led: B1,
+    /// SAF-TE enclosure management messages supported
+    #[flag(r)]
+    safte: B1,
+    /// SES-2 enclosure management messages supported
+    #[flag(r)]
+    ses2: B1,
+    /// SGPIO enclosure management messages supported
+    #[flag(r)]
+    sgpio: B1,
+    #[flag(rc(0))]
+    reserved2: B4,
+    /// Single message buffer
+    #[flag(r)]
+    smb: B1,
+    /// Transmit only
+    #[flag(r)]
+    xmt: B1,
+    /// Activity LED hardware driven
+    #[flag(r)]
+    alhd: B1,
+    /// Port multiplier support
+    #[flag(r)]
+    pm: B1,
+    #[flag(rc(0))]
+    reserved3: B4,
 }
 
 /// CAP2
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct HostCapabilitiesExtended(pub u32);
-
-impl HostCapabilitiesExtended {
-    // DevSleep entrance from slumber only
-    ro_flag!(deso, 5);
-
-    // Aggressive device sleep management
-    ro_flag!(sadm, 4);
-
-    // Support device sleep
-    ro_flag!(sds, 3);
-
-    // Automatic partial to slumber transitions
-    ro_flag!(apst, 2);
-
-    // NVMHCI present
-    ro_flag!(nvmp, 1);
-
-    // Bios/OS handoff
-    ro_flag!(boh, 0);
+#[bitfields]
+pub struct HostCapabilitiesExtended {
+    /// BIOS/OS handoff supported
+    #[flag(r)]
+    boh: B1,
+    /// NVMHCI present
+    #[flag(r)]
+    nvmp: B1,
+    /// Automatic partial to slumber transitions supported
+    #[flag(r)]
+    apst: B1,
+    /// Support device sleep
+    #[flag(r)]
+    sds: B1,
+    /// Aggressive device sleep management supported
+    #[flag(r)]
+    sadm: B1,
+    /// DevSleep entrance from slumber only
+    #[flag(r)]
+    deso: B1,
+    #[flag(rc(0))]
+    reserved: B26,
 }
 
-// BOHC
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct BiosOsControlStatus(pub u32);
-
-impl BiosOsControlStatus {
-    // Bios Busy
-    flag!(bb, 4);
-
-    // OS ownership change
-    rwc_flag!(ooc, 3);
-
-    // SMI on OS ownership change enable
-    flag!(sooe, 2);
-
-    // OS Owned semaphore
-    flag!(oos, 1);
-
-    // BIOS owned semaphore
-    flag!(bos, 0);
+/// BOHC
+#[bitfields]
+pub struct BiosOsControlStatus {
+    /// BIOS owned semaphore
+    bos: B1,
+    /// OS owned semaphore
+    oos: B1,
+    /// SMI on OS ownership change enable
+    sooe: B1,
+    /// OS ownership change
+    #[flag(rwc(0))]
+    ooc: B1,
+    /// BIOS busy
+    bb: B1,
+    #[flag(rc(0))]
+    reserved: B27,
 }
 
 #[repr(C)]
@@ -401,211 +491,210 @@ pub struct VendorSpecificRegisters {
 }
 
 /// Port X Interrupt status
-#[repr(transparent)]
-pub struct PortInterruptStatus(pub u32);
+#[bitfields]
+pub struct PortInterruptStatus {
+    /// Device to Host Register FIS Interrupt
+    #[flag(rwc(1))]
+    dhrs: B1,
+    /// PIO Setup FIS Interrupt
+    #[flag(rwc(1))]
+    pss: B1,
+    /// DMA Setup FIS Interrupt
+    #[flag(rwc(1))]
+    dss: B1,
+    /// Set Device Bits Interrupt
+    #[flag(rwc(1))]
+    sdbs: B1,
+    /// Unknown FIS Interrupt
+    #[flag(r)]
+    ufs: B1,
+    /// Descriptor Processed
+    #[flag(rwc(1))]
+    dps: B1,
+    /// Port Connect Change Status
+    #[flag(r)]
+    pcs: B1,
+    /// Device Mechanical Presence Status
+    #[flag(rwc(1))]
+    dmps: B1,
+    #[flag(rc(0))]
+    reserved0: B14,
+    /// PhyRdy Change Status
+    #[flag(r)]
+    prcs: B1,
+    /// Incorrect Port Multiplier Status
+    #[flag(rwc(1))]
+    ipms: B1,
+    /// Overflow Status
+    #[flag(rwc(1))]
+    ofs: B1,
+    #[flag(rc(0))]
+    reserved1: B1,
+    /// Interface Non-fatal Error Status
+    #[flag(rwc(1))]
+    infs: B1,
+    /// Interface Fatal Error Status
+    #[flag(rwc(1))]
+    ifs: B1,
+    /// Host Bus Data Error Status
+    #[flag(rwc(1))]
+    hbds: B1,
+    /// Host bust fatal error status
+    #[flag(rwc(1))]
+    hbfs: B1,
+    /// Task file error status
+    #[flag(rwc(1))]
+    tfes: B1,
+    /// Cold port detect status
+    #[flag(rwc(1))]
+    cpds: B1,
+}
 
 impl PortInterruptStatus {
-    // Cold port detect status
-    rwc_flag!(cpds, 31);
-
-    // Task file error status
-    rwc_flag!(tfes, 30);
-
-    // Host bust fatal error status
-    rwc_flag!(hbfs, 29);
-
-    // Host Bus Data Error Status
-    rwc_flag!(hbds, 28);
-
-    // Interface Fatal Error Status
-    rwc_flag!(ifs, 27);
-
-    // Interface Non-fatal Error Status
-    rwc_flag!(infs, 26);
-
-    // Overflow Status
-    rwc_flag!(ofs, 24);
-
-    // Incorrect Port Multiplier Status
-    rwc_flag!(ipms, 23);
-
-    // PhyRdy Change Status
-    ro_flag!(prcs, 22);
-
-    // Device Mechanical Presence Status
-    rwc_flag!(dmps, 7);
-
-    // Port Connect Change Status
-    ro_flag!(pcs, 6);
-
-    // Descriptor Processed
-    rwc_flag!(dps, 5);
-
-    // Unknown FIS Interrupt
-    ro_flag!(ufs, 4);
-
-    // Set Device Bits Interrupt
-    rwc_flag!(sdbs, 3);
-
-    // DMA Setup FIS Interrupt
-    rwc_flag!(dss, 2);
-
-    // PIO Setup FIS Interrupt
-    rwc_flag!(pss, 1);
-
-    // Device to Host Register FIS Interrupt
-    rwc_flag!(dhrs, 0);
-
     pub fn clear_pending_interrupts(&mut self) {
         write_volatile!(self.0, u32::MAX);
     }
 }
 
 /// Port X Interrupt Enable
-#[repr(transparent)]
-pub struct InterruptEnable(pub u32);
-
-impl InterruptEnable {
-    // Cold Presence Detect Enable
-    flag!(cpde, 31);
-
-    // Task File Error Enable
-    flag!(tfee, 30);
-
-    // Host Bus Fatal Error Enable
-    flag!(hbfe, 29);
-
-    // Host Bus Data Error Enable
-    flag!(hbde, 28);
-
-    // Interface Fatal Error Enable
-    flag!(ife, 27);
-
-    // Interface Non-fatal Error Enable
-    flag!(infe, 26);
-
-    // Overflow Enable
-    flag!(ofe, 24);
-
-    // Incorrect Port Multiplier Enable
-    flag!(ipme, 23);
-
-    // PhyRdy Change Interrupt Enable
-    flag!(prce, 22);
-
-    // Device Mechanical Presence Enable
-    flag!(dmpe, 7);
-
-    // Port Change Interrupt Enable
-    flag!(pce, 6);
-
-    // Descriptor Processed Interrupt Enable
-    flag!(dpe, 5);
-
-    // Unknown FIS Interrupt Enable
-    flag!(ufe, 4);
-
-    // Set Device Bits FIS Interrupt Enable
-    flag!(sdbe, 3);
-
-    // DMA Setup FIS Interrupt Enable
-    flag!(dse, 2);
-
-    // PIO Setup FIS Interrupt Enable
-    flag!(pse, 1);
-
-    // Device to Host Register FIS Interrupt Enable
-    flag!(dhre, 0);
+#[bitfields]
+pub struct InterruptEnable {
+    /// Device to Host Register FIS Interrupt Enable
+    #[flag(rw)]
+    dhre: B1,
+    /// PIO Setup FIS Interrupt Enable
+    #[flag(rw)]
+    pse: B1,
+    /// DMA Setup FIS Interrupt Enable
+    #[flag(rw)]
+    dse: B1,
+    /// Set Device Bits FIS Interrupt Enable
+    #[flag(rw)]
+    sdbe: B1,
+    /// Unknown FIS Interrupt Enable
+    #[flag(rw)]
+    ufe: B1,
+    /// Descriptor Processed Interrupt Enable
+    #[flag(rw)]
+    dpe: B1,
+    /// Port Change Interrupt Enable
+    #[flag(rw)]
+    pce: B1,
+    /// Device Mechanical Presence Enable
+    #[flag(rw)]
+    dmpe: B1,
+    #[flag(rc(0))]
+    reserved0: B14,
+    /// PhyRdy Change Interrupt Enable
+    #[flag(rw)]
+    prce: B1,
+    /// Incorrect Port Multiplier Enable
+    #[flag(rw)]
+    ipme: B1,
+    /// Overflow Enable
+    #[flag(rw)]
+    ofe: B1,
+    #[flag(rc(0))]
+    reserved1: B1,
+    /// Interface Non-fatal Error Enable
+    #[flag(rw)]
+    infe: B1,
+    /// Interface Fatal Error Enable
+    #[flag(rw)]
+    ife: B1,
+    /// Host Bus Data Error Enable
+    #[flag(rw)]
+    hbde: B1,
+    /// Host Bus Fatal Error Enable
+    #[flag(rw)]
+    hbfe: B1,
+    /// Task File Error Enable
+    #[flag(rw)]
+    tfee: B1,
+    /// Cold Presence Detect Enable
+    #[flag(rw)]
+    cpde: B1,
 }
 
 /// Port X Command and status
-#[repr(transparent)]
-pub struct CmdStatus(pub u32);
+#[bitfields]
+pub struct CmdStatus {
+    /// Start
+    st: B1,
+    /// Spin-Up Device
+    sud: B1,
+    /// Power On Device
+    pod: B1,
+    /// Command List Override
+    clo: B1,
+    /// FIS Receive Enable
+    fre: B1,
+    #[flag(rc(0))]
+    reserved0: B3,
+    /// Current command slot being issued
+    #[flag(r)]
+    current_cmd: B5,
+    /// Mechanical Presence Switch State
+    #[flag(r)]
+    mpss: B1,
+    /// FIS Receive Running
+    #[flag(r)]
+    fr: B1,
+    /// Command List Running
+    #[flag(r)]
+    cr: B1,
+    /// Cold Presence State
+    #[flag(r)]
+    cps: B1,
+    /// Port Multiplier Attached
+    #[flag(rw)]
+    pma: B1,
+    /// Hot Plug Capable Port
+    #[flag(r)]
+    hpcp: B1,
+    /// Mechanical Presence Switch Attached to Port
+    #[flag(r)]
+    mpsp: B1,
+    /// Cold Presence Detection
+    #[flag(r)]
+    cpd: B1,
+    /// External SATA Port
+    #[flag(r)]
+    esp: B1,
+    /// FIS-based Switching Capable Port
+    #[flag(r)]
+    fbscp: B1,
+    /// Automatic Partial to Slumber Transitions Enabled
+    apste: B1,
+    /// Device is ATAPI
+    atapi: B1,
+    /// Drive LED on ATAPI Enable
+    dlae: B1,
+    /// Aggressive Link Power Management Enable
+    alpe: B1,
+    /// Aggressive Slumber / Partial
+    asp: B1,
+    /// Interface Communication Control
+    #[flag(rw, flag_type = InterfaceCommunicationControl)]
+    icc: B4,
+}
 
 impl CmdStatus {
-    pub fn set_icc(&mut self, icc: InterfaceCommunicationControl) {
-        write_volatile!(self.0, read_volatile!(self.0) & !(0xf << 28));
-        write_volatile!(
-            self.0,
-            read_volatile!(self.0) | (icc as u32) << 28
-        );
-    }
-
-    // Aggressive Slumber / Partial
-    flag!(asp, 27);
-
-    // Aggressive Link Power Management Enable
-    flag!(alpe, 26);
-
-    // Drive LED on ATAPI Enable
-    flag!(dlae, 25);
-
-    // Device is ATAPI
-    flag!(atapi, 24);
-
-    // Automatic Partial to Slumber Transitions Enabled
-    flag!(apste, 23);
-
-    // FIS-based Switching Capable Port
-    ro_flag!(fbscp, 22);
-
-    // External SATA Port
-    ro_flag!(esp, 21);
-
-    // Cold Presence Detection
-    ro_flag!(cpd, 20);
-
-    // Mechanical Presence Switch Attached to Port
-    ro_flag!(mpsp, 19);
-
-    // Hot Plug Capable Port
-    ro_flag!(hpcp, 18);
-
-    // Port Multiplier Attached
-    flag!(pma, 17);
-
-    // Cold Presence State
-    ro_flag!(cps, 16);
-
-    // Command List Running
-    ro_flag!(cr, 15);
-
-    // FIS Receive Running
-    ro_flag!(fr, 14);
-
-    // Mechanical Presence Switch State
-    ro_flag!(mpss, 13);
-
-    pub fn get_current_cmd(&mut self) -> u32 {
+    pub fn get_current_cmd_checked(&mut self) -> u32 {
         if !self.is_st() {
             return 0;
         }
-        (read_volatile!(self.0) >> 8) & 0x1f
+        self.get_current_cmd() as u32
     }
-
-    // FIS Receive Enable
-    flag!(fre, 4);
-
-    // Command List Override
-    flag!(clo, 3);
-
-    // Power On Device
-    flag!(pod, 2);
-
-    // Spin-Up Device
-    flag!(sud, 1);
-
-    // Start
-    flag!(st, 0);
 
     pub fn start(&mut self) {
         while self.is_cr() {}
-        self.set_fre();
-        self.set_st();
+        self.set_fre(true);
+        self.set_st(true);
     }
 
     pub fn stop(&mut self) {
-        self.unset_st();
+        self.set_st(false);
         let mut timeout = 0xfffff;
         loop {
             timeout -= 1;
@@ -618,7 +707,7 @@ impl CmdStatus {
                 break;
             }
         }
-        self.unset_fre();
+        self.set_fre(false);
         let mut timeout = 0xfffff;
         loop {
             timeout -= 1;
@@ -635,26 +724,27 @@ impl CmdStatus {
 }
 
 /// Port x Task File Data
-#[repr(transparent)]
-pub struct TaskFileData(pub u32);
-
-impl TaskFileData {
-    // Indicates error during transfer
-    ro_flag!(err, 0);
-
-    // Indicates a data transfer request
-    ro_flag!(drq, 3);
-
-    // Indicates that the interface is busy
-    ro_flag!(bsy, 7);
-
-    pub fn error(&self) -> u8 {
-        (read_volatile!(self.0) >> 8) as u8
-    }
+#[bitfields]
+pub struct TaskFileData {
+    /// Indicates error during transfer
+    #[flag(r)]
+    err: B1,
+    #[flag(rc(0))]
+    reserved0: B2,
+    /// Indicates a data transfer request
+    #[flag(r)]
+    drq: B1,
+    #[flag(rc(0))]
+    reserved1: B3,
+    /// Indicates that the interface is busy
+    #[flag(r)]
+    bsy: B1,
+    error_byte: B8,
+    #[flag(rc(0))]
+    reserved2: B16,
 }
 
 /// Port X Signature
-#[repr(C)]
 pub struct Signature {
     pub sector_count: u8,
     pub lba_low: u8,
@@ -674,70 +764,65 @@ impl Signature {
 }
 
 /// Port X SATA Status
-#[repr(transparent)]
-pub struct SataStatus(pub u32);
-
-impl SataStatus {
-    pub fn power(
-        &self,
-    ) -> Result<InterfacePowerManagement, ConversionError<u8>> {
-        let power = ((read_volatile!(self.0) >> 8) & 0xf) as u8;
-        InterfacePowerManagement::try_from(power)
-    }
-
-    pub fn speed(&self) -> InterfaceSpeed {
-        let speed = ((read_volatile!(self.0) >> 4) & 0xf) as u8;
-        unsafe { InterfaceSpeed::unchecked_transmute_from(speed) }
-    }
-
-    pub fn detection(
-        &self,
-    ) -> Result<DeviceDetection, ConversionError<u8>> {
-        let detection = (read_volatile!(self.0) & 0xf) as u8;
-        DeviceDetection::try_from(detection)
-    }
+#[bitfields]
+pub struct SataStatus {
+    /// Device detection
+    #[flag(flag_type = DeviceDetection)]
+    device_detection: B4,
+    /// Interface speed
+    #[flag(flag_type = InterfaceSpeed)]
+    interface_speed: B4,
+    /// Interface power management
+    #[flag(flag_type = InterfacePowerManagement)]
+    power_management: B4,
+    #[flag(rc(0))]
+    reserved: B20,
+}
+/// Port X SATA control
+#[bitfields]
+pub struct SataControl {
+    /// Device initialization
+    device_init_raw: B4,
+    /// Max interface speed restriction
+    speed_raw: B4,
+    /// Partial power management disabled
+    #[flag(rw)]
+    partial_disabled: B1,
+    /// Slumber power management disabled
+    #[flag(rw)]
+    slumber_disabled: B1,
+    /// Device sleep power management disabled
+    #[flag(rw)]
+    devslp_disabled: B1,
+    #[flag(rc(0))]
+    reserved0: B1,
+    /// Select power management transitions
+    select_power_management: B4,
+    /// Port multiplier port
+    port_multiplier: B4,
+    #[flag(rc(0))]
+    reserved1: B12,
 }
 
-/// Port X SATA control
-#[repr(transparent)]
-pub struct SataControl(pub u32);
-
 impl SataControl {
-    pub fn port_multiplier(&self) -> u8 {
-        ((read_volatile!(self.0) >> 16) & 0xf) as u8
-    }
-
-    pub fn select_power_management(&self) -> u8 {
-        ((read_volatile!(self.0) >> 12) & 0xf) as u8
-    }
-
-    flag!(devslp_disabled, 10);
-    flag!(slumber_disabled, 9);
-    flag!(partial_disabled, 8);
-
     pub fn max_speed(&self) -> InterfaceSpeedRestriction {
-        let speed = ((read_volatile!(self.0) >> 4) & 0xf) as u8;
         unsafe {
-            InterfaceSpeedRestriction::unchecked_transmute_from(speed)
+            InterfaceSpeedRestriction::unchecked_transmute_from(
+                self.speed_raw() as u8,
+            )
         }
     }
 
     pub fn set_max_speed(&mut self, speed: InterfaceSpeed) {
         if speed != InterfaceSpeed::DevNotPresent {
-            write_volatile!(self.0, read_volatile!(self.0) & !(0xf << 4));
-            write_volatile!(
-                self.0,
-                read_volatile!(self.0) | (speed as u32) << 4
-            );
+            self.set_speed_raw(speed as u8);
         }
     }
 
     pub fn device_initialization(
         &self,
     ) -> Result<InterfaceInitialization, ConversionError<u8>> {
-        InterfaceInitialization::try_from(
-            (read_volatile!(self.0) & 0xf) as u8,
-        )
+        InterfaceInitialization::try_from(self.device_init_raw() as u8)
     }
 
     // TODO THIS COMMAND ANY MAYBE OTHER SHOULD PROBABLY MOVE TO THE PORT
@@ -747,30 +832,33 @@ impl SataControl {
         &mut self,
         init: InterfaceInitialization,
     ) {
-        write_volatile!(self.0, read_volatile!(self.0) & !0xf);
-        write_volatile!(self.0, read_volatile!(self.0) | init as u32);
+        self.set_device_init_raw(init as u8);
     }
 }
 
 /// Port X SATA error
-#[repr(transparent)]
-pub struct SataError(pub u32);
+#[bitfields]
+pub struct SataError {
+    /// AHCI error bits
+    error_bits: B16,
+    /// Diagnostic error bits
+    diagnostic_bits: B16,
+}
 
 impl SataError {
     pub fn diagnostic(&self) -> impl Iterator<Item = DiagnosticError> {
-        let diagnostic_errors =
-            ((read_volatile!(self.0) >> 16) & 0xffff) as u16;
+        let diagnostic_errors = self.diagnostic_bits() as u16;
         DiagnosticError::iter()
             .filter(move |n| *n as u16 & diagnostic_errors != 0)
     }
 
     pub fn error(&self) -> impl Iterator<Item = AhciError> {
-        let ahci_error = (read_volatile!(self.0) & 0xffff) as u16;
+        let ahci_error = self.error_bits() as u16;
         AhciError::iter().filter(move |n| *n as u16 & ahci_error != 0)
     }
 
     pub fn zero_error(&mut self) {
-        write_volatile!(self.0, read_volatile!(self.0) & !0xffff)
+        self.set_error_bits(0);
     }
 }
 
@@ -789,11 +877,16 @@ impl CmdIssue {
 }
 
 /// Port X SATA Notification
-#[repr(transparent)]
-pub struct SataNotification(pub u32);
+#[bitfields]
+pub struct SataNotification {
+    /// Per-port-multiplier-port notification bits (ports 0-14)
+    pm_notifications: B15,
+    #[flag(rc(0))]
+    reserved: B17,
+}
 
 impl SataNotification {
-    /// Get port multiplier notification
+    /// Set port multiplier notification
     pub fn set_pm_notif(&mut self, pm_port: u8) {
         (0x0..0xf).contains(&pm_port).then(|| {
             write_volatile!(
@@ -814,84 +907,71 @@ impl SataNotification {
 }
 
 /// Port X Frame Information Structure based switching control
-#[repr(transparent)]
-pub struct FisSwitchControl(pub u32);
-
-impl FisSwitchControl {
-    /// Port multiplier device that experienced fatal error
-    pub fn device_with_error(&self) -> u8 {
-        ((read_volatile!(self.0) >> 16) & 0xf) as u8
-    }
-
+#[bitfields]
+pub struct FisSwitchControl {
+    /// Enable, should be set if there is a port multiplier
+    #[flag(rw)]
+    en: B1,
+    /// Device error clear
+    #[flag(rw1)]
+    dec: B1,
+    /// Single device error
+    #[flag(r)]
+    sde: B1,
+    #[flag(rc(0))]
+    reserved0: B5,
+    /// Set the port multiplier port number that should receive the next
+    /// command
+    device_to_issue: B4,
     /// The number of devices that FIS-Based switching has been optimized
     /// for. The minimum value for this field should be 0x2.
-    pub fn active_device_optimization(&self) -> u8 {
-        ((read_volatile!(self.0) >> 12) & 0xf) as u8
-    }
-
-    /// Set the port multiplier port number, that should receive the next
-    /// command
-    pub fn device_to_issue(&mut self, dev_num: u8) {
-        write_volatile!(self.0, read_volatile!(self.0) & !(0xf << 8));
-        write_volatile!(
-            self.0,
-            read_volatile!(self.0) | (dev_num as u32) << 8
-        );
-    }
-
-    // Single device error
-    ro_flag!(sde, 2);
-
-    // Device error clear
-    rw1_flag!(dec, 1);
-
-    // Enable, should be set if there is a port multiplier
-    flag!(en, 0);
+    #[flag(r)]
+    active_device_optimization: B4,
+    /// Port multiplier device that experienced fatal error
+    #[flag(r)]
+    device_with_error: B4,
+    #[flag(rc(0))]
+    reserved1: B12,
 }
 
 /// Port x Device sleep
-#[repr(transparent)]
-pub struct DeviceSleep(pub u32);
-
-impl DeviceSleep {
-    /// Device Sleep Idle Timeout Multiplier
-    pub fn dito_multiplier(&self) -> u8 {
-        ((read_volatile!(self.0) >> 25) & 0xf) as u8
-    }
-
-    /// Raw dito value
-    ///
-    /// **Use [`dito_actual`] for the actual wait time**
-    pub fn dito_ms(&self) -> u16 {
-        ((read_volatile!(self.0) >> 15) & 0x3ff) as u16
-    }
-
-    /// The actual timeout, which is dito * (dito_multiplier + 1)
-    pub fn dito_actual_ms(&self) -> u16 {
-        self.dito_ms() * (self.dito_multiplier() + 1) as u16
-    }
-
-    /// Minimum device sleep assertion time
-    ///
-    /// TODO: currently only read only, if write needed, check
-    /// documentation about extended cap and writing to this offset
-    pub fn mdat(&self) -> u8 {
-        ((read_volatile!(self.0) >> 10) & 0x1f) as u8
-    }
-
+#[bitfields]
+pub struct DeviceSleep {
+    /// Aggressive device sleep enable
+    #[flag(r)]
+    adse: B1,
+    /// Device sleep present
+    #[flag(r)]
+    dsp: B1,
     /// Device sleep exit timeout
     ///
     /// TODO: currently only read only, if write needed, check
     /// documentation about extended cap and writing to this offset
-    pub fn deto_ms(&self) -> u8 {
-        ((read_volatile!(self.0) >> 2) & 0xff) as u8
+    #[flag(r)]
+    deto: B8,
+    /// Minimum device sleep assertion time
+    ///
+    /// TODO: currently only read only, if write needed, check
+    /// documentation about extended cap and writing to this offset
+    #[flag(r)]
+    mdat: B5,
+    /// Raw dito value
+    ///
+    /// **Use [`dito_actual_ms`] for the actual wait time**
+    #[flag(r)]
+    dito: B10,
+    /// Device Sleep Idle Timeout Multiplier
+    #[flag(r)]
+    dito_multiplier: B4,
+    #[flag(rc(0))]
+    reserved: B3,
+}
+
+impl DeviceSleep {
+    /// The actual timeout, which is dito * (dito_multiplier + 1)
+    pub fn dito_actual_ms(&self) -> u16 {
+        self.dito() as u16 * (self.dito_multiplier() as u16 + 1)
     }
-
-    // Device sleep present
-    ro_flag!(dsp, 1);
-
-    // Aggressive device sleep enable
-    ro_flag!(adse, 0);
 }
 
 /// Port X Vendor specific
@@ -1049,51 +1129,42 @@ pub struct ReceivedFis {
 }
 
 #[derive(Default)]
-pub struct CmdListDescriptionInfo(pub u32);
+#[bitfields]
+pub struct CmdListDescriptionInfo {
+    /// Length of command FIS (internally stored as dwords)
+    cfl: B5,
+    /// ATAPI
+    #[flag(rw)]
+    a: B1,
+    /// Write
+    #[flag(rw)]
+    w: B1,
+    /// Prefetchable
+    #[flag(rw)]
+    p: B1,
+    /// Reset
+    #[flag(rw)]
+    r: B1,
+    /// BIST
+    #[flag(rw)]
+    b: B1,
+    /// Clear busy upon R_OK
+    #[flag(rw)]
+    c: B1,
+    #[flag(rc(0))]
+    reserved: B1,
+    /// Port multiplier port
+    pm_port: B4,
+    /// Physical region descriptor table length
+    prdtl: B16,
+}
 
 impl CmdListDescriptionInfo {
-    /// Set the Physical region descriptor table length
-    pub fn set_prdtl(&mut self, size: u16) {
-        write_volatile!(
-            self.0,
-            read_volatile!(self.0) | (size as u32) << 16
-        );
-    }
-
-    /// Set the port multiplier port
-    pub fn set_pm_port(&mut self, pm_port: u8) {
-        write_volatile!(
-            self.0,
-            read_volatile!(self.0) | ((pm_port & 0xf) as u32) << 12
-        );
-    }
-
-    // Clear busy upon R_OK
-    flag!(c, 10);
-
-    // BIST
-    flag!(b, 9);
-
-    // Reset
-    flag!(r, 8);
-
-    // Prefetchable
-    flag!(p, 7);
-
-    // Write
-    flag!(w, 6);
-
-    // ATAPI
-    flag!(a, 5);
-
     /// Length of command FIS len (internally converted to dw)
     pub fn set_command_fis_len(&mut self, len: usize) {
         assert!(len < 64, "Len must be smaller then 64");
         assert!(len > 8, "Len must be greater then 8 ");
-        write_volatile!(
-            self.0,
-            read_volatile!(self.0) | (len / size_of::<u32>()) as u32
-        );
+        self.set_cfl((len / size_of::<u32>()) as u8);
     }
 }
 
@@ -1128,17 +1199,23 @@ pub struct CmdList {
     pub entries: [CmdHeader; 32],
 }
 
-pub struct PrdtDescriptionInfo(pub u32);
+#[bitfields]
+pub struct PrdtDescriptionInfo {
+    /// Data byte count (max 4MiB, bit 0 is always set per spec)
+    dbc: B22,
+    #[flag(rc(0))]
+    reserved: B9,
+    /// Interrupt on completion
+    #[flag(rw)]
+    i: B1,
+}
 
 impl PrdtDescriptionInfo {
-    // Interrupt on completion
-    flag!(i, 31);
-
     /// Set the data byte count of the buffer on the prdt
     pub fn set_dbc(&mut self, dbc: u32) {
         const MB: u32 = 1 << 20;
         assert!(dbc < 4 * MB, "DBC should be smaller then 4Mib");
-        write_volatile!(self.0, read_volatile!(self.0) | dbc | 1);
+        self.set_dbc(dbc | 1);
     }
 }
 
@@ -1202,8 +1279,8 @@ impl HBAMemoryRegisters {
 
         let hba = unsafe { hba_ptr.as_mut() };
 
-        hba.ghc.ghc.set_ae();
-        hba.ghc.ghc.set_ie();
+        hba.ghc.ghc.set_ae(true);
+        hba.ghc.ghc.set_ie(true);
 
         if hba.ghc.pi.0 >= (1 << 31) {
             panic!("There is no support for HBA's with more then 30 ports")

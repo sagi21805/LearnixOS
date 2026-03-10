@@ -1,12 +1,13 @@
-use flag::FlagInput;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    DeriveInput, LitInt, Token, parse_macro_input, punctuated::Punctuated,
+    DeriveInput, ItemStruct, LitInt, Token, parse_macro_input,
+    punctuated::Punctuated,
 };
 
-mod flag;
+use crate::bitflags::bitfields_impl;
 
+mod bitflags;
 // ANCHOR: common_address_functions
 #[proc_macro_derive(CommonAddressFunctions)]
 pub fn common_address_functions(input: TokenStream) -> TokenStream {
@@ -63,185 +64,6 @@ pub fn common_address_functions(input: TokenStream) -> TokenStream {
 }
 // ANCHOR_END: common_address_functions
 
-// ANCHOR: flag
-/// This macro will obtain `flag_name` and the corresponding
-/// `bit_number`
-///
-/// With this information it will automatically generate
-/// three methods
-///
-/// 1. `set_$flag_name`: set the bit without returning self
-/// 2. `$flag_name`: set the bit and will return self
-/// 3. `unset_$flag_name`: unset the bit without returning self
-/// 4. `is_$flag_name`: return true if the flag is set or false if not
-#[proc_macro]
-pub fn flag(input: TokenStream) -> TokenStream {
-    let FlagInput { name, bit, .. } =
-        syn::parse_macro_input!(input as FlagInput);
-
-    // build identifiers
-    let name_str = name.to_string();
-    let set_ident = format_ident!("set_{}", name_str);
-    let unset_ident = format_ident!("unset_{}", name_str);
-    let is_ident = format_ident!("is_{}", name_str);
-
-    let expanded = quote! {
-        #[inline]
-        #[allow(dead_code)]
-        #[allow(unused_attributes)]
-        /// Sets the corresponding flag
-        pub fn #set_ident(&mut self) {
-            unsafe {
-                let val = core::ptr::read_volatile(
-                    self as *const _ as *mut usize
-                );
-
-                core::ptr::write_volatile(
-                    self as *const _ as *mut usize,
-                    val | (1 << #bit) as usize
-                )
-            }
-        }
-
-        #[inline]
-        #[allow(dead_code)]
-        #[allow(unused_attributes)]
-        /// Sets the corresponding flag while returning self
-        pub const fn #name(self) -> Self {
-            Self(self.0 | (1 << #bit))
-        }
-
-        #[inline]
-        #[allow(dead_code)]
-        #[allow(unused_attributes)]
-        /// Unset the corresponding flag
-        pub fn #unset_ident(&mut self) {
-            unsafe {
-                let val = core::ptr::read_volatile(
-                    self as *const _ as *mut usize
-                );
-
-                core::ptr::write_volatile(
-                    self as *const _ as *mut usize,
-                    val & !(1 << #bit) as usize
-                )
-            }
-        }
-
-        #[inline]
-        #[allow(dead_code)]
-        #[allow(unused_attributes)]
-        /// Checks if the corresponding flag is set
-        pub fn #is_ident(&self) -> bool {
-            unsafe {
-                core::ptr::read_volatile(
-                    self as *const _ as *mut usize
-                ) & ((1<< #bit) as usize) != 0
-            }
-        }
-    };
-
-    expanded.into()
-}
-// ANCHOR_END: flag
-
-// ANCHOR: ro_flag
-/// This macro will obtain `flag_name` and the corresponding
-/// `bit_number` and create read-only flag functionality
-///
-/// With this information it will automatically generate
-/// three methods
-///
-/// 1. `is_$flag_name`: return true if the flag is set or false if not
-#[proc_macro]
-pub fn ro_flag(input: TokenStream) -> TokenStream {
-    let FlagInput { name, bit, .. } =
-        syn::parse_macro_input!(input as FlagInput);
-
-    // build identifiers
-    let name_str = name.to_string();
-    let support_ident = format_ident!("is_{}", name_str);
-
-    let expanded = quote! {
-        #[inline]
-        #[allow(dead_code)]
-        #[allow(unused_attributes)]
-        /// Checks if the corresponding flag is set
-        pub fn #support_ident(&self) -> bool {
-            unsafe {
-                core::ptr::read_volatile(
-                    self as *const _ as *mut usize
-                ) & ((1<< #bit) as usize) != 0
-            }
-        }
-    };
-
-    expanded.into()
-}
-// ANCHOR_END: ro_flag
-
-// ANCHOR: rwc_flag
-#[proc_macro]
-pub fn rwc_flag(input: TokenStream) -> TokenStream {
-    let FlagInput { name, bit, .. } =
-        syn::parse_macro_input!(input as FlagInput);
-
-    // build identifiers
-    let name_str = name.to_string();
-    let clear_ident = format_ident!("clear_{}", name_str);
-    let support_ident = format_ident!("is_{}", name_str);
-
-    let expanded = quote! {
-        #[inline]
-        #[allow(dead_code)]
-        #[allow(unused_attributes)]
-        /// Sets the corresponding flag
-        pub const fn #clear_ident(&mut self) {
-            self.0 |= 1 << #bit;
-        }
-
-
-        #[inline]
-        #[allow(dead_code)]
-        #[allow(unused_attributes)]
-        /// Checks if the corresponding flag is set
-        pub fn #support_ident(&self) -> bool {
-            unsafe {
-                core::ptr::read_volatile(
-                    self as *const _ as *mut usize
-                ) & ((1<< #bit) as usize) != 0
-            }
-        }
-    };
-
-    expanded.into()
-}
-// ANCHOR_END: rwc_flag
-
-// ANCHOR: rw1_flag
-#[proc_macro]
-pub fn rw1_flag(input: TokenStream) -> TokenStream {
-    let FlagInput { name, bit, .. } =
-        syn::parse_macro_input!(input as FlagInput);
-
-    // build identifiers
-    let name_str = name.to_string();
-    let set_ident = format_ident!("set_{}", name_str);
-
-    let expanded = quote! {
-        #[inline]
-        #[allow(dead_code)]
-        #[allow(unused_attributes)]
-        /// Sets the corresponding flag
-        pub const fn #set_ident(&mut self) {
-            self.0 |= 1 << #bit;
-        }
-    };
-
-    expanded.into()
-}
-// ANCHOR_END: rw1_flag
-
 #[proc_macro]
 pub fn generate_generics(input: TokenStream) -> TokenStream {
     // Parse the input as a comma-separated list of integers: 8, 16, 32...
@@ -282,4 +104,33 @@ pub fn generate_generics(input: TokenStream) -> TokenStream {
     }
 
     TokenStream::from(expanded)
+}
+
+#[proc_macro_attribute]
+/// Turn a struct into a bitfield struct.
+///
+/// ```rust
+/// struct MyBitfield {
+///
+///     #[rwc(10)] // read-write-clearable flag with clear value of 10
+///     flag1: B1,  // 1 bit field
+///
+///     #[flag(r)] // Read-only flag
+///     flag2: B3,  // 3 bits field
+///     flag3: B10, // 10 bits field
+/// }
+///
+/// let b = MyBitField::new();
+///
+/// b.set_flag1(1);
+/// b.set_flag3(20);
+///
+/// assert_eq!(b.get_flag3(), 20);
+/// assert_eq!(size_of::<MyBitField>(), size_of::<u16>());
+/// ```
+pub fn bitfields(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let s = parse_macro_input!(item as ItemStruct);
+    bitfields_impl(s)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
 }

@@ -2,52 +2,16 @@ use common::{
     address_types::VirtualAddress,
     enums::{ProtectionLevel, Sections},
 };
-use macros::flag;
 
-#[derive(Clone, Debug, Copy)]
-pub struct SegmentSelector(u16);
+use macros::bitfields;
 
-impl const Default for SegmentSelector {
-    /// Default NULL segment selector
-    fn default() -> Self {
-        Self(0)
-    }
-}
-
-impl SegmentSelector {
-    /// Set the requested privilege level of this selector
-    pub const fn set_rpl(mut self, rpl: ProtectionLevel) -> Self {
-        self.0 |= rpl as u16;
-        self
-    }
-
-    // Use the local descriptor table instead of the global
-    // descriptor table
-    flag!(local_descriptor_table, 2);
-
-    /// Set the index in the table
-    ///
-    /// **Note:** If a system segment is in the table, it
-    /// should be counted as occupying two indices
-    pub const fn set_table_index(mut self, index: u16) -> Self {
-        self.0 |= index << 3;
-        self
-    }
-
-    /// Return the underlying u16
-    pub const fn as_u16(&self) -> u16 {
-        self.0
-    }
-
-    /// Default kernel code selector
-    pub const fn kernel_code() -> Self {
-        Self(Sections::KernelCode as u16)
-    }
-
-    /// Default user code selector
-    pub const fn user_code() -> Self {
-        Self(Sections::UserCode as u16 | ProtectionLevel::Ring3 as u16)
-    }
+#[bitfields]
+pub struct SegmentSelector {
+    #[flag(flag_type = ProtectionLevel)]
+    pub rpl: B2,
+    pub use_ldt: B1,
+    #[flag(flag_type = Sections)]
+    pub section: B13,
 }
 
 /// Structure of the Task State Segment
