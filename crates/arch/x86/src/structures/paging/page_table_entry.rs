@@ -12,7 +12,7 @@ use macros::bitfields;
 pub struct PageTableEntry {
     #[flag(rwc(0), flag_type = PageEntryFlags)]
     flags: B12,
-    #[flag(rw, flag_type = PhysicalAddress)]
+    #[flag(rw, flag_type = PhysicalAddress, dont_shift)]
     address: B51,
     not_executable: B1,
 }
@@ -34,7 +34,7 @@ impl PageTableEntry {
         flags: PageEntryFlags,
     ) {
         self.set_flags(flags.present());
-        self.set_address(frame);
+        self.set_address(frame.as_usize() as u64);
     }
     // ANCHOR_END: page_table_entry_map_unchecked
 

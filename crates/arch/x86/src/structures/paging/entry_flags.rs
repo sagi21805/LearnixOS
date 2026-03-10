@@ -9,7 +9,9 @@ pub struct PageEntryFlags {
     pub usr_access: B1,
     pub write_through_cache: B1,
     pub disable_cache: B1,
+    #[flag(r)]
     pub accessed: B1,
+    #[flag(r)]
     pub dirty: B1,
     pub huge_page: B1,
     pub global: B1,

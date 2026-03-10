@@ -2,20 +2,30 @@
 #![no_main]
 use core::panic::PanicInfo;
 
-use keyboard::ps2_keyboard::Keyboard;
+use common::constants::IDENTITY_PAGE_TABLE_L4_OFFSET;
+// use keyboard::ps2_keyboard::Keyboard;
 use vga_display::{okprintln, println};
 use x86::{
     memory_map::{MemoryMap, parse_map},
     parsed_memory_map,
+    structures::paging::{PageTable, PageTableEntry},
 };
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _start() -> ! {
+    // loop {}
     okprintln!("Entered Protected Mode");
     okprintln!("Enabled Paging");
     okprintln!("Entered Long Mode");
+
+    let p =
+        unsafe { &*(IDENTITY_PAGE_TABLE_L4_OFFSET as *const PageTable) };
+
+    println!("{:?}", p.entries[0]);
+
+    loop {}
     parse_map();
     // okprintln!("Obtained Memory Map");
     // println!("{}", MemoryMap(parsed_memory_map!()));

@@ -17,7 +17,7 @@ macros = { path = "../crates/macros" }
 strum_macros = { version = "0.27", default-features = false }
 strum = { version = "0.27", default-features = false }
 nonmax = { version = "0.5.5", default-features = false }
-ahci = { path = "../crates/drivers/ahci" }
-keyboard = { path = "../crates/drivers/keyboard" }
-pci = { path = "../crates/drivers/pci" }
+# ahci = { path = "../crates/drivers/ahci" }
+# keyboard = { path = "../crates/drivers/keyboard" }
+# pci = { path = "../crates/drivers/pci" }
 vga_display = { path = "../crates/drivers/vga-display" }

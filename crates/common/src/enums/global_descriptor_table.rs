@@ -41,6 +41,6 @@ pub enum SystemSegmentType {
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum SegmentDescriptorType {
     System = 0,
-    User = 1,
+    CodeOrData = 1,
 }
 // ANCHOR_END: segment_descriptor_type
