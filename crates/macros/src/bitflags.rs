@@ -211,7 +211,7 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
             .filter(|a| !a.path().is_ident("doc"))
             .collect();
 
-        if value.attrs.is_empty() {
+        if flag_attrs.is_empty() {
             return Ok(BitField {
                 permissions: FlagPermission::default(),
                 vis: &value.vis,
