@@ -1,28 +1,21 @@
-use core::{mem::MaybeUninit, num::NonZero, ptr::NonNull};
+use core::{mem::MaybeUninit, ptr::NonNull};
 
-use common::{
-    address_types::VirtualAddress, enums::PS2ScanCode,
-    ring_buffer::RingBuffer,
-};
-use macros::flag;
+use common::{enums::PS2ScanCode, ring_buffer::RingBuffer};
 
-pub struct KeyboardFlags(u8);
+use macros::bitfields;
 
-impl KeyboardFlags {
-    pub fn default() -> Self {
-        Self(0)
-    }
-
-    flag!(lshift_pressed, 0);
-    flag!(rshift_pressed, 1);
-    flag!(lctrl_pressed, 2);
-    flag!(superkey_pressed, 3);
-    flag!(capslock_pressed, 4);
+#[bitfields]
+pub struct KeyboardFlags {
+    pub lshift_pressed: B1,
+    pub rshift_pressed: B1,
+    pub lctrl_pressed: B1,
+    pub superkey_pressed: B1,
+    pub capslock_pressed: B1,
 }
 
 pub struct Keyboard {
-    pub(super) buffer: RingBuffer<u8>,
-    pub(super) flags: KeyboardFlags,
+    pub buffer: RingBuffer<u8>,
+    pub flags: KeyboardFlags,
 }
 
 impl Keyboard {
