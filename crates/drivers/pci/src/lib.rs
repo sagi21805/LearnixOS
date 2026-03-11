@@ -1,4 +1,9 @@
 #![no_std]
+#![feature(const_default)]
+#![feature(const_trait_impl)]
+#![feature(const_convert)]
+#![feature(const_result_trait_fn)]
+
 extern crate alloc;
 
 use common::enums::{
@@ -6,15 +11,20 @@ use common::enums::{
     PciDeviceType, Port, ProgrammingInterface, SubClass, VendorDevice,
     VendorID,
 };
-use macros::flag;
+use macros::bitfields;
 use x86::instructions::port::PortExt;
 
-#[derive(Debug, Clone, Copy)]
-pub struct PciConfigurationCycle(u32);
+#[bitfields]
+pub struct PciConfigurationCycle {
+    offset: B8,
+    function: B3,
+    device: B5,
+    bus: B8,
+    reserved: B7,
+    enable: B1,
+}
 
 impl PciConfigurationCycle {
-    flag!(enable, 31);
-
     /// Not checking device max numb er, function max number
     /// and offset alignment
     pub const fn new_unchecked(
@@ -22,12 +32,13 @@ impl PciConfigurationCycle {
         device: u8,
         function: u8,
         offset: u8,
-    ) -> Self {
-        let config_address: u32 = ((bus as u32) << 16)
-            | ((device as u32) << 11)
-            | ((function as u32) << 8)
-            | (offset as u32);
-        Self(config_address).enable()
+    ) -> PciConfigurationCycle {
+        PciConfigurationCycle::default()
+            .bus(bus)
+            .device(device)
+            .function(function)
+            .offset(offset)
+            .enable()
     }
 
     pub unsafe fn read(self) -> u32 {
@@ -56,7 +67,7 @@ impl PciConfigurationCycle {
             (0..size_of::<PciCommonHeader>()).step_by(size_of::<u32>())
         {
             unsafe {
-                let header_data = Self::new_unchecked(
+                let header_data = PciConfigurationCycle::new_unchecked(
                     bus,
                     device,
                     function,
@@ -86,7 +97,7 @@ impl PciConfigurationCycle {
             .step_by(size_of::<u32>())
         {
             unsafe {
-                let header_data = Self::new_unchecked(
+                let header_data = PciConfigurationCycle::new_unchecked(
                     bus,
                     device,
                     function,
@@ -105,78 +116,62 @@ impl PciConfigurationCycle {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct StatusRegister(u16);
-
-impl StatusRegister {
-    // Device detected a parity error
-    flag!(detected_parity_error, 15);
-    // Device asserted SERR
-    flag!(signaled_system_error, 14);
-    //Master  Device transaction was terminated by master
-    // abort
-    flag!(received_master_abort, 13);
-    // Master Device transaction was terminated by target
-    // abort
-    flag!(received_target_abort, 12);
-    // Target device terminated by target abort
-    flag!(signaled_target_abort, 11);
-
+#[bitfields]
+pub struct StatusRegister {
+    reserved0: B3,
+    interrupt_status: B1,
+    capabilities_list: B1,
+    capable_66mhz: B1,
+    reserved1: B1,
+    fast_back2back_capable: B1,
+    master_data_parity_error: B1,
+    #[flag(r)]
     // ReadOnly bits which represent the slowest time device
     // will assert DEVSEL 00 -> fast 01 -> medium 02 ->
     // slow bits 9-10 devsel
-
-    // Parity error detected and handled
-    flag!(master_data_parity_error, 8);
-    // Device is capable for fast back transaction not from
-    // the same agent
-    flag!(fast_back2back_capable, 7);
-    // Device is able to run at 66mhz
-    flag!(capable_66mhz, 5);
-    // Implements pointer for the capabilities list
-    flag!(capabilities_list, 4);
-    // Represents if interrupt is fired or not.
-    flag!(interrupt_status, 3);
+    devsel_time: B2,
+    signaled_target_abort: B1,
+    received_target_abort: B1,
+    received_master_abort: B1,
+    signaled_system_error: B1,
+    detected_parity_error: B1,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct CommandRegister(u16);
-
-impl CommandRegister {
-    // Disable interrupts for this device
-    flag!(interrupt_disable, 10);
-    // Allow device to generate back to back transactions
-    flag!(fast_back2back_enable, 9);
-    // SERR driver is enabled
-    flag!(serr_enable, 8);
+#[bitfields]
+pub struct CommandRegister {
+    // Allow device to response to I/O space access
+    io_space: B1,
+    // Allow device to response to memory space access
+    memory_space: B1,
+    // Allow device to behave as bus master.
+    bus_master: B1,
+    // Allow device to monitor special cycle, otherwise
+    // ignore them
+    special_cycles: B1,
+    // Allow device to generate memory writes and invalidate
+    // commands. Otherwise memory write command must be
+    // used.
+    memory_write_inval_enable: B1,
+    // Allow device to listen to vga palette writes, and
+    // copy them for it own use (Legacy)
+    vga_palette_snoop: B1,
     // If enabled device will take its normal action on
     // parity error otherwise it will set bit 15 on
     // status register, and will continue operation as
     // normal
-    flag!(parity_error_response, 6);
-    // Allow device to listen to vga palette writes, and
-    // copy them for it own use (Legacy)
-    flag!(vga_palette_snoop, 5);
-    // Allow device to generate memory writes and invalidate
-    // commands. Otherwise memory write command must be
-    // used.
-    flag!(memory_write_inval_enable, 4);
-    // Allow device to monitor special cycle, otherwise
-    // ignore them
-    flag!(special_cycles, 3);
-    // Allow device to behave as bus master.
-    flag!(bus_master, 2);
-    // Allow device to response to memory space access
-    flag!(memory_space, 1);
-    // Allow device to response to I/O space access
-    flag!(io_space, 0);
+    parity_error_response: B1,
+    // SERR driver is enabled
+    serr_enable: B1,
+    // Allow device to generate back to back transactions
+    fast_back2back_enable: B1,
+    // Disable interrupts for this device
+    interrupt_disable: B1,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BISTRegister(u8);
-
-impl BISTRegister {
-    flag!(bist_capable, 7);
+#[bitfields]
+pub struct BISTRegister {
+    reserved: B7,
+    bist_capable: B1,
 }
 
 #[repr(C)]
