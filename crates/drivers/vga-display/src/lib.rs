@@ -32,6 +32,10 @@ pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
     }
 }
 // ANCHOR_END: vga_print
+#[unsafe(no_mangle)]
+pub fn kprint(args: fmt::Arguments<'_>) {
+    vga_print(args, None);
+}
 
 /// Prints formatted text to the VGA display without a
 /// newline.
@@ -85,7 +89,7 @@ macro_rules! eprintln {
 
     // Case 2: Print "FAIL" with custom message color.
     ($fmt:expr $(, $arg:tt)* ; color = $color:expr) => {{
-        use $crate::drivers::vga_display::color_code::ColorCode;
+        use vga_display::color_code::ColorCode;
         use common::enums::Color;
         $crate::print!("[");
         $crate::print!("FAIL" ; color = ColorCode::new(Color::Red, Color::Black));
