@@ -6,6 +6,7 @@
 #![feature(const_default)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
+#![feature(iter_map_windows)]
 
 pub mod instructions;
 #[cfg(target_arch = "x86_64")]

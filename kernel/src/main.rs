@@ -2,12 +2,15 @@
 #![no_main]
 use core::panic::PanicInfo;
 
-use common::constants::IDENTITY_PAGE_TABLE_L4_OFFSET;
+use common::constants::{
+    IDENTITY_PAGE_TABLE_L4_OFFSET, MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET,
+    PARSED_MEMORY_MAP, PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_SIZE,
+};
 // use keyboard::ps2_keyboard::Keyboard;
-use vga_display::{okprintln, println};
+use vga_display::{eprintln, okprintln, println};
 use x86::{
-    memory_map::{MemoryMap, parse_map},
-    parsed_memory_map,
+    instructions::interrupts,
+    memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
     structures::paging::{PageTable, PageTableEntry},
 };
 
@@ -15,18 +18,27 @@ use x86::{
 #[unsafe(link_section = ".start")]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _start() -> ! {
-    // loop {}
     okprintln!("Entered Protected Mode");
     okprintln!("Enabled Paging");
     okprintln!("Entered Long Mode");
 
-    let p =
-        unsafe { &*(IDENTITY_PAGE_TABLE_L4_OFFSET as *const PageTable) };
+    let len = unsafe { *(MEMORY_MAP_LENGTH as *const u32) as usize };
+    let raw = unsafe {
+        core::slice::from_raw_parts_mut(
+            MEMORY_MAP_OFFSET as *mut MemoryRegionExtended,
+            len,
+        )
+    };
+    let buf = unsafe {
+        core::slice::from_raw_parts_mut(
+            PARSED_MEMORY_MAP as *mut MemoryRegion,
+            REGULAR_PAGE_SIZE / size_of::<MemoryRegion>(),
+        )
+    };
 
-    println!("{:?}", p.entries[0]);
+    let mmap = MemoryMap::parse_map(raw, buf).unwrap();
 
-    loop {}
-    parse_map();
+    println!("{}", mmap);
     // okprintln!("Obtained Memory Map");
     // println!("{}", MemoryMap(parsed_memory_map!()));
 
@@ -151,10 +163,9 @@ pub unsafe extern "C" fn _start() -> ! {
 /// This function is called on panic.
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {
-    // unsafe {
-    //     interrupts::disable();
-    // }
-    // eprintln!("{}", _info ; color = ColorCode::new(Color::Yellow,
-    // Color::Black));
+    unsafe {
+        interrupts::disable();
+    }
+    eprintln!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
     loop {}
 }
