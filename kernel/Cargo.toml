@@ -4,18 +4,18 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+num_enum = {
+    git = "https://github.com/sagi21805/num_enum.git", rev = "2e53bd356ae93c537f3345f38679617bb977633c", default-features = false, features = ["complex-expressions"]
+}
 common = { path = "../crates/common" }
 x86 = { path = "../crates/arch/x86" }
-derive_more = { version = "2.0.1", default-features = false, features = [
+derive_more = { version = "2.1.1", default-features = false, features = [
     "full",
-] }
-num_enum = { git = "https://github.com/sagi21805/num_enum.git", rev = "2e53bd356ae93c537f3345f38679617bb977633c", default-features = false, features = [
-    "complex-expressions",
 ] }
 extend = "1.2.0"
 macros = { path = "../crates/macros" }
-strum_macros = { version = "0.27", default-features = false }
-strum = { version = "0.27", default-features = false }
+strum_macros = { version = "0.28", default-features = false }
+strum = { version = "0.28", default-features = false }
 nonmax = { version = "0.5.5", default-features = false }
 # ahci = { path = "../crates/drivers/ahci" }
 # keyboard = { path = "../crates/drivers/keyboard" }
