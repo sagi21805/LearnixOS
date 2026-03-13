@@ -55,6 +55,9 @@ pub enum MemoryRegionType {
     Reclaimable = 3,
     ACPINVS = 4,
     BadMemory = 5,
+    // Custom attributes for added entries
+    UserEnterd = 6,
+    Filler = 7,
 }
 // ANCHOR_END: memory_region_type
 

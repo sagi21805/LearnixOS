@@ -1,6 +1,6 @@
 use common::{
-    constants::{KiB, MiB},
-    enums::{MemoryRegionType, model_specific},
+    constants::{INIT_AREA_SIZE_BYTES, KiB, MiB},
+    enums::MemoryRegionType,
 };
 use core::{
     fmt::{self, Display, Formatter},
@@ -42,7 +42,8 @@ pub enum MemoryMapError {
 }
 
 pub struct MemoryMap {
-    regions: NonNull<[MemoryRegion]>,
+    pub regions: NonNull<[MemoryRegion]>,
+    pub capacity: usize,
 }
 
 impl Deref for MemoryMap {
@@ -71,10 +72,13 @@ impl Display for MemoryMap {
             )?;
 
             match entry.region_type {
-                MemoryRegionType::Usable | MemoryRegionType::Reserved => {
+                MemoryRegionType::Usable
+                | MemoryRegionType::Reserved
+                | MemoryRegionType::Filler => {
                     if entry.region_type == MemoryRegionType::Usable {
                         usable += entry.length;
-                    } else {
+                    }
+                    if entry.region_type == MemoryRegionType::Reserved {
                         reserved += entry.length;
                     }
                     writeln!(
@@ -103,23 +107,12 @@ impl Display for MemoryMap {
     }
 }
 
-unsafe extern "Rust" {
-    unsafe fn kprint(args: core::fmt::Arguments<'_>);
-}
-
 impl MemoryMap {
     pub fn parse_map(
         raw: &mut [MemoryRegionExtended],
         buf: &mut [MemoryRegion],
     ) -> Result<MemoryMap, MemoryMapError> {
         let mut position = 0;
-        unsafe {
-            kprint(format_args!(
-                "here buf: {:?}, raw: {:?}",
-                buf.as_ptr(),
-                raw.as_ptr()
-            ))
-        };
         let mut push =
             |region: MemoryRegion| -> Result<(), MemoryMapError> {
                 if position >= buf.len() {
@@ -130,13 +123,29 @@ impl MemoryMap {
                 Ok(())
             };
 
+        let first_usable = raw
+            .iter_mut()
+            .find(|f| f.region_type == MemoryRegionType::Usable)
+            .ok_or(MemoryMapError::Empty)?;
+
+        assert!(first_usable.length > INIT_AREA_SIZE_BYTES);
+
+        let init_entry = MemoryRegion {
+            base_address: first_usable.base_address,
+            length: INIT_AREA_SIZE_BYTES,
+            region_type: MemoryRegionType::UserEnterd,
+        };
+
+        first_usable.base_address += INIT_AREA_SIZE_BYTES;
+        first_usable.length -= INIT_AREA_SIZE_BYTES;
+
+        push(init_entry)?;
+
         for (left, right) in raw.iter().map_windows(|[a, b]| (*a, *b)) {
-            unsafe { kprint(format_args!("here")) };
             let filler = filler_entry(left, right);
 
             push(left.into())?;
 
-            unsafe { kprint(format_args!("here3")) };
             if let Some(f) = filler {
                 push(f)?;
             }
@@ -144,9 +153,9 @@ impl MemoryMap {
 
         let last = raw.last().ok_or(MemoryMapError::Empty)?;
 
-        if let MemoryRegionType::Usable = last.region_type {
-            push(last.into())?;
-        }
+        push(last.into())?;
+
+        let capacity = buf.len();
 
         let modified = unsafe {
             core::slice::from_raw_parts_mut(buf.as_mut_ptr(), position)
@@ -154,22 +163,19 @@ impl MemoryMap {
 
         Ok(MemoryMap {
             regions: NonNull::from_mut(modified),
+            capacity,
         })
     }
 }
 
 /// Return a filler entry if there is a gap between A and B
-///
-/// The memory region of the filler entry will always be
-/// [`MemoryRegionType::Reserved`]
 #[inline]
 fn filler_entry(
     left: &MemoryRegionExtended,
     right: &MemoryRegionExtended,
 ) -> Option<MemoryRegion> {
-    // assert!(left.base_address < right.base_address);
+    assert!(left.base_address < right.base_address);
 
-    unsafe { kprint(format_args!("here2")) };
     (left.base_address + left.length < right.base_address).then(|| {
         let filler_base = left.base_address + left.length;
         let length = right.base_address - filler_base;
@@ -177,7 +183,7 @@ fn filler_entry(
         MemoryRegion {
             base_address: filler_base,
             length,
-            region_type: MemoryRegionType::Reserved,
+            region_type: MemoryRegionType::Filler,
         }
     })
 }
