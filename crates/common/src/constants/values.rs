@@ -17,3 +17,4 @@ pub const HUGE_PAGE_ALIGNMENT: Alignment =
 pub const MEMORY_MAP_MAGIC_NUMBER: u32 =
     u32::from_le_bytes([b'P', b'A', b'M', b'S']); // 'SMAP' in little endian
 pub const ENTRY_ADDRESS_MASK: u64 = 0x0000_ffff_ffff_f000;
+pub const INIT_AREA_SIZE_BYTES: u64 = 256 * KiB as u64;
