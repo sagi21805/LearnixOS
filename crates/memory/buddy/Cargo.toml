@@ -12,3 +12,4 @@ num_enum = { git = "https://github.com/sagi21805/num_enum.git", rev = "2e53bd356
 macros = { path = "../../macros" }
 strum_macros = { version = "0.27", default-features = false }
 strum = { version = "0.27", default-features = false }
+thiserror = { version = "2.0.12", default-features = false }
