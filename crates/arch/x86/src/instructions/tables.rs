@@ -99,7 +99,7 @@ pub unsafe fn ltr(selector: SegmentSelector) {
     unsafe {
         asm!(
             "ltr {0:x}",
-            in(reg) u16::from(selector) as u16
+            in(reg) u16::from(selector)
         )
     }
 }
