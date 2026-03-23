@@ -1,10 +1,15 @@
 #![no_std]
 #![feature(const_default)]
 #![feature(const_trait_impl)]
+#![feature(const_convert)]
+#![feature(const_result_trait_fn)]
 #![feature(explicit_tail_calls)]
 pub mod meta;
 
-use core::{marker::PhantomData, ptr::{self, NonNull}};
+use core::{
+    marker::PhantomData,
+    ptr::{self, NonNull},
+};
 
 use x86::structures::paging::PageTable;
 
@@ -13,7 +18,7 @@ use common::{
     enums::{BUDDY_MAX_ORDER, BuddyOrder},
 };
 
-use crate::meta::{BuddyArena, BuddyBlock, BuddyMeta, Dummy};
+use crate::meta::{BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Dummy};
 
 pub struct BuddyAllocator<Arena, Block>
 where
@@ -22,7 +27,7 @@ where
 {
     arena: NonNull<Arena>,
     freelist: [BuddyMeta<Dummy>; BUDDY_MAX_ORDER],
-    _block: PhantomData<Block>
+    _block: PhantomData<Block>,
 }
 
 impl<Arena, Block> BuddyAllocator<Arena, Block>
@@ -30,14 +35,17 @@ where
     Arena: BuddyArena<Block>,
     Block: BuddyBlock,
 {
-
     pub fn init(&'static mut self, arena: NonNull<Arena>) {
         for block in unsafe { arena.as_ref().iter() } {
-            let Some(order) = unsafe {  block.as_ref() }.meta().order else {
-                continue;
-            };
+            let order =
+                match unsafe { block.as_ref().meta().flags.get_order() } {
+                    BuddyOrder::None => continue,
+                    o => o as usize,
+                };
 
-            self.freelist[order as usize].attach(NonNull::from_ref(unsafe { block.as_ref().meta() }));
+            self.freelist[order].attach(NonNull::from_ref(unsafe {
+                block.as_ref().meta()
+            }));
         }
     }
 }
@@ -59,11 +67,15 @@ where
             as usize;
 
         let page = self.freelist[order].next.unwrap_or_else(|| {
-            NonNull::from_ref(unsafe { self.split_until(order)
-                .expect("Out of memory, swap is not implemented").as_ref().meta() })
+            NonNull::from_ref(unsafe {
+                self.split_until(order)
+                    .expect("Out of memory, swap is not implemented")
+                    .as_ref()
+                    .meta()
+            })
         });
 
-        unsafe { self.arena.as_ref().address_of(page) }
+        unsafe { self.arena.as_ref().address_of(Block::from_meta(page)) }
     }
 
     // pub fn free_pages(&self, address: usize) {
@@ -76,9 +88,10 @@ where
         &mut self,
         wanted_order: usize,
     ) -> Option<NonNull<Block>> {
-        let (closet_order, initial_page) = ((wanted_order + 1)
-            ..BUDDY_MAX_ORDER)
-            .find_map(|i| Some((i, self.freelist[i].next?)))?;
+        let (closet_order, initial_page) =
+            ((wanted_order + 1)..BUDDY_MAX_ORDER).find_map(|i| {
+                Some((i, Block::from_meta(self.freelist[i].next?)))
+            })?;
 
         Some(self.split_recursive(
             initial_page,
@@ -105,27 +118,30 @@ where
         let (lhs, rhs) = unsafe { self.arena.as_ref().split(page) };
 
         let next_order = current_order - 1;
-        match self.freelist[next_order] {
-            Some(mut block) => {
-                unsafe { block.as_mut().meta_mut().attach(rhs) };
-            }
-            None => self.freelist[next_order] = Some(rhs),
-        }
+
+        self.freelist[next_order].attach_block(rhs);
 
         become self.split_recursive(lhs, next_order, target_order)
     }
 
     /// This function will try to merge a page with it's buddy, until it
     /// cannot be merged anymore.
-    pub fn merge_recursive(&self, page: NonNull<Block>) -> NonNull<Block> {
+    pub fn merge_recursive(&mut self, page: NonNull<Block>) {
         let buddy = match unsafe { self.arena.as_ref().buddy_of(page) } {
             Ok(buddy) => buddy,
             Err(BuddyError::MaxOrder) => {
-                self.freelist[]
+                self.freelist[BUDDY_MAX_ORDER - 1].attach_block(page);
+                return;
             }
+        };
+
+        if unsafe { buddy.as_ref().meta().flags.is_allocated() } {
+            self.freelist[unsafe {
+                page.as_ref().meta().flags.get_order() as usize
+            }]
+            .attach_block(page);
+            return;
         }
-
-
 
         let (mut left, mut right) = (page, buddy);
         unsafe {
@@ -136,11 +152,9 @@ where
             }
         }
 
-        if let Some(merged) =
-            unsafe { BuddyAllocator::merge_with_buddy(page) }
-        {
-            become BuddyAllocator::merge_recursive(self, merged);
-        }
+        let merged = unsafe { self.arena.as_mut().merge(left, right) };
+
+        become BuddyAllocator::merge_recursive(self, merged);
     }
 
     pub fn alloc_table(&mut self) -> NonNull<PageTable> {
