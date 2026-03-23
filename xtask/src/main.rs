@@ -143,6 +143,8 @@ fn run_qemu() -> anyhow::Result<()> {
         // Machine type
         .arg("-M")
         .arg("q35")
+        .arg("-m")
+        .arg("4G")
         .arg("-drive")
         .arg("id=disk0,file=image.bin,if=none,format=raw")
         .arg("-device")
