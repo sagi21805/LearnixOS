@@ -28,6 +28,10 @@ use macros::CommonAddressFunctions;
     AsMut,
     AsRef,
     Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
     CommonAddressFunctions,
 )]
 #[repr(C)]
@@ -72,6 +76,10 @@ impl const From<PhysicalAddress> for u64 {
     AsMut,
     AsRef,
     Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
     CommonAddressFunctions,
 )]
 #[repr(C)]
