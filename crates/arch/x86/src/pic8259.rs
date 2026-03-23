@@ -1,6 +1,6 @@
-use crate::instructions::port::PortExt;
 /// The code in this module is inspired from osdev
 /// 8259_PIC guide.
+use crate::instructions::port::PortExt;
 use common::enums::{
     CascadedPicInterruptLine, PicCommandCode, PicInterruptLine,
     PicInterruptVectorOffset, PicMode, Port,
@@ -50,12 +50,6 @@ impl ProgrammableInterruptController {
     fn enable(&mut self) {
         unsafe {
             self.data.outb(0);
-        }
-    }
-
-    fn disable(&mut self) {
-        unsafe {
-            self.data.outb(0xff);
         }
     }
 
