@@ -2,7 +2,6 @@
 #![feature(macro_metavar_expr_concat)]
 #![feature(stmt_expr_attributes)]
 #![feature(const_trait_impl)]
-#![feature(abi_x86_interrupt)]
 #![feature(const_default)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
