@@ -1,8 +1,8 @@
 #![feature(const_default)]
 #![feature(const_trait_impl)]
-#![feature(never_type)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
+#![feature(never_type)]
 
 use macros::bitfields;
 
