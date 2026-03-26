@@ -18,7 +18,7 @@ use common::{
     enums::{BUDDY_MAX_ORDER, BuddyOrder},
 };
 
-use crate::meta::{BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Dummy};
+use crate::meta::{BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head};
 
 pub struct BuddyAllocator<Arena, Block>
 where
@@ -26,28 +26,8 @@ where
     Arena: BuddyArena<Block>,
 {
     arena: NonNull<Arena>,
-    freelist: [BuddyMeta<Dummy>; BUDDY_MAX_ORDER],
+    freelist: [BuddyMeta<Head>; BUDDY_MAX_ORDER],
     _block: PhantomData<Block>,
-}
-
-impl<Arena, Block> BuddyAllocator<Arena, Block>
-where
-    Arena: BuddyArena<Block>,
-    Block: BuddyBlock,
-{
-    pub fn init(&'static mut self, arena: NonNull<Arena>) {
-        for block in unsafe { arena.as_ref().iter() } {
-            let order =
-                match unsafe { block.as_ref().meta().flags.get_order() } {
-                    BuddyOrder::None => continue,
-                    o => o as usize,
-                };
-
-            self.freelist[order].attach(NonNull::from_ref(unsafe {
-                block.as_ref().meta()
-            }));
-        }
-    }
 }
 
 impl<Arena, Block> BuddyAllocator<Arena, Block>

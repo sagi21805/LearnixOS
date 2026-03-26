@@ -1,16 +1,9 @@
-use core::mem::ManuallyDrop;
+use core::{mem::ManuallyDrop, ptr::NonNull};
 
-use buddy::meta::{BuddyPage, BuddyPageMeta};
+use buddy::meta::{BuddyBlock, BuddyMeta, BuddyMetaNode, Real};
 
 pub union PageMeta {
-    pub buddy: ManuallyDrop<BuddyPageMeta<PageMeta>>,
-}
-
-impl BuddyPage for PageMeta {
-    #[inline]
-    fn meta(&mut self) -> &mut BuddyPageMeta<Self> {
-        unsafe { &mut self.buddy }
-    }
+    pub buddy: ManuallyDrop<BuddyMetaNode>,
 }
 
 // #[derive(Debug)]

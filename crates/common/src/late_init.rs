@@ -14,8 +14,8 @@ impl<T> LateInit<T> {
         LateInit::<T>(MaybeUninit::new(val))
     }
 
-    pub const fn write(&mut self, val: T) {
-        self.0.write(val);
+    pub const fn write(&mut self, val: T) -> &mut T {
+        self.0.write(val)
     }
 }
 
