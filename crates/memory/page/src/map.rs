@@ -14,10 +14,7 @@ use common::{
 
 use x86::memory_map::MemoryMap;
 
-use buddy::{
-    BuddyAllocator,
-    meta::{BuddyMeta, Dummy, Real},
-};
+use buddy::{BuddyAllocator, meta::BuddyMeta};
 
 use crate::Page;
 
@@ -36,18 +33,18 @@ impl DerefMut for PageMap {
         unsafe { self.0.as_mut() }
     }
 }
-pub fn init(&'static mut self, arena: NonNull<Arena>) {
-    for block in unsafe { arena.as_ref().iter() } {
-        let order =
-            match unsafe { block.as_ref().meta().flags.get_order() } {
-                BuddyOrder::None => continue,
-                o => o as usize,
-            };
+// pub fn init(&'static mut self, arena: NonNull<Arena>) {
+//     for block in unsafe { arena.as_ref().iter() } {
+//         let order =
+//             match unsafe { block.as_ref().meta().flags.get_order() } {
+//                 BuddyOrder::None => continue,
+//                 o => o as usize,
+//             };
 
-        self.freelist[order]
-            .attach(NonNull::from_ref(unsafe { block.as_ref().meta() }));
-    }
-}
+//         self.freelist[order]
+//             .attach(NonNull::from_ref(unsafe { block.as_ref().meta()
+// }));     }
+// }
 impl PageMap {
     /// Initializes all pages on the constant address
     /// ([`PAGE_ALLOCATOR_OFFSET`]) and returns the end address.

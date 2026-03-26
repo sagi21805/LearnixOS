@@ -4,7 +4,7 @@ pub mod map;
 pub mod meta;
 
 use crate::meta::PageMeta;
-use buddy::meta::{BuddyBlock, Regular};
+use buddy::meta::{BuddyBlock, BuddyMeta, Regular};
 use core::{cell::Ref, marker::PhantomData, ptr::NonNull};
 
 pub struct Page {
