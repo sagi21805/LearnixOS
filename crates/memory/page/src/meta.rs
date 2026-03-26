@@ -1,6 +1,6 @@
 use core::{mem::ManuallyDrop, ptr::NonNull};
 
-use buddy::meta::{BuddyBlock, BuddyMeta, BuddyMetaNode, Real};
+use buddy::meta::{BuddyBlock, BuddyMeta, BuddyMetaNode};
 
 pub union PageMeta {
     pub buddy: ManuallyDrop<BuddyMetaNode>,

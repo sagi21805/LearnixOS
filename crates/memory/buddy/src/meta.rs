@@ -1,8 +1,7 @@
-use core::{marker::PhantomData, ptr::NonNull};
+use core::{marker::PhantomData, mem::ManuallyDrop, ptr::NonNull};
 
 use common::{
     address_types::PhysicalAddress,
-    constants::REGULAR_PAGE_SIZE,
     enums::{BUDDY_MAX_ORDER, BuddyOrder},
 };
 
@@ -25,29 +24,29 @@ pub struct Detached;
 pub struct Unknown;
 
 pub trait MetaState: private::Seald {
-    type Prev<Block: Sized>;
+    type Prev: Sized;
     type Flags: Sized;
 }
 impl private::Seald for Head {}
 impl MetaState for Head {
-    type Prev<Block: Sized> = ();
+    type Prev = ();
     type Flags = ();
 }
 impl private::Seald for Regular {}
 impl MetaState for Regular {
-    type Prev<Block: Sized> = NonNull<Block>;
+    type Prev = NonNull<BuddyMetaNode>;
     type Flags = BuddyFlags;
 }
 
 impl private::Seald for Detached {}
 impl MetaState for Detached {
-    type Prev<Block: Sized> = Option<NonNull<Block>>;
+    type Prev = Option<NonNull<BuddyMetaNode>>;
     type Flags = BuddyFlags;
 }
 impl private::Seald for Unknown {}
 impl MetaState for Unknown {
     type Flags = ();
-    type Prev<Block: Sized> = ();
+    type Prev = ();
 }
 
 pub trait BuddyBlock: Sized {
@@ -65,20 +64,25 @@ pub struct BuddyFlags {
     pub allocated: B1,
 }
 
+// TODO: SPLIT TO DIFFERENT STRUCTS, AND THEN ADD STRUCT THAT WRAPS THE
+// UNION, AND ADDS SPECIAL DEREF AND DEREF MUT IMPLEMENTATIONS THAT ALLOWS
+// SAFE ACCESS TO UNION FIELDS ON COMPILE TIME.
 #[derive(Debug)]
-pub struct BuddyMeta<SelfState: MetaState> {
+pub struct BuddyMeta<State: MetaState> {
     pub(crate) next: Option<NonNull<BuddyMeta<Regular>>>,
-    pub(crate) prev: State::Prev<BuddyMeta<Unknown>>,
+    pub(crate) prev: State::Prev,
     pub(crate) flags: State::Flags,
-    _state: PhantomData<SelfState>,
+    _state: PhantomData<State>,
 }
 
 pub union BuddyMetaNode {
-    pub regular: BuddyMeta<Regular>,
-    pub detached: BuddyMeta<Detached>,
+    pub regular: ManuallyDrop<BuddyMeta<Regular>>,
+    pub detached: ManuallyDrop<BuddyMeta<Detached>>,
+    pub head: ManuallyDrop<BuddyMeta<Head>>,
+    pub unknown: ManuallyDrop<BuddyMeta<Unknown>>,
 }
 
-impl<PrevState: MetaState> const Default for BuddyMeta<Head, PrevState> {
+impl const Default for BuddyMeta<Head> {
     fn default() -> Self {
         Self {
             next: None,
@@ -89,23 +93,12 @@ impl<PrevState: MetaState> const Default for BuddyMeta<Head, PrevState> {
     }
 }
 
-impl BuddyMeta<Regular> {
-    fn new(prev: NonNull<BuddyMeta<Regular>>) -> Self {
-        Self {
-            next: None,
-            prev,
-            flags: BuddyFlags::default().order(BuddyOrder::None),
-            _state: PhantomData,
-        }
-    }
-}
-
 impl<State: MetaState> BuddyMeta<State> {
     #[inline]
     pub fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
         unsafe { p.as_mut().next = self.next };
         if let Some(mut next) = self.next {
-            unsafe { next.as_mut().prev = p };
+            unsafe { next.as_mut().prev = p.cast() };
         }
         self.next = Some(p)
     }
@@ -123,15 +116,15 @@ impl BuddyMeta<Regular> {
     ) -> Self {
         Self {
             next: None,
-            prev,
-            flags: BuddyFlags::default().order(BuddyOrder::None),
+            prev: prev.cast(),
+            flags,
             _state: PhantomData,
         }
     }
 
     /// Detaches self from the list.
     pub fn detach(&mut self) -> NonNull<BuddyMeta<Regular>> {
-        unsafe { self.prev.as_mut().next = self.next }
+        unsafe { self.prev.as_mut().unknown.next = self.next }
 
         if let Some(mut next) = self.next {
             unsafe { next.as_mut().prev = self.prev };
@@ -143,7 +136,7 @@ impl BuddyMeta<Regular> {
 
 pub trait BuddyArena<Block: BuddyBlock> {
     // GENERATE ARUGMENTS
-    pub fn init() -> (NonNull<Self>, [BuddyMeta<Head>; BUDDY_MAX_ORDER]);
+    fn init() -> (NonNull<Self>, [BuddyMeta<Head>; BUDDY_MAX_ORDER]);
 
     fn iter(&self) -> impl Iterator<Item = NonNull<Block>>;
 
