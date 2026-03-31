@@ -6,7 +6,7 @@ use core::{
 };
 
 use common::{
-    address_types::VirtualAddress,
+    address_types::{PhysicalAddress, VirtualAddress},
     constants::{PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_SIZE},
     enums::BUDDY_MAX_ORDER,
     late_init::LateInit,
@@ -14,9 +14,15 @@ use common::{
 
 use x86::memory_map::MemoryMap;
 
-use buddy::{BuddyAllocator, meta::BuddyMeta};
+use buddy::{
+    BuddyAllocator,
+    meta::{
+        BuddyArena, BuddyError, BuddyMeta, BuddyMetaType, Detached, Head,
+        Regular,
+    },
+};
 
-use crate::Page;
+use crate::{Page, meta::PageMeta};
 
 pub struct PageMap(NonNull<[Page]>);
 
@@ -45,15 +51,14 @@ impl DerefMut for PageMap {
 //             .attach(NonNull::from_ref(unsafe { block.as_ref().meta()
 // }));     }
 // }
-impl PageMap {
+
+impl BuddyArena<Page> for PageMap {
     /// Initializes all pages on the constant address
     /// ([`PAGE_ALLOCATOR_OFFSET`]) and returns the end address.
-    pub fn init(uninit: &'static mut LateInit<PageMap>, mmap: MemoryMap) {
+    fn init(uninit: &'static mut LateInit<PageMap>, mmap: MemoryMap) {
         let last = mmap.last().unwrap();
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
-
-        let freelist = [BuddyMeta::<Dummy>::default(); BUDDY_MAX_ORDER];
 
         unsafe {
             let page_map = NonNull::slice_from_raw_parts(
@@ -68,13 +73,44 @@ impl PageMap {
                     p as *mut Page,
                     Page {
                         meta: PageMeta {
-                            buddy: ManuallyDrop::new(
-                                BuddyMeta::<Real>::default(),
-                            ),
+                            buddy: BuddyMetaType {
+                                detached: BuddyMeta::<Detached>::default(),
+                            },
                         },
                     },
                 )
             }
         }
+    }
+
+    fn address_of(&self, block: NonNull<Page>) -> PhysicalAddress {
+        todo!()
+    }
+
+    fn buddy_of(
+        &self,
+        block: NonNull<Page>,
+    ) -> Result<NonNull<Page>, BuddyError> {
+        todo!()
+    }
+
+    #[inline]
+    fn iter(&self) -> impl ExactSizeIterator<Item = NonNull<Page>> {
+        self.as_ref().iter().map(NonNull::from_ref)
+    }
+
+    fn merge(
+        &self,
+        block: NonNull<Page>,
+        buddy: NonNull<Page>,
+    ) -> NonNull<Page> {
+        todo!()
+    }
+
+    fn split(
+        &self,
+        block: NonNull<Page>,
+    ) -> (NonNull<Page>, NonNull<Page>) {
+        todo!()
     }
 }

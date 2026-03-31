@@ -1,12 +1,19 @@
-use core::{marker::PhantomData, mem::ManuallyDrop, ptr::NonNull};
+use core::{
+    marker::PhantomData,
+    mem::ManuallyDrop,
+    ops::{Deref, DerefMut},
+    ptr::NonNull,
+};
 
 use common::{
     address_types::PhysicalAddress,
     enums::{BUDDY_MAX_ORDER, BuddyOrder},
+    late_init::LateInit,
 };
 
 use macros::bitfields;
 use thiserror::Error;
+use x86::memory_map::MemoryMap;
 
 #[derive(Debug, Error)]
 pub enum BuddyError {
@@ -18,43 +25,57 @@ mod private {
     pub trait Seald {}
 }
 
+#[derive(Copy, Clone)]
 pub struct Head;
+#[derive(Copy, Clone)]
 pub struct Regular;
+#[derive(Copy, Clone)]
 pub struct Detached;
-pub struct Unknown;
+
+/// Intermidiate state represents a node that is in the list, but is not
+/// known to be a head or a regular node.
+#[derive(Copy, Clone)]
+pub struct Intermidiate;
 
 pub trait MetaState: private::Seald {
+    type Next: Sized;
     type Prev: Sized;
     type Flags: Sized;
 }
 impl private::Seald for Head {}
 impl MetaState for Head {
+    type Next = Option<NonNull<BuddyMeta<Regular>>>;
     type Prev = ();
     type Flags = ();
 }
 impl private::Seald for Regular {}
 impl MetaState for Regular {
-    type Prev = NonNull<BuddyMetaNode>;
+    type Next = Option<NonNull<BuddyMeta<Regular>>>;
+    type Prev = NonNull<BuddyMeta<Intermidiate>>;
     type Flags = BuddyFlags;
 }
 
 impl private::Seald for Detached {}
 impl MetaState for Detached {
-    type Prev = Option<NonNull<BuddyMetaNode>>;
+    type Next = Option<NonNull<()>>;
+    type Prev = Option<NonNull<()>>;
     type Flags = BuddyFlags;
 }
-impl private::Seald for Unknown {}
-impl MetaState for Unknown {
-    type Flags = ();
+impl private::Seald for Intermidiate {}
+impl MetaState for Intermidiate {
+    type Next = Option<NonNull<BuddyMeta<Regular>>>;
     type Prev = ();
+    type Flags = ();
 }
 
 pub trait BuddyBlock: Sized {
-    fn meta(&self) -> &BuddyMeta<Regular>;
+    fn meta<S: MetaState>(&self) -> &BuddyMeta<S>;
 
-    fn meta_mut(&mut self) -> &mut BuddyMeta<Regular>;
+    fn meta_mut<S: MetaState>(&mut self) -> &mut BuddyMeta<S>;
 
-    fn from_meta(meta: NonNull<BuddyMeta<Regular>>) -> NonNull<Self>;
+    fn from_meta<S: MetaState>(
+        meta: NonNull<BuddyMeta<S>>,
+    ) -> NonNull<Self>;
 }
 
 #[bitfields]
@@ -64,43 +85,62 @@ pub struct BuddyFlags {
     pub allocated: B1,
 }
 
-// TODO: SPLIT TO DIFFERENT STRUCTS, AND THEN ADD STRUCT THAT WRAPS THE
-// UNION, AND ADDS SPECIAL DEREF AND DEREF MUT IMPLEMENTATIONS THAT ALLOWS
-// SAFE ACCESS TO UNION FIELDS ON COMPILE TIME.
-#[derive(Debug)]
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub struct BuddyMeta<State: MetaState> {
-    pub(crate) next: Option<NonNull<BuddyMeta<Regular>>>,
+    pub(crate) next: State::Next,
     pub(crate) prev: State::Prev,
     pub(crate) flags: State::Flags,
-    _state: PhantomData<State>,
 }
 
-pub union BuddyMetaNode {
-    pub regular: ManuallyDrop<BuddyMeta<Regular>>,
-    pub detached: ManuallyDrop<BuddyMeta<Detached>>,
-    pub head: ManuallyDrop<BuddyMeta<Head>>,
-    pub unknown: ManuallyDrop<BuddyMeta<Unknown>>,
+#[derive(Copy, Clone)]
+pub union BuddyMetaType {
+    pub regular: BuddyMeta<Regular>,
+    pub detached: BuddyMeta<Detached>,
+    pub head: BuddyMeta<Head>,
 }
 
-impl const Default for BuddyMeta<Head> {
-    fn default() -> Self {
-        Self {
-            next: None,
-            prev: (),
-            flags: (),
-            _state: PhantomData,
-        }
+impl From<BuddyMeta<Regular>> for BuddyMetaType {
+    fn from(value: BuddyMeta<Regular>) -> Self {
+        Self { regular: value }
+    }
+}
+impl From<BuddyMetaType> for BuddyMeta<Regular> {
+    fn from(value: BuddyMetaType) -> Self {
+        unsafe { value.regular }
     }
 }
 
-impl<State: MetaState> BuddyMeta<State> {
+impl From<BuddyMeta<Detached>> for BuddyMetaType {
+    fn from(value: BuddyMeta<Detached>) -> Self {
+        Self { detached: value }
+    }
+}
+impl From<BuddyMetaType> for BuddyMeta<Detached> {
+    fn from(value: BuddyMetaType) -> Self {
+        unsafe { value.detached }
+    }
+}
+
+impl From<BuddyMeta<Head>> for BuddyMetaType {
+    fn from(value: BuddyMeta<Head>) -> Self {
+        Self { head: value }
+    }
+}
+impl From<BuddyMetaType> for BuddyMeta<Head> {
+    fn from(value: BuddyMetaType) -> Self {
+        unsafe { value.head }
+    }
+}
+
+impl BuddyMeta<Regular> {
     #[inline]
     pub fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
         unsafe { p.as_mut().next = self.next };
         if let Some(mut next) = self.next {
             unsafe { next.as_mut().prev = p.cast() };
         }
-        self.next = Some(p)
+        self.next = Some(p.cast())
     }
 
     #[inline]
@@ -109,22 +149,57 @@ impl<State: MetaState> BuddyMeta<State> {
     }
 }
 
+impl BuddyMeta<Head> {
+    #[inline]
+    pub fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
+        unsafe { p.as_mut().next = self.next };
+        if let Some(mut next) = self.next {
+            unsafe { next.as_mut().prev = p.cast() };
+        }
+        self.next = Some(p.cast())
+    }
+
+    #[inline]
+    pub fn attach_block<Block: BuddyBlock>(&mut self, p: NonNull<Block>) {
+        self.attach(NonNull::from_ref(unsafe { p.as_ref().meta() }));
+    }
+}
+
+impl Default for BuddyMeta<Head> {
+    fn default() -> Self {
+        Self {
+            next: None,
+            prev: (),
+            flags: (),
+        }
+    }
+}
+
+impl Default for BuddyMeta<Detached> {
+    fn default() -> Self {
+        Self {
+            next: None,
+            prev: None,
+            flags: BuddyFlags::default(),
+        }
+    }
+}
+
 impl BuddyMeta<Regular> {
     pub fn new(
         prev: NonNull<BuddyMeta<Regular>>,
         flags: BuddyFlags,
-    ) -> Self {
-        Self {
+    ) -> BuddyMeta<Regular> {
+        BuddyMeta {
             next: None,
             prev: prev.cast(),
             flags,
-            _state: PhantomData,
         }
     }
 
     /// Detaches self from the list.
     pub fn detach(&mut self) -> NonNull<BuddyMeta<Regular>> {
-        unsafe { self.prev.as_mut().unknown.next = self.next }
+        unsafe { self.prev.as_mut().next = self.next }
 
         if let Some(mut next) = self.next {
             unsafe { next.as_mut().prev = self.prev };
@@ -134,11 +209,11 @@ impl BuddyMeta<Regular> {
     }
 }
 
-pub trait BuddyArena<Block: BuddyBlock> {
+pub trait BuddyArena<Block: BuddyBlock>: Sized {
     // GENERATE ARUGMENTS
-    fn init() -> (NonNull<Self>, [BuddyMeta<Head>; BUDDY_MAX_ORDER]);
+    fn init(uninit: &'static mut LateInit<Self>, mmap: MemoryMap);
 
-    fn iter(&self) -> impl Iterator<Item = NonNull<Block>>;
+    fn iter(&self) -> impl ExactSizeIterator<Item = NonNull<Block>>;
 
     fn buddy_of(
         &self,
