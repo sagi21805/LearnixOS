@@ -4,6 +4,7 @@
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
 #![feature(explicit_tail_calls)]
+
 pub mod meta;
 
 use core::{
@@ -16,9 +17,10 @@ use x86::structures::paging::PageTable;
 use common::{
     address_types::PhysicalAddress,
     enums::{BUDDY_MAX_ORDER, BuddyOrder},
+    iter,
 };
 
-use crate::meta::{BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head};
+use crate::meta::{BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head, Regular};
 
 pub struct BuddyAllocator<Arena, Block>
 where
@@ -35,6 +37,18 @@ where
     Arena: BuddyArena<Block>,
     Block: BuddyBlock,
 {
+    pub fn init(uninit: &'static Self, arena: NonNull<Arena>) {
+        let freelist = [BuddyMeta::<Head>::default(); BUDDY_MAX_ORDER];
+
+        for (mut block, order) in iter::power_chunk_firsts(
+            unsafe { arena.as_ref().iter() },
+            BUDDY_MAX_ORDER,
+        ) {
+
+            unsafe { block.as_mut().meta_mut::<Regular>() = BuddyMeta::<Regular>::new(, flags) }
+        }
+    }
+
     pub fn alloc_pages(&mut self, num_pages: usize) -> PhysicalAddress {
         assert!(
             num_pages <= (1 << BuddyOrder::MAX as usize),
