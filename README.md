@@ -1,7 +1,5 @@
 <p align="center">
-  <a href="https://github.com/sponsors/sagi21805">
-    <img src="https://img.shields.io/badge/Sponsor-me-ff69b4?style=for-the-badge&logo=github-sponsors" alt="Sponsor">
-  </a>
+  <a href="https://github.com/sponsors/sagi21805"><img src="https://img.shields.io/badge/Sponsor-me-ff69b4?style=for-the-badge&logo=github-sponsors" alt="Sponsor"></a>&nbsp;<a href="https://github.com/sagi21805/LearnixOS"><img src="https://img.shields.io/badge/⭐_Star-me-FFD700?style=for-the-badge&logo=github" alt="Star"></a>
 </p>
 
 # The Learnix Opearting System
