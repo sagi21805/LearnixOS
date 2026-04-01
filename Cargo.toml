@@ -1,0 +1,21 @@
+[workspace]
+
+members = [
+    "bootloader/first_stage",
+    "bootloader/second_stage",
+    "crates/arch/x86",
+    "crates/common",
+    "crates/macros",
+    "crates/drivers/ahci",
+    "crates/drivers/keyboard",
+    "crates/drivers/pci",
+    "crates/drivers/vga-display",
+    "crates/memory/buddy",
+    "crates/memory/page",
+    "crates/memory/slab",
+    "kernel",
+    "tests",
+    "xtask",
+]
+
+resolver = "2"
