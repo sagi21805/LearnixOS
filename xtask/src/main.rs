@@ -104,11 +104,9 @@ impl Shell {
             &flags,
         )?;
 
-        let stage1_bin = "bootloader/first_stage/target/16bit_target/\
-                          release/first_stage";
-        let stage2_bin = "bootloader/second_stage/target/32bit_target/\
-                          release/second_stage";
-        let kernel = "kernel/target/64bit_target/release/kernel";
+        let stage1_bin = "target/16bit_target/release/first_stage";
+        let stage2_bin = "target/32bit_target/release/second_stage";
+        let kernel = "target/64bit_target/release/kernel";
         let mut image =
             self.read_binary_file(stage1_bin).with_context(|| {
                 format!("Could not find stage1 binary at {}", stage1_bin)
