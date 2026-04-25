@@ -6,7 +6,6 @@
 
 use macros::bitfields;
 
-mod book;
 mod test;
 use test::{Nested, Test};
 

@@ -1,13 +1,12 @@
 use common::enums::{BiosInterrupts, DiskInterrupt};
 use core::arch::asm;
 
-// ANCHOR: dap
-// The `repr(C)` means that the layout in memory will be as
-// specified (like in C) because rust ABI doesn't state that
-// this is promised.
-//
-// The `repr(packed) states that there will no padding due
-// to alignment
+/// The `repr(C)` means that the layout in memory will be as
+/// specified (like in C) because rust ABI doesn't state that
+/// this is promised.
+///
+/// The `repr(packed) states that there will no padding due
+/// to alignment
 #[repr(C, packed)]
 pub struct DiskAddressPacket {
     /// The size of the packet
@@ -28,7 +27,6 @@ pub struct DiskAddressPacket {
     /// The LBA address of the first sector
     abs_block_num: u64,
 }
-// ANCHOR_END: dap
 
 impl DiskAddressPacket {
     /// Create a new Disk Packet

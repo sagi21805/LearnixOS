@@ -16,6 +16,7 @@ members = [
     "kernel",
     "tests",
     "xtask",
+    "snippets",
 ]
 
 resolver = "2"
