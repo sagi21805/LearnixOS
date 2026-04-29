@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+num_enum = { git = "https://github.com/sagi21805/num_enum.git", rev = "2e53bd356ae93c537f3345f38679617bb977633c", default-features = false, features = [
+    "complex-expressions",
+] }
+thiserror = "2.0.18"
