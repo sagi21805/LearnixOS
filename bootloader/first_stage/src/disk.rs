@@ -73,7 +73,7 @@ impl DiskAddressPacket {
     ///
     /// - `disk_number`: The disk number to read the sectors from
     // ANCHOR: load
-    pub fn load(&self, disk_number: u8) {
+    pub unsafe fn load(&self, disk_number: u8) {
         unsafe {
             // This is an inline assembly block
             // This block's assembly will be injected to the function.

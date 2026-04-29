@@ -20,16 +20,30 @@ use core::{
 use disk::DiskAddressPacket;
 use x86::structures::global_descriptor_table::GlobalDescriptorTableProtected;
 
-// ANCHOR: gdt_static
 static GLOBAL_DESCRIPTOR_TABLE: GlobalDescriptorTableProtected =
     GlobalDescriptorTableProtected::default();
-// ANCHOR_END: gdt_static
 
 global_asm!(include_str!("../asm/boot.s"));
 
-// ANCHOR: first_stage
 #[unsafe(no_mangle)]
 pub fn first_stage() -> ! {
+    unsafe {
+        load_dap();
+
+        load_kernel_dap();
+
+        enter_vga_text();
+
+        obtain_memory_map();
+
+        enter_protected_mode();
+    }
+
+    #[allow(clippy::empty_loop)]
+    loop {}
+}
+
+unsafe fn load_dap() {
     // Read the disk number the os was booted from
     let disk_number =
         unsafe { core::ptr::read(DISK_NUMBER_OFFSET as *const u8) };
@@ -38,18 +52,33 @@ pub fn first_stage() -> ! {
     // from the disk to memory address 0x7e00
     // The address 0x7e00 was chosen because it is exactly one sector
     //  after the initial address 0x7c00.
+    #[rustfmt::skip]
     let dap = DiskAddressPacket::new(
-        4,     // Number of sectors
-        0,     // Memory address
-        0x7e0, // Memory segment
-        1,     // Starting LBA address
+        4,
+        0,
+        0x7e0,
+        1
     );
-    dap.load(disk_number);
-    // ANCHOR_END: first_stage
-    let kernel_dap = DiskAddressPacket::new(128, 0, 0x1000, 66);
-    kernel_dap.load(disk_number);
+    unsafe { dap.load(disk_number) };
+}
+
+unsafe fn load_kernel_dap() {
+    let disk_number =
+        unsafe { core::ptr::read(DISK_NUMBER_OFFSET as *const u8) };
+
+    #[rustfmt::skip]
+    let kernel_dap = DiskAddressPacket::new(
+        128,
+        0,
+        0x1000,
+        66
+    );
+
+    unsafe { kernel_dap.load(disk_number) };
+}
+
+unsafe fn enter_vga_text() {
     unsafe {
-        // Enter VGA text mode
         asm!(
             "mov ah, {0}",
             "mov al, {1}",
@@ -58,39 +87,33 @@ pub fn first_stage() -> ! {
             const VideoModes::VGA_TX_80X25_PB_9X16_PR_720X400 as u8,
             const BiosInterrupts::Video as u8
         );
-
-        // Obtain memory map
-        obtain_memory_map();
-
-        // ANCHOR: enter_protected_mode
-        // Load Global Descriptor Table
-        GLOBAL_DESCRIPTOR_TABLE.load();
-
-        // Set the Protected Mode bit and enter Protected Mode
-        asm!(
-            "mov eax, cr0",
-            "or eax, 1",
-            "mov cr0, eax",
-            options(readonly, nostack, preserves_flags)
-        );
-
-        // Jump to the next stage
-        // The 'ljmp' instruction is required to because it updates the cpu
-        // segment to the new ones from our GDT.
-        //
-        // The segment is the offset in the GDT.
-        // (KernelCode = 0x8 which is the code segment)
-        asm!(
-            "ljmp ${segment}, ${next_stage_address}",
-            segment = const Sections::KernelCode as u8,
-            next_stage_address = const SECOND_STAGE_OFFSET,
-            options(att_syntax)
-        );
-        // ANCHOR_END: enter_protected_mode
     }
+}
 
-    #[allow(clippy::empty_loop)]
-    loop {}
+unsafe fn enter_protected_mode() {
+    // Load Global Descriptor Table
+    unsafe { GLOBAL_DESCRIPTOR_TABLE.load() };
+
+    // Set the Protected Mode bit and enter Protected Mode
+    asm!(
+        "mov eax, cr0",
+        "or eax, 1",
+        "mov cr0, eax",
+        options(readonly, nostack, preserves_flags)
+    );
+
+    // Jump to the next stage
+    // The 'ljmp' instruction is required to because it updates the cpu
+    // segment to the new ones from our GDT.
+    //
+    // The segment is the offset in the GDT.
+    // (KernelCode = 0x8 which is the code segment)
+    asm!(
+        "ljmp ${segment}, ${next_stage_address}",
+        segment = const Sections::KernelCode as u8,
+        next_stage_address = const SECOND_STAGE_OFFSET,
+        options(att_syntax)
+    );
 }
 
 #[unsafe(naked)]
