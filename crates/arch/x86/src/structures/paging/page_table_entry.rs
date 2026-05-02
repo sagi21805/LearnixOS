@@ -3,7 +3,8 @@ use core::ptr::NonNull;
 
 use crate::structures::paging::{PageEntryFlags, PageTable};
 use common::{
-    address_types::PhysicalAddress, constants::REGULAR_PAGE_ALIGNMENT,
+    address_types::{CommonAddressFunctions, PhysicalAddress},
+    constants::REGULAR_PAGE_ALIGNMENT,
     error::EntryError,
 };
 use macros::bitfields;

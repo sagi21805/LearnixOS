@@ -1,17 +1,17 @@
+use super::{PageEntryFlags, PageTable};
+use common::address_types::CommonAddressFunctions;
+use common::{
+    address_types::PhysicalAddress,
+    constants::{
+        IDENTITY_PAGE_TABLE_L2_OFFSET, IDENTITY_PAGE_TABLE_L3_OFFSET,
+        IDENTITY_PAGE_TABLE_L4_OFFSET, TOP_IDENTITY_PAGE_TABLE_L2_OFFSET,
+        TOP_IDENTITY_PAGE_TABLE_L3_OFFSET,
+    },
+};
+use core::arch::asm;
+
 #[cfg(target_arch = "x86")]
 pub fn enable() -> Option<()> {
-    use super::{PageEntryFlags, PageTable};
-    use common::{
-        address_types::PhysicalAddress,
-        constants::{
-            IDENTITY_PAGE_TABLE_L2_OFFSET, IDENTITY_PAGE_TABLE_L3_OFFSET,
-            IDENTITY_PAGE_TABLE_L4_OFFSET,
-            TOP_IDENTITY_PAGE_TABLE_L2_OFFSET,
-            TOP_IDENTITY_PAGE_TABLE_L3_OFFSET,
-        },
-    };
-    use core::arch::asm;
-
     // ANCHOR: initialize_page_tables
     // These tables will hold the initial identity mapping
     let identity_page_table_l4 = unsafe {
@@ -31,18 +31,18 @@ pub fn enable() -> Option<()> {
     // ANCHOR: initialize_top_page_tables
     // These tables will hold identity mapping for the kernel on the top
     // half of the address space
-    // let top_identity_page_table_l3 = unsafe {
-    //     PageTable::empty_from_ptr(
-    //         TOP_IDENTITY_PAGE_TABLE_L3_OFFSET.into(),
-    //     )?
-    //     .as_mut()
-    // };
-    // let top_identity_page_table_l2 = unsafe {
-    //     PageTable::empty_from_ptr(
-    //         TOP_IDENTITY_PAGE_TABLE_L2_OFFSET.into(),
-    //     )?
-    //     .as_mut()
-    // };
+    let top_identity_page_table_l3 = unsafe {
+        PageTable::empty_from_ptr(
+            TOP_IDENTITY_PAGE_TABLE_L3_OFFSET.into(),
+        )?
+        .as_mut()
+    };
+    let top_identity_page_table_l2 = unsafe {
+        PageTable::empty_from_ptr(
+            TOP_IDENTITY_PAGE_TABLE_L2_OFFSET.into(),
+        )?
+        .as_mut()
+    };
     // ANCHOR_END: initialize_top_page_tables
 
     // ANCHOR: setup_page_tables

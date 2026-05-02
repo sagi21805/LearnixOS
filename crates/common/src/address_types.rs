@@ -4,15 +4,67 @@ use core::ptr::NonNull;
 use crate::constants::PHYSICAL_MEMORY_OFFSET;
 use crate::enums::PageTableLevel;
 
-// ANCHOR: trait_imports
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Div, DivAssign, Mul, MulAssign, Sub,
     SubAssign,
 };
-use macros::CommonAddressFunctions;
-// ANCHOR_END: trait_imports
 
-// ANCHOR: physical_address
+pub const trait CommonAddressFunctions:
+    Sized + Clone + Copy
+{
+    /// Create new instance without checking for address alignment.
+    ///
+    /// # Safety
+    /// This function should not check for sign extension.
+    unsafe fn new_unchecked(address: usize) -> Self;
+
+    fn new(address: usize) -> Option<Self>;
+
+    fn as_usize(&self) -> usize;
+
+    fn as_non_null<T>(&self) -> core::ptr::NonNull<T> {
+        core::ptr::NonNull::new(
+            core::ptr::with_exposed_provenance_mut::<T>(self.as_usize()),
+        )
+        .expect("Tried to create NonNull from address, found null")
+    }
+
+    fn is_aligned(&self, alignment: core::ptr::Alignment) -> bool {
+        self.as_usize() & (alignment.as_usize() - 1) == 0
+    }
+
+    fn align_up(self, alignment: core::ptr::Alignment) -> Self {
+        unsafe {
+            Self::new_unchecked(
+                (self.as_usize() + (alignment.as_usize() - 1))
+                    & !(alignment.as_usize() - 1),
+            )
+        }
+    }
+
+    fn align_down(self, alignment: core::ptr::Alignment) -> Self {
+        unsafe {
+            Self::new_unchecked(
+                self.as_usize() & !(alignment.as_usize() - 1),
+            )
+        }
+    }
+
+    fn alignment(&self) -> core::ptr::Alignment {
+        unsafe {
+            if self.as_usize() == 0 {
+                // Address 0 is aligned to any alignment; return max
+                // representable.
+                core::ptr::Alignment::new_unchecked(1 << (usize::BITS - 1))
+            } else {
+                core::ptr::Alignment::new_unchecked(
+                    1 << self.as_usize().trailing_zeros(),
+                )
+            }
+        }
+    }
+}
+
 #[derive(
     Clone,
     Debug,
@@ -32,35 +84,52 @@ use macros::CommonAddressFunctions;
     Eq,
     PartialOrd,
     Ord,
-    CommonAddressFunctions,
 )]
 #[repr(C)]
 pub struct PhysicalAddress(usize);
 
+impl const CommonAddressFunctions for PhysicalAddress {
+    unsafe fn new_unchecked(address: usize) -> Self {
+        Self(address)
+    }
+
+    fn new(address: usize) -> Option<Self> {
+        #[cfg(target_arch = "x86_64")]
+        if address < (1 << 48) {
+            unsafe { Some(Self::new_unchecked(address)) }
+        } else {
+            None
+        }
+
+        #[cfg(target_arch = "x86")]
+        unsafe {
+            Some(Self::new_unchecked(address))
+        }
+    }
+
+    fn as_usize(&self) -> usize {
+        self.0
+    }
+}
+
 impl const From<usize> for PhysicalAddress {
-    // TODO! Change into new in the future
     fn from(value: usize) -> Self {
-        unsafe { Self::new_unchecked(value) }
+        unsafe { PhysicalAddress::new_unchecked(value) }
     }
 }
 
 impl const From<u64> for PhysicalAddress {
-    // TODO! Change into new in the future
     fn from(value: u64) -> Self {
-        unsafe { Self::new_unchecked(value as usize) }
+        unsafe { PhysicalAddress::new_unchecked(value as usize) }
     }
 }
 
 impl const From<PhysicalAddress> for u64 {
-    // TODO! Change into new in the future
     fn from(value: PhysicalAddress) -> Self {
         value.0 as u64
     }
 }
 
-// ANCHOR_END: physical_address
-
-// ANCHOR: virtual_address
 #[derive(
     Clone,
     Debug,
@@ -80,10 +149,37 @@ impl const From<PhysicalAddress> for u64 {
     Eq,
     PartialOrd,
     Ord,
-    CommonAddressFunctions,
 )]
 #[repr(C)]
 pub struct VirtualAddress(usize);
+
+impl const CommonAddressFunctions for VirtualAddress {
+    unsafe fn new_unchecked(address: usize) -> Self {
+        Self(address)
+    }
+
+    fn new(address: usize) -> Option<Self> {
+        #[cfg(target_arch = "x86_64")]
+        if address < (1usize << 48) {
+            return Some(unsafe {
+                Self::new_unchecked(
+                    (((address << 16) as isize) >> 16) as usize,
+                )
+            });
+        } else {
+            None
+        }
+
+        #[cfg(target_arch = "x86")]
+        unsafe {
+            Some(Self::new_unchecked(address))
+        }
+    }
+
+    fn as_usize(&self) -> usize {
+        self.0
+    }
+}
 
 impl<T> From<NonNull<T>> for VirtualAddress {
     fn from(value: NonNull<T>) -> Self {
@@ -92,16 +188,12 @@ impl<T> From<NonNull<T>> for VirtualAddress {
 }
 
 impl const From<usize> for VirtualAddress {
-    // TODO! Change into new in the future
     fn from(value: usize) -> Self {
-        unsafe { Self::new_unchecked(value) }
+        unsafe { VirtualAddress::new_unchecked(value) }
     }
 }
 
-// ANCHOR_END: virtual_address
-
 impl VirtualAddress {
-    // ANCHOR: virtual_from_indexes
     #[allow(arithmetic_overflow)]
     pub const fn from_indexes(
         i4: usize,
@@ -111,13 +203,10 @@ impl VirtualAddress {
     ) -> Self {
         Self((i4 << 39) | (i3 << 30) | (i2 << 21) | (i1 << 12))
     }
-    // ANCHOR_END: virtual_from_indexes
 
-    // ANCHOR: virtual_from_indices
     pub const fn from_indices(indices: [usize; 4]) -> Self {
         Self::from_indexes(indices[0], indices[1], indices[2], indices[3])
     }
-    // ANCHOR_END: virtual_from_indices
 
     /// indexing for the n_th page table
     ///
@@ -135,11 +224,9 @@ impl VirtualAddress {
 }
 
 impl PhysicalAddress {
-    // ANCHOR: physical_translate
     #[inline]
     #[cfg(target_arch = "x86_64")]
     pub const fn translate(&self) -> VirtualAddress {
         VirtualAddress(self.0 + PHYSICAL_MEMORY_OFFSET)
     }
-    // ANCHOR_END: physical_translate
 }

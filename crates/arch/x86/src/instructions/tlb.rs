@@ -1,4 +1,4 @@
-use common::address_types::VirtualAddress;
+use common::address_types::{CommonAddressFunctions, VirtualAddress};
 use core::arch::asm;
 
 use crate::registers::cr3;
