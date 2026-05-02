@@ -2,7 +2,7 @@ use core::ptr::{self, NonNull};
 
 use crate::{registers::cr3, structures::paging::PageTableEntry};
 use common::{
-    address_types::VirtualAddress,
+    address_types::{CommonAddressFunctions, VirtualAddress},
     constants::{PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT},
     enums::{PageSize, PageTableLevel},
     error::EntryError,
