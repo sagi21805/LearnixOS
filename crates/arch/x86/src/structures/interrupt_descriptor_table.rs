@@ -1,5 +1,5 @@
 use common::{
-    address_types::{CommonAddressFunctions, VirtualAddress},
+    address_types::{Address, VirtualAddress},
     enums::{
         ProtectionLevel, Sections, SystemSegmentType,
         interrupts::{Interrupt, InterruptStackTable, InterruptType},
