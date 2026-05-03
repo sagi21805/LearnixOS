@@ -3,7 +3,7 @@ use core::ptr::NonNull;
 
 use crate::structures::paging::{PageEntryFlags, PageTable};
 use common::{
-    address_types::{CommonAddressFunctions, PhysicalAddress},
+    address_types::{Address, PhysicalAddress},
     constants::REGULAR_PAGE_ALIGNMENT,
     error::EntryError,
 };

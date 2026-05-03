@@ -1,4 +1,4 @@
-use crate::address_types::VirtualAddress;
+use crate::address_types::{Address, VirtualAddress};
 use core::{panic, slice};
 use derive_more::Constructor;
 

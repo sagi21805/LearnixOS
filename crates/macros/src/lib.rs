@@ -9,7 +9,7 @@ use crate::bitflags::bitfields_impl;
 
 mod bitflags;
 // ANCHOR: common_address_functions
-#[proc_macro_derive(CommonAddressFunctions)]
+#[proc_macro_derive(Address)]
 pub fn common_address_functions(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let struct_name = &input.ident;
