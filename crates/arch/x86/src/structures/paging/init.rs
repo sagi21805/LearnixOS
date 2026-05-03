@@ -12,7 +12,7 @@ use common::{
 };
 use core::arch::asm;
 
-fn init_identiy_tables() -> Option<&'static mut PageTable> {
+fn init_identity_tables() -> Option<&'static mut PageTable> {
     // These tables will hold the initial identity mapping
     let identity_page_table_l4 = unsafe {
         PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L4_OFFSET.into())?
