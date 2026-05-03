@@ -9,9 +9,7 @@ use derive_more::{
     SubAssign,
 };
 
-pub const trait CommonAddressFunctions:
-    Sized + Clone + Copy
-{
+pub const trait Address: Sized + Clone + Copy {
     /// Create new instance without checking for address alignment.
     ///
     /// # Safety
@@ -29,11 +27,11 @@ pub const trait CommonAddressFunctions:
         .expect("Tried to create NonNull from address, found null")
     }
 
-    fn is_aligned(&self, alignment: core::ptr::Alignment) -> bool {
+    fn is_aligned(&self, alignment: core::mem::Alignment) -> bool {
         self.as_usize() & (alignment.as_usize() - 1) == 0
     }
 
-    fn align_up(self, alignment: core::ptr::Alignment) -> Self {
+    fn align_up(self, alignment: core::mem::Alignment) -> Self {
         unsafe {
             Self::new_unchecked(
                 (self.as_usize() + (alignment.as_usize() - 1))
@@ -42,7 +40,7 @@ pub const trait CommonAddressFunctions:
         }
     }
 
-    fn align_down(self, alignment: core::ptr::Alignment) -> Self {
+    fn align_down(self, alignment: core::mem::Alignment) -> Self {
         unsafe {
             Self::new_unchecked(
                 self.as_usize() & !(alignment.as_usize() - 1),
@@ -50,14 +48,14 @@ pub const trait CommonAddressFunctions:
         }
     }
 
-    fn alignment(&self) -> core::ptr::Alignment {
+    fn alignment(&self) -> core::mem::Alignment {
         unsafe {
             if self.as_usize() == 0 {
                 // Address 0 is aligned to any alignment; return max
                 // representable.
-                core::ptr::Alignment::new_unchecked(1 << (usize::BITS - 1))
+                core::mem::Alignment::new_unchecked(1 << (usize::BITS - 1))
             } else {
-                core::ptr::Alignment::new_unchecked(
+                core::mem::Alignment::new_unchecked(
                     1 << self.as_usize().trailing_zeros(),
                 )
             }
@@ -88,7 +86,7 @@ pub const trait CommonAddressFunctions:
 #[repr(C)]
 pub struct PhysicalAddress(usize);
 
-impl const CommonAddressFunctions for PhysicalAddress {
+impl const Address for PhysicalAddress {
     unsafe fn new_unchecked(address: usize) -> Self {
         Self(address)
     }
@@ -153,7 +151,7 @@ impl const From<PhysicalAddress> for u64 {
 #[repr(C)]
 pub struct VirtualAddress(usize);
 
-impl const CommonAddressFunctions for VirtualAddress {
+impl const Address for VirtualAddress {
     unsafe fn new_unchecked(address: usize) -> Self {
         Self(address)
     }
