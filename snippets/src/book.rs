@@ -8,6 +8,7 @@ mod minimal_main;
 mod no_std;
 mod panic;
 mod print;
+mod print_example;
 mod static_str;
 mod static_uninit;
 mod static_var;
