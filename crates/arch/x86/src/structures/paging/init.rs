@@ -1,5 +1,7 @@
+use crate::registers::cr3;
+
 use super::{PageEntryFlags, PageTable};
-use common::address_types::CommonAddressFunctions;
+use common::address_types::Address;
 use common::{
     address_types::PhysicalAddress,
     constants::{
@@ -10,9 +12,7 @@ use common::{
 };
 use core::arch::asm;
 
-#[cfg(target_arch = "x86")]
-pub fn enable() -> Option<()> {
-    // ANCHOR: initialize_page_tables
+fn init_identiy_tables() -> Option<&'static mut PageTable> {
     // These tables will hold the initial identity mapping
     let identity_page_table_l4 = unsafe {
         PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L4_OFFSET.into())?
@@ -26,26 +26,7 @@ pub fn enable() -> Option<()> {
         PageTable::empty_from_ptr(IDENTITY_PAGE_TABLE_L2_OFFSET.into())?
             .as_mut()
     };
-    // ANCHOR_END: initialize_page_tables
 
-    // ANCHOR: initialize_top_page_tables
-    // These tables will hold identity mapping for the kernel on the top
-    // half of the address space
-    let top_identity_page_table_l3 = unsafe {
-        PageTable::empty_from_ptr(
-            TOP_IDENTITY_PAGE_TABLE_L3_OFFSET.into(),
-        )?
-        .as_mut()
-    };
-    let top_identity_page_table_l2 = unsafe {
-        PageTable::empty_from_ptr(
-            TOP_IDENTITY_PAGE_TABLE_L2_OFFSET.into(),
-        )?
-        .as_mut()
-    };
-    // ANCHOR_END: initialize_top_page_tables
-
-    // ANCHOR: setup_page_tables
     unsafe {
         // Setup identity paging Mapping address virtual addresses
         // 0x000000-0x1fffff to the same physical addresses.
@@ -62,8 +43,26 @@ pub fn enable() -> Option<()> {
             PageEntryFlags::huge_page_flags(),
         );
     }
-    // ANCHOR_END: setup_page_tables
-    // ANCHOR: setup_top_page_tables
+
+    Some(identity_page_table_l4)
+}
+
+fn init_kernel_tables(pml4: &mut PageTable) -> Option<()> {
+    // These tables will hold identity mapping for the kernel on the top
+    // half of the address space
+    let top_identity_page_table_l3 = unsafe {
+        PageTable::empty_from_ptr(
+            TOP_IDENTITY_PAGE_TABLE_L3_OFFSET.into(),
+        )?
+        .as_mut()
+    };
+    let top_identity_page_table_l2 = unsafe {
+        PageTable::empty_from_ptr(
+            TOP_IDENTITY_PAGE_TABLE_L2_OFFSET.into(),
+        )?
+        .as_mut()
+    };
+
     unsafe {
         // Setup kernel identity paging Mapping at the top half
         // of the address space
@@ -72,25 +71,28 @@ pub fn enable() -> Option<()> {
         // 0x000000-0x1fffff
         // This mapping will allow the kernel to access physical addresses
         // without any dependency on the current mapping
-        // identity_page_table_l4.entries[256].map_unchecked(
-        //     PhysicalAddress::new_unchecked(
-        //         TOP_IDENTITY_PAGE_TABLE_L3_OFFSET,
-        //     ),
-        //     PageEntryFlags::table_flags(),
-        // );
-        // top_identity_page_table_l3.entries[0].map_unchecked(
-        //     PhysicalAddress::new_unchecked(
-        //         TOP_IDENTITY_PAGE_TABLE_L2_OFFSET,
-        //     ),
-        //     PageEntryFlags::table_flags(),
-        // );
-        // top_identity_page_table_l2.entries[0].map_unchecked(
-        //     PhysicalAddress::new_unchecked(0),
-        //     PageEntryFlags::huge_io_page_flags(),
-        // );
+        pml4.entries[256].map_unchecked(
+            PhysicalAddress::new_unchecked(
+                TOP_IDENTITY_PAGE_TABLE_L3_OFFSET,
+            ),
+            PageEntryFlags::table_flags(),
+        );
+        top_identity_page_table_l3.entries[0].map_unchecked(
+            PhysicalAddress::new_unchecked(
+                TOP_IDENTITY_PAGE_TABLE_L2_OFFSET,
+            ),
+            PageEntryFlags::table_flags(),
+        );
+        top_identity_page_table_l2.entries[0].map_unchecked(
+            PhysicalAddress::new_unchecked(0),
+            PageEntryFlags::huge_io_page_flags(),
+        );
     }
-    // ANCHOR_END: setup_top_page_tables
-    // ANCHOR: set_cr3
+
+    Some(())
+}
+
+fn set_cr3() {
     unsafe {
         // Set the page table at cr3 register
         asm!(
@@ -101,8 +103,9 @@ pub fn enable() -> Option<()> {
             const IDENTITY_PAGE_TABLE_L4_OFFSET
         );
     }
-    // ANCHOR_END: set_cr3
-    // ANCHOR: set_cr4
+}
+
+fn set_pae_long_mode() {
     unsafe {
         asm!(
             // Enable Physical Address Extension (number 5) in cr4
@@ -110,10 +113,7 @@ pub fn enable() -> Option<()> {
             "or eax, 1 << 5",
             "mov cr4, eax",
         );
-    }
-    // ANCHOR_END: set_cr4
-    // ANCHOR: set_efermsr
-    unsafe {
+
         asm!(
             // set long mode bit (number 8) in the Extended Feature
             // Enable Register Model Specific Register
@@ -128,12 +128,25 @@ pub fn enable() -> Option<()> {
             "wrmsr",
         );
     }
-    // ANCHOR_END: set_efermsr
-    // ANCHOR: enable_paging
+}
+
+fn toggle_paging() {
     unsafe {
         // Toggle the paging bit (number 31) in cr0
         asm!("mov eax, cr0", "or eax, 1 << 31", "mov cr0, eax");
     }
+}
+#[cfg(target_arch = "x86")]
+pub fn enable() -> Option<()> {
+    let pml4 = init_identiy_tables()?;
+
+    init_kernel_tables(pml4);
+
+    set_cr3();
+
+    set_pae_long_mode();
+
+    toggle_paging();
+
     Some(())
-    // ANCHOR_END: enable_paging
 }
