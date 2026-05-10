@@ -27,11 +27,11 @@ pub const trait Address: Sized + Clone + Copy {
         .expect("Tried to create NonNull from address, found null")
     }
 
-    fn is_aligned(&self, alignment: core::mem::Alignment) -> bool {
+    fn is_aligned(&self, alignment: core::ptr::Alignment) -> bool {
         self.as_usize() & (alignment.as_usize() - 1) == 0
     }
 
-    fn align_up(self, alignment: core::mem::Alignment) -> Self {
+    fn align_up(self, alignment: core::ptr::Alignment) -> Self {
         unsafe {
             Self::new_unchecked(
                 (self.as_usize() + (alignment.as_usize() - 1))
@@ -40,7 +40,7 @@ pub const trait Address: Sized + Clone + Copy {
         }
     }
 
-    fn align_down(self, alignment: core::mem::Alignment) -> Self {
+    fn align_down(self, alignment: core::ptr::Alignment) -> Self {
         unsafe {
             Self::new_unchecked(
                 self.as_usize() & !(alignment.as_usize() - 1),
@@ -48,14 +48,14 @@ pub const trait Address: Sized + Clone + Copy {
         }
     }
 
-    fn alignment(&self) -> core::mem::Alignment {
+    fn alignment(&self) -> core::ptr::Alignment {
         unsafe {
             if self.as_usize() == 0 {
                 // Address 0 is aligned to any alignment; return max
                 // representable.
-                core::mem::Alignment::new_unchecked(1 << (usize::BITS - 1))
+                core::ptr::Alignment::new_unchecked(1 << (usize::BITS - 1))
             } else {
-                core::mem::Alignment::new_unchecked(
+                core::ptr::Alignment::new_unchecked(
                     1 << self.as_usize().trailing_zeros(),
                 )
             }
