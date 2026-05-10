@@ -138,7 +138,7 @@ fn toggle_paging() {
 }
 #[cfg(target_arch = "x86")]
 pub fn enable() -> Option<()> {
-    let pml4 = init_identiy_tables()?;
+    let pml4 = init_identity_tables()?;
 
     init_kernel_tables(pml4);
 
