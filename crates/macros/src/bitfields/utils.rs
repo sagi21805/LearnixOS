@@ -42,20 +42,25 @@ impl<'a> TryFrom<&'a Type> for BitSize {
             )
         })?;
 
-        let repr_ty = match size {
-            0..=8 => parse_quote!(u8),
-            9..=16 => parse_quote!(u16),
-            17..=32 => parse_quote!(u32),
-            33..=64 => parse_quote!(u64),
-            65..=128 => parse_quote!(u128),
-            _ => {
-                return Err(syn::Error::new_spanned(
-                    ty_path,
-                    "Bit width must be between 0 and 128",
-                ));
-            }
-        };
+        let repr_ty = type_from_size(size)?;
 
         Ok(BitSize { repr_ty, size })
+    }
+}
+
+pub fn type_from_size(size: usize) -> syn::Result<Box<TypePath>> {
+    match size {
+        1 => Ok(parse_quote!(bool)),
+        2..=8 => Ok(parse_quote!(u8)),
+        9..=16 => Ok(parse_quote!(u16)),
+        17..=32 => Ok(parse_quote!(u32)),
+        33..=64 => Ok(parse_quote!(u64)),
+        65..=128 => Ok(parse_quote!(u128)),
+        _ => {
+            return Err(syn::Error::new_spanned(
+                size,
+                "Bit width must be between 1 and 128",
+            ));
+        }
     }
 }
