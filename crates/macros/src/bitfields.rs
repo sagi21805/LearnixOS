@@ -30,24 +30,10 @@ impl<'a> TryFrom<&'a ItemStruct> for Bitflags<'a> {
             })
             .collect::<syn::Result<Vec<_>>>()?;
 
-        let struct_type: TypePath = match offset {
-            0..=8 => parse_quote!(u8),
-            9..=16 => parse_quote!(u16),
-            17..=32 => parse_quote!(u32),
-            33..=64 => parse_quote!(u64),
-            65..=128 => parse_quote!(u128),
-            _ => {
-                return Err(syn::Error::new_spanned(
-                    value,
-                    "Total bit width must be between 0 and 128",
-                ));
-            }
-        };
-
         Ok(Bitflags {
             attrs: &value.attrs,
             struct_name: &value.ident,
-            struct_type: Box::new(struct_type),
+            struct_type: utils::type_from_size(offset)?,
             fields,
         })
     }
@@ -68,46 +54,53 @@ impl<'a> Bitflags<'a> {
             doc_attrs,
             ..
         } = field;
+
         let struct_type = &self.struct_type;
-        let repr_ty = attr.flag_type.as_ref().unwrap_or(&ty.repr_ty);
         let size = ty.size;
-        if size == 1 && attr.flag_type.is_none() {
-            quote! {
-                #[inline]
-                #vis const fn #name(mut self) -> Self {
-                    self.0 |= (1 << #offset);
-                    self
-                }
-            }
-        } else if attr.dont_shift {
-            quote! {
-                #(#doc_attrs)*
-                #[inline]
-                #vis const fn #name(mut self, v: #struct_type) -> Self {
-                    debug_assert!(
-                        (#repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type >> #offset) < (1 << #size) as #struct_type,
-                        "Value is too large for this bitfield"
-                    );
-                    debug_assert!(
-                        (v & !((((1 << #size) - 1) as #struct_type) << #offset)) == 0,
-                        "Value overrides flags on positions that are not in bounds of flag",
-                    );
-                    self.0 |= #repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type;
-                    self
-                }
-            }
+        let repr_ty = if attr.dont_shift {
+            &ty.repr_ty
         } else {
-            quote! {
-                #(#doc_attrs)*
-                #[inline]
-                #vis const fn #name(mut self, v: #repr_ty) -> Self {
-                    debug_assert!(
-                        (#repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type)  < (1 << #size) as #struct_type,
-                        "Value is too large for this bitfield"
-                    );
-                    self.0 |= ((#repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type) << #offset);
-                    self
-                }
+            struct_type
+        };
+        let ty = attr.flag_type.as_ref().unwrap_or(repr_ty);
+
+        // We literly don't shift
+        let shift = if attr.dont_shift {
+            quote! {}
+        } else {
+            quote! { << #offset }
+        };
+
+        let mut checks = quote! {
+            debug_assert!(
+                (
+                    v as #struct_type >> #offset
+                ) < (1 << #size) as #struct_type,
+                "Value is too large for this bitfield"
+            );
+        };
+
+        if attr.dont_shift {
+            checks.extend(quote! {
+                debug_assert!(
+                    v & !((((1 << #size) - 1) as #struct_type) << #offset) == 0,
+                    "Value overrides flags on positions that are not in bounds of flag",
+                );
+            });
+        }
+
+        quote! {
+            #(#doc_attrs)*
+            #[inline]
+            #vis const fn #name(mut self, v: #ty) -> Self {
+                let v = #repr_ty::try_from(v)
+                    .ok()
+                    .expect("Can't convery value 'v' into the struct type");
+
+                #checks
+
+                self.0 |= v as #struct_type #shift;
+                self
             }
         }
     }
