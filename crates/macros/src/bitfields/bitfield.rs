@@ -1,25 +1,20 @@
-use syn::{Field, Ident, Meta, TypePath, Visibility};
+use syn::{Field, Ident, Meta, Visibility};
 
-use crate::bitfields::{
-    flag_attr::FlagAttribute, utils::get_closest_uint,
-};
+use crate::bitfields::{flag_attr::FlagAttribute, utils::BitSize};
 
 pub struct BitField<'a> {
     pub attr: FlagAttribute,
     pub doc_attrs: Vec<syn::Attribute>,
     pub vis: &'a Visibility,
     pub name: &'a Ident,
-    pub uint_ty: Box<TypePath>,
-    pub size: usize,
-    pub offset: Option<usize>,
+    pub ty: BitSize,
+    pub offset: usize,
 }
 
-impl<'a> TryFrom<&'a Field> for BitField<'a> {
-    type Error = syn::Error;
-
-    fn try_from(value: &'a Field) -> Result<Self, Self::Error> {
-        let (min_uint, size) = get_closest_uint(&value.ty)?;
+impl<'a> BitField<'a> {
+    pub fn new(value: &'a Field, offset: usize) -> syn::Result<Self> {
         let name = value.ident.as_ref().expect("Field must have a name");
+        let ty = (&value.ty).try_into()?;
 
         let doc_attrs: Vec<syn::Attribute> = value
             .attrs
@@ -39,9 +34,8 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
                 attr: FlagAttribute::default(),
                 vis: &value.vis,
                 name,
-                uint_ty: Box::new(min_uint),
-                size,
-                offset: None,
+                ty,
+                offset,
                 doc_attrs,
             });
         }
@@ -74,9 +68,8 @@ impl<'a> TryFrom<&'a Field> for BitField<'a> {
                 attr: syn::parse2::<FlagAttribute>(list.tokens.clone())?,
                 vis: &value.vis,
                 name,
-                uint_ty: Box::new(min_uint),
-                size,
-                offset: None,
+                ty,
+                offset,
                 doc_attrs,
             })
         } else {

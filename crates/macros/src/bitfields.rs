@@ -19,17 +19,16 @@ impl<'a> TryFrom<&'a ItemStruct> for Bitflags<'a> {
     type Error = syn::Error;
 
     fn try_from(value: &'a ItemStruct) -> Result<Self, Self::Error> {
-        let mut fields = value
+        let mut offset = 0;
+        let fields = value
             .fields
             .iter()
-            .map(BitField::try_from)
+            .map(|f| {
+                let field = BitField::new(f, offset)?;
+                offset += field.ty.size;
+                Ok(field)
+            })
             .collect::<syn::Result<Vec<_>>>()?;
-
-        let mut offset = 0usize;
-        for f in &mut fields {
-            f.offset = Some(offset);
-            offset += f.size;
-        }
 
         let struct_type: TypePath = match offset {
             0..=8 => parse_quote!(u8),
@@ -64,17 +63,15 @@ impl<'a> Bitflags<'a> {
             attr,
             vis,
             name,
-            uint_ty,
-            size,
+            ty,
             offset,
             doc_attrs,
             ..
         } = field;
-        let offset =
-            offset.expect("offset must be set before code generation");
         let struct_type = &self.struct_type;
-        let ty = attr.flag_type.as_ref().unwrap_or(uint_ty);
-        if *size == 1 && attr.flag_type.is_none() {
+        let repr_ty = attr.flag_type.as_ref().unwrap_or(&ty.repr_ty);
+        let size = ty.size;
+        if size == 1 && attr.flag_type.is_none() {
             quote! {
                 #[inline]
                 #vis const fn #name(mut self) -> Self {
@@ -88,14 +85,14 @@ impl<'a> Bitflags<'a> {
                 #[inline]
                 #vis const fn #name(mut self, v: #struct_type) -> Self {
                     debug_assert!(
-                        (#uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type >> #offset) < (1 << #size) as #struct_type,
+                        (#repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type >> #offset) < (1 << #size) as #struct_type,
                         "Value is too large for this bitfield"
                     );
                     debug_assert!(
                         (v & !((((1 << #size) - 1) as #struct_type) << #offset)) == 0,
                         "Value overrides flags on positions that are not in bounds of flag",
                     );
-                    self.0 |= #uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type;
+                    self.0 |= #repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type;
                     self
                 }
             }
@@ -103,12 +100,12 @@ impl<'a> Bitflags<'a> {
             quote! {
                 #(#doc_attrs)*
                 #[inline]
-                #vis const fn #name(mut self, v: #ty) -> Self {
+                #vis const fn #name(mut self, v: #repr_ty) -> Self {
                     debug_assert!(
-                        (#uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type)  < (1 << #size) as #struct_type,
+                        (#repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type)  < (1 << #size) as #struct_type,
                         "Value is too large for this bitfield"
                     );
-                    self.0 |= ((#uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type) << #offset);
+                    self.0 |= ((#repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type) << #offset);
                     self
                 }
             }
@@ -124,16 +121,14 @@ impl<'a> Bitflags<'a> {
             attr,
             vis,
             name,
-            uint_ty,
-            size,
+            ty,
             offset,
             doc_attrs,
             ..
         } = field;
-        let offset =
-            offset.expect("offset must be set before code generation");
         let struct_type = &self.struct_type;
-        if *size == 1 && attr.flag_type.is_none() {
+        let size = ty.size;
+        if size == 1 && attr.flag_type.is_none() {
             let fn_name = format_ident!("is_{}", name);
             quote! {
                 #(#doc_attrs)*
@@ -162,7 +157,8 @@ impl<'a> Bitflags<'a> {
                     }
                 }
             } else {
-                let ty = attr.flag_type.as_ref().unwrap_or(uint_ty);
+                let repr_ty = &ty.repr_ty;
+                let ty = attr.flag_type.as_ref().unwrap_or(&ty.repr_ty);
                 quote! {
                     #(#doc_attrs)*
                     #[inline]
@@ -170,7 +166,7 @@ impl<'a> Bitflags<'a> {
                         unsafe {
                             let addr = self as *const _ as *mut #struct_type;
                             let val = core::ptr::read_volatile(addr);
-                            #ty::try_from(((val >> #offset) & ((1 << #size) - 1)) as #uint_ty).expect("Cannot convert bit representation into the given type")
+                            #ty::try_from(((val >> #offset) & ((1 << #size) - 1)) as #repr_ty).expect("Cannot convert bit representation into the given type")
                         }
                     }
                 }
@@ -187,25 +183,24 @@ impl<'a> Bitflags<'a> {
             attr,
             vis,
             name,
-            uint_ty,
-            size,
+            ty,
             offset,
             doc_attrs,
             ..
         } = field;
-        let offset =
-            offset.expect("offset must be set before code generation");
         let fn_name = format_ident!("set_{}", name);
         let struct_type = &self.struct_type;
-        let mut ty = attr.flag_type.as_ref().unwrap_or(uint_ty);
+        let size = ty.size;
+        let repr_ty = &ty.repr_ty;
+        let mut ty = attr.flag_type.as_ref().unwrap_or(&ty.repr_ty);
 
-        if attr.dont_shift && *size != 1 {
+        if attr.dont_shift && size != 1 {
             quote! {
                 #(#doc_attrs)*
                 #[inline]
                 #vis fn #fn_name(&mut self, v: #struct_type) {
                     debug_assert!(
-                        (#uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type >> #offset) < (1 << #size) as #struct_type,
+                        (#repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type >> #offset) < (1 << #size) as #struct_type,
                         "Value: {:?} is too large for this bitfield",
                         v >> #offset
                     );
@@ -218,14 +213,14 @@ impl<'a> Bitflags<'a> {
                         let addr = self as *const _ as *mut #struct_type;
                         let val = core::ptr::read_volatile(addr);
                         let cleared = val & !(((1 << #size) - 1) << #offset);
-                        let new = cleared | (#uint_ty::try_from(v).unwrap() as #struct_type);
+                        let new = cleared | (#repr_ty::try_from(v).unwrap() as #struct_type);
                         core::ptr::write_volatile(addr, new);
                     }
                 }
             }
         } else {
             let bool_type: Box<TypePath> = Box::new(parse_quote!(bool));
-            if *size == 1 {
+            if size == 1 {
                 ty = &bool_type
             }
             quote! {
@@ -233,7 +228,7 @@ impl<'a> Bitflags<'a> {
                 #[inline]
                 #vis fn #fn_name(&mut self, v: #ty) {
                     debug_assert!(
-                        (#uint_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type) < (1 << #size) as #struct_type,
+                        (#repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type) < (1 << #size) as #struct_type,
                         "Value: {:?} is too large for this bitfield",
                         v
                     );
@@ -241,7 +236,7 @@ impl<'a> Bitflags<'a> {
                         let addr = self as *const _ as *mut #struct_type;
                         let val = core::ptr::read_volatile(addr);
                         let cleared = val & !(((1 << #size) - 1) << #offset);
-                        let new = cleared | ((#uint_ty::try_from(v).unwrap() as #struct_type) << #offset);
+                        let new = cleared | ((#repr_ty::try_from(v).unwrap() as #struct_type) << #offset);
                         core::ptr::write_volatile(addr, new);
                     }
                 }
@@ -257,15 +252,14 @@ impl<'a> Bitflags<'a> {
         let BitField {
             vis,
             name,
-            size,
+            ty,
             offset,
             doc_attrs,
             ..
         } = field;
-        let offset =
-            offset.expect("offset must be set before code generation");
         let fn_name = format_ident!("clear_{}", name);
         let struct_type = &self.struct_type;
+        let size = ty.size;
 
         quote! {
             #(#doc_attrs)*
@@ -288,13 +282,13 @@ impl<'a> Bitflags<'a> {
             .fields
             .iter()
             .map(|f| {
-                let getter = if f.size == 1 && f.attr.flag_type.is_none() {
+                let getter = if f.ty.size == 1 && f.attr.flag_type.is_none() {
                     format_ident!("is_{}", f.name)
                 } else {
                     format_ident!("get_{}", f.name)
                 };
                 let name = f.name;
-                let ty = f.attr.flag_type.as_ref().unwrap_or(&f.uint_ty);
+                let ty = f.attr.flag_type.as_ref().unwrap_or(&f.ty.repr_ty);
                 quote! { stringify!(#name), &#ty::try_from(self.#getter()) }
             })
             .collect();
