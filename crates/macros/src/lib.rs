@@ -1,3 +1,5 @@
+mod bitfields;
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
@@ -5,9 +7,8 @@ use syn::{
     punctuated::Punctuated,
 };
 
-use crate::bitflags::bitfields_impl;
+use crate::bitfields::bitfields_impl;
 
-mod bitflags;
 // ANCHOR: common_address_functions
 #[proc_macro_derive(Address)]
 pub fn common_address_functions(input: TokenStream) -> TokenStream {
