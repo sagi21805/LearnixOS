@@ -4,7 +4,7 @@ mod utils;
 
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
-use syn::{Attribute, Ident, ItemStruct, TypePath, parse_quote};
+use syn::{Attribute, Ident, ItemStruct, TypePath};
 
 use crate::bitfields::bitfield::BitField;
 
@@ -58,9 +58,9 @@ impl<'a> Bitflags<'a> {
         let struct_type = &self.struct_type;
         let size = ty.size;
         let repr_ty = if attr.dont_shift {
-            &ty.repr_ty
-        } else {
             struct_type
+        } else {
+            &ty.repr_ty
         };
         let ty = attr.flag_type.as_ref().unwrap_or(repr_ty);
 
@@ -74,7 +74,7 @@ impl<'a> Bitflags<'a> {
         let mut checks = quote! {
             debug_assert!(
                 (
-                    v as #struct_type >> #offset
+                   (v as #struct_type) >> #offset
                 ) < (1 << #size) as #struct_type,
                 "Value is too large for this bitfield"
             );
@@ -99,7 +99,7 @@ impl<'a> Bitflags<'a> {
 
                 #checks
 
-                self.0 |= v as #struct_type #shift;
+                self.0 |= (v as #struct_type) #shift;
                 self
             }
         }
@@ -119,49 +119,42 @@ impl<'a> Bitflags<'a> {
             doc_attrs,
             ..
         } = field;
+
         let struct_type = &self.struct_type;
         let size = ty.size;
-        if size == 1 && attr.flag_type.is_none() {
-            let fn_name = format_ident!("is_{}", name);
-            quote! {
-                #(#doc_attrs)*
-                #[inline]
-                #vis fn #fn_name(&self) -> bool {
-                    unsafe {
-                        let addr = self as *const _ as *mut #struct_type;
-                        let val = core::ptr::read_volatile(addr);
-                        val & (1 << #offset) != 0
-                    }
-                }
-            }
+        let repr_ty = if attr.dont_shift {
+            struct_type
         } else {
-            let fn_name = format_ident!("get_{}", name);
-            if attr.dont_shift {
-                let ty = attr.flag_type.as_ref().unwrap_or(struct_type);
-                quote! {
-                    #(#doc_attrs)*
-                    #[inline]
-                    #vis fn #fn_name(&self) -> #ty {
-                        unsafe {
-                            let addr = self as *const _ as *mut #struct_type;
-                            let val = core::ptr::read_volatile(addr);
-                            #ty::try_from((val & (((1 << #size) - 1) << #offset))).expect("Cannot convert bit representation into the given type")
-                        }
-                    }
-                }
-            } else {
-                let repr_ty = &ty.repr_ty;
-                let ty = attr.flag_type.as_ref().unwrap_or(&ty.repr_ty);
-                quote! {
-                    #(#doc_attrs)*
-                    #[inline]
-                    #vis fn #fn_name(&self) -> #ty {
-                        unsafe {
-                            let addr = self as *const _ as *mut #struct_type;
-                            let val = core::ptr::read_volatile(addr);
-                            #ty::try_from(((val >> #offset) & ((1 << #size) - 1)) as #repr_ty).expect("Cannot convert bit representation into the given type")
-                        }
-                    }
+            &ty.repr_ty
+        };
+        let ty = attr.flag_type.as_ref().unwrap_or(repr_ty);
+
+        // We literly don't shift
+        let shift = if attr.dont_shift {
+            quote! {}
+        } else {
+            quote! { >> #offset }
+        };
+
+        eprintln!("\n\n\n {:?} \n\n\n", ty.path.get_ident());
+        let fn_name = if ty.path.get_ident().is_some_and(|i| i == "bool") {
+            format_ident!("is_{}", name)
+        } else {
+            format_ident!("get_{}", name)
+        };
+
+        quote! {
+            #(#doc_attrs)*
+            #[inline]
+            #vis fn #fn_name(&self) -> #ty {
+                unsafe {
+                    let addr = self as *const _ as *mut #struct_type;
+                    let val = core::ptr::read_volatile(addr);
+                    #ty::try_from(
+                        (
+                            val & (((1 << #size) - 1) << #offset)
+                        ) #shift
+                    ).expect("Cannot convert bit representation into the given type")
                 }
             }
         }
@@ -181,57 +174,58 @@ impl<'a> Bitflags<'a> {
             doc_attrs,
             ..
         } = field;
+
         let fn_name = format_ident!("set_{}", name);
         let struct_type = &self.struct_type;
         let size = ty.size;
-        let repr_ty = &ty.repr_ty;
-        let mut ty = attr.flag_type.as_ref().unwrap_or(&ty.repr_ty);
-
-        if attr.dont_shift && size != 1 {
-            quote! {
-                #(#doc_attrs)*
-                #[inline]
-                #vis fn #fn_name(&mut self, v: #struct_type) {
-                    debug_assert!(
-                        (#repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type >> #offset) < (1 << #size) as #struct_type,
-                        "Value: {:?} is too large for this bitfield",
-                        v >> #offset
-                    );
-                    debug_assert!(
-                        (v & !((((1 << #size) - 1) as #struct_type) << #offset)) == 0,
-                        "Value: {:?} overrides flags on positions that are not in bounds of flag {}",
-                        v, stringify!(#name)
-                    );
-                    unsafe {
-                        let addr = self as *const _ as *mut #struct_type;
-                        let val = core::ptr::read_volatile(addr);
-                        let cleared = val & !(((1 << #size) - 1) << #offset);
-                        let new = cleared | (#repr_ty::try_from(v).unwrap() as #struct_type);
-                        core::ptr::write_volatile(addr, new);
-                    }
-                }
-            }
+        let repr_ty = if attr.dont_shift {
+            struct_type
         } else {
-            let bool_type: Box<TypePath> = Box::new(parse_quote!(bool));
-            if size == 1 {
-                ty = &bool_type
-            }
-            quote! {
-                #(#doc_attrs)*
-                #[inline]
-                #vis fn #fn_name(&mut self, v: #ty) {
-                    debug_assert!(
-                        (#repr_ty::try_from(v).ok().expect("Can't convery value 'v' into the struct type") as #struct_type) < (1 << #size) as #struct_type,
-                        "Value: {:?} is too large for this bitfield",
-                        v
-                    );
-                    unsafe {
-                        let addr = self as *const _ as *mut #struct_type;
-                        let val = core::ptr::read_volatile(addr);
-                        let cleared = val & !(((1 << #size) - 1) << #offset);
-                        let new = cleared | ((#repr_ty::try_from(v).unwrap() as #struct_type) << #offset);
-                        core::ptr::write_volatile(addr, new);
-                    }
+            &ty.repr_ty
+        };
+        let ty = attr.flag_type.as_ref().unwrap_or(repr_ty);
+
+        // We literly don't shift
+        let shift = if attr.dont_shift {
+            quote! {}
+        } else {
+            quote! { << #offset }
+        };
+
+        let mut checks = quote! {
+            debug_assert!(
+                (
+                    (v as #struct_type) >> #offset
+                ) < (1 << #size) as #struct_type,
+                "Value is too large for this bitfield"
+            );
+        };
+
+        if attr.dont_shift {
+            checks.extend(quote! {
+                debug_assert!(
+                    v & !((((1 << #size) - 1) as #struct_type) << #offset) == 0,
+                    "Value overrides flags on positions that are not in bounds of flag",
+                );
+            });
+        }
+
+        quote! {
+            #(#doc_attrs)*
+            #[inline]
+            #vis fn #fn_name(&mut self, v: #ty) {
+                let v = #repr_ty::try_from(v)
+                    .ok()
+                    .expect("Can't convery value 'v' into the struct type");
+
+                #checks
+
+                unsafe {
+                    let addr = self as *const _ as *mut #struct_type;
+                    let val = core::ptr::read_volatile(addr);
+                    let cleared = val & !(((1 << #size) - 1) << #offset);
+                    let new = cleared | ((#repr_ty::try_from(v).unwrap() as #struct_type) #shift);
+                    core::ptr::write_volatile(addr, new);
                 }
             }
         }
@@ -243,6 +237,7 @@ impl<'a> Bitflags<'a> {
         };
 
         let BitField {
+            attr,
             vis,
             name,
             ty,
@@ -252,17 +247,52 @@ impl<'a> Bitflags<'a> {
         } = field;
         let fn_name = format_ident!("clear_{}", name);
         let struct_type = &self.struct_type;
+        let repr_ty = if attr.dont_shift {
+            &ty.repr_ty
+        } else {
+            struct_type
+        };
         let size = ty.size;
+
+        let mut checks = quote! {
+            debug_assert!(
+                (
+                    (v as #struct_type) >> #offset
+                ) < (1 << #size) as #struct_type,
+                "Value is too large for this bitfield"
+            );
+        };
+
+        if attr.dont_shift {
+            checks.extend(quote! {
+                debug_assert!(
+                    v & !((((1 << #size) - 1) as #struct_type) << #offset) == 0,
+                    "Value overrides flags on positions that are not in bounds of flag",
+                );
+            });
+        }
+
+        let shift = if attr.dont_shift {
+            quote! {}
+        } else {
+            quote! { << #offset }
+        };
 
         quote! {
             #(#doc_attrs)*
             #[inline]
             #vis fn #fn_name(&mut self) {
+                let v = #repr_ty::try_from(v)
+                    .ok()
+                    .expect("Can't convery value 'v' into the struct type");
+
+                #checks
+
                 unsafe {
                     let addr = self as *const _ as *mut #struct_type;
                     let val = core::ptr::read_volatile(addr);
                     let cleared = val & !(((1 << #size) - 1) << #offset);
-                    let new = cleared | ((#clear_val as #struct_type) << #offset);
+                    let new = cleared | ((#clear_val as #struct_type) #shift);
                     core::ptr::write_volatile(addr, new);
                 }
             }

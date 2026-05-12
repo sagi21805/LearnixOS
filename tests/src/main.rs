@@ -2,7 +2,6 @@
 #![feature(const_trait_impl)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
-#![feature(never_type)]
 
 use macros::bitfields;
 
@@ -13,11 +12,12 @@ fn main() {
     println!("Hello, world!");
 
     let mut f = MyFlags::new();
-    let nested = Nested::new().a().b(Test::SomeRandomName);
+    let nested = Nested::new().a(true).b(Test::SomeRandomName);
     f.set_d(true);
     f.set_c(true);
     f.set_d(false);
     println!("{:#x?}", f);
+    println!("{:#x?}", nested);
 
     let x: u8 = 242;
 }
