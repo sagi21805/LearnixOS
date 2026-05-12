@@ -15,11 +15,8 @@ fn main() {
     let nested = Nested::new().a(true).b(Test::SomeRandomName);
     f.set_d(true);
     f.set_c(true);
-    f.set_d(false);
     println!("{:#x?}", f);
-    println!("{:#x?}", nested);
-
-    let x: u8 = 242;
+    println!("{:b}", f.0)
 }
 
 #[bitfields]

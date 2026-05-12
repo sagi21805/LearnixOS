@@ -1,4 +1,4 @@
-use syn::{Field, Ident, Meta, Visibility};
+use syn::{Field, Ident, Meta, Visibility, parse_quote};
 
 use crate::bitfields::{flag_attr::FlagAttribute, utils::BitSize};
 
@@ -14,7 +14,7 @@ pub struct BitField<'a> {
 impl<'a> BitField<'a> {
     pub fn new(value: &'a Field, offset: usize) -> syn::Result<Self> {
         let name = value.ident.as_ref().expect("Field must have a name");
-        let ty = (&value.ty).try_into()?;
+        let ty: BitSize = (&value.ty).try_into()?;
 
         let doc_attrs: Vec<syn::Attribute> = value
             .attrs
@@ -30,8 +30,14 @@ impl<'a> BitField<'a> {
             .collect();
 
         if flag_attrs.is_empty() {
+            let mut attr = FlagAttribute::default();
+
+            if attr.flag_type.is_none() && ty.size == 1 {
+                attr.flag_type = Some(parse_quote!(bool))
+            }
+
             return Ok(BitField {
-                attr: FlagAttribute::default(),
+                attr,
                 vis: &value.vis,
                 name,
                 ty,
@@ -64,8 +70,14 @@ impl<'a> BitField<'a> {
                 ));
             }
 
+            let mut attr =
+                syn::parse2::<FlagAttribute>(list.tokens.clone())?;
+            if attr.flag_type.is_none() && ty.size == 1 {
+                attr.flag_type = Some(parse_quote!(bool))
+            }
+
             Ok(BitField {
-                attr: syn::parse2::<FlagAttribute>(list.tokens.clone())?,
+                attr,
                 vis: &value.vis,
                 name,
                 ty,

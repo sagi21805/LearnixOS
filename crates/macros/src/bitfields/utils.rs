@@ -50,8 +50,7 @@ impl<'a> TryFrom<&'a Type> for BitSize {
 
 pub fn type_from_size(size: usize) -> syn::Result<Box<TypePath>> {
     match size {
-        1 => Ok(parse_quote!(bool)),
-        2..=8 => Ok(parse_quote!(u8)),
+        1..=8 => Ok(parse_quote!(u8)),
         9..=16 => Ok(parse_quote!(u16)),
         17..=32 => Ok(parse_quote!(u32)),
         33..=64 => Ok(parse_quote!(u64)),
