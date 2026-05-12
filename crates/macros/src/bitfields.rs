@@ -152,8 +152,10 @@ impl<'a> Bitflags<'a> {
                     let val = core::ptr::read_volatile(addr);
                     #ty::try_from(
                         (
+                            (
                             val & (((1 << #size) - 1) << #offset)
-                        ) #shift
+                            ) #shift
+                        ) as #repr_ty
                     ).expect("Cannot convert bit representation into the given type")
                 }
             }
@@ -305,7 +307,13 @@ impl<'a> Bitflags<'a> {
             .fields
             .iter()
             .map(|f| {
-                let getter = if f.ty.size == 1 && f.attr.flag_type.is_none() {
+                let getter = if f.ty.size == 1
+                        && f.attr.flag_type
+                            .as_ref()
+                            .is_some_and(|t| t.path
+                                .get_ident()
+                                .is_some_and(|i| i == "bool"))
+                {
                     format_ident!("is_{}", f.name)
                 } else {
                     format_ident!("get_{}", f.name)
