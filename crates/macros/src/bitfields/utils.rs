@@ -13,16 +13,13 @@ impl<'a> TryFrom<&'a Type> for BitSize {
     type Error = syn::Error;
 
     fn try_from(ty: &'a Type) -> syn::Result<Self> {
-        let Type::Path(ty_path) = ty else {
-            return Err(syn::Error::new_spanned(
-                ty,
-                "Expected a single-ident type (e.g. `B8`)",
-            ));
-        };
-
-        let ident = ty_path.path.get_ident().ok_or_else(|| {
+        let ident = match ty {
+            Type::Path(syn::TypePath { path, .. }) => path.get_ident(),
+            _ => None,
+        }
+        .ok_or_else(|| {
             syn::Error::new_spanned(
-                ty_path,
+                ty,
                 "Expected a single-ident type (e.g. `B8`)",
             )
         })?;
