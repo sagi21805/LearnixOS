@@ -1,6 +1,7 @@
 use syn::{
-    Ident, LitInt, Token, TypePath,
+    Ident, LitInt, Meta, Token, TypePath,
     parse::{Parse, discouraged::Speculative},
+    parse_quote,
 };
 
 mod keyword {
@@ -17,6 +18,29 @@ pub struct FlagAttribute {
     pub dont_shift: bool,
 }
 
+fn try_parse<T: Parse>(
+    input: syn::parse::ParseStream,
+    seen: &mut Option<proc_macro2::Span>,
+    error_count: &mut usize,
+) -> Option<syn::Result<T>> {
+    let fork = input.fork();
+    let parsed = match fork.parse::<T>() {
+        Ok(parsed) => parsed,
+        Err(_) => {
+            *error_count += 1;
+            return None;
+        }
+    };
+
+    if seen.is_some() {
+        Some(Err(syn::Error::new(seen.unwrap(), "Duplicate attriubte")))
+    } else {
+        *seen = Some(input.span());
+        input.advance_to(&fork);
+        Some(Ok(parsed))
+    }
+}
+
 impl Parse for FlagAttribute {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut attributes = FlagAttribute::default();
@@ -27,59 +51,34 @@ impl Parse for FlagAttribute {
 
         while !input.is_empty() {
             let mut error_count = 0;
-            'next: {
-                let fork = input.fork();
-                match fork.parse::<FlagPermission>() {
-                    Ok(permissions) => {
-                        if let Some(first_span) = seen_permissions {
-                            return Err(syn::Error::new(
-                                first_span,
-                                "duplicate `permissions` option",
-                            ));
-                        }
-                        seen_permissions = Some(input.span());
-                        attributes.permissions = permissions;
-                        input.advance_to(&fork);
-                        break 'next;
-                    }
-                    Err(_) => error_count += 1,
-                }
+            let fp = try_parse::<FlagPermission>(
+                input,
+                &mut seen_permissions,
+                &mut error_count,
+            )
+            .transpose()?;
 
-                let fork = input.fork();
-                match fork.parse::<FlagType>() {
-                    Ok(flag_type) => {
-                        if let Some(first_span) = seen_flag_type {
-                            return Err(syn::Error::new(
-                                first_span,
-                                "duplicate `flag_type` option",
-                            ));
-                        }
-                        seen_flag_type = Some(input.span());
-                        attributes.flag_type = Some(flag_type.ty);
-                        input.advance_to(&fork);
-                        break 'next;
-                    }
-                    Err(_) => error_count += 1,
-                }
-
-                let fork = input.fork();
-                match fork.parse::<keyword::dont_shift>() {
-                    Ok(_kw) => {
-                        if let Some(first_span) = seen_dont_shift {
-                            return Err(syn::Error::new(
-                                first_span,
-                                "duplicate `dont_shift` option",
-                            ));
-                        }
-                        seen_dont_shift = Some(input.span());
-                        attributes.dont_shift = true;
-                        input.advance_to(&fork);
-                        break 'next;
-                    }
-                    Err(_) => error_count += 1,
-                }
+            if let Some(permissions) = fp {
+                attributes.permissions = permissions;
             }
 
+            attributes.flag_type = try_parse::<FlagType>(
+                input,
+                &mut seen_flag_type,
+                &mut error_count,
+            )
+            .transpose()?
+            .map(|v| v.ty);
+
+            attributes.dont_shift = try_parse::<keyword::dont_shift>(
+                input,
+                &mut seen_dont_shift,
+                &mut error_count,
+            )
+            .transpose()?
+            .is_some();
+
+            // Couldn't parse any part of the attribute.
             if error_count == 3 {
                 let unknown: proc_macro2::TokenTree = input.parse()?;
                 return Err(syn::Error::new_spanned(
@@ -96,6 +95,45 @@ impl Parse for FlagAttribute {
         }
 
         Ok(attributes)
+    }
+}
+
+impl FlagAttribute {
+    pub fn from_meta(
+        meta: &Meta,
+        size: usize,
+    ) -> syn::Result<FlagAttribute> {
+        if let Meta::List(list) = &meta {
+            let attr_ident = list.path.get_ident().ok_or_else(|| {
+                syn::Error::new_spanned(
+                    list,
+                    "Attribute path must be a single identifier",
+                )
+            })?;
+
+            if attr_ident != "flag" {
+                return Err(syn::Error::new_spanned(
+                    list,
+                    "Only the `flag` attribute is supported on bitfield \
+                     members",
+                ));
+            }
+
+            let mut attr =
+                syn::parse2::<FlagAttribute>(list.tokens.clone())?;
+
+            if attr.flag_type.is_none() && size == 1 {
+                attr.flag_type = Some(parse_quote!(bool))
+            }
+
+            return Ok(attr);
+        } else {
+            Err(syn::Error::new_spanned(
+                &meta,
+                "Attribute must be in the form `flag(permission)` or \
+                 `flag(permission, flag_type = Type)`",
+            ))
+        }
     }
 }
 
