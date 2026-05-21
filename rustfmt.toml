@@ -2,3 +2,6 @@ max_width = 75
 comment_width = 75
 wrap_comments = true
 format_strings = true
+unstable_features = true
+format_macro_bodies = true
+format_macro_matchers = true
