@@ -42,25 +42,36 @@ impl<'a> TryFrom<&'a ItemStruct> for BitFields<'a> {
 }
 
 impl<'a> BitFields<'a> {
-    fn checks(&self, field: &'a BitField) -> TokenStream2 {
-        let offset = field.offset;
-        let size = field.ty.size;
+    fn checks(&self, field: &'a BitField, fn_name: &str) -> TokenStream2 {
+        let struct_name = self.struct_name;
         let struct_type = &self.struct_type;
+        let size = field.ty.size;
+        let offset = field.offset;
+
+        let max_val: u64 = (1 << size) - 1;
+        let msg_size = format!(
+            "{struct_name}::{fn_name}: value out of range: must fit in \
+             {size} bits (max {max_val:#x})"
+        );
 
         let mut checks = quote! {
             debug_assert!(
-                (
-                   (v as #struct_type) >> #offset
-                ) < (1 << #size) as #struct_type,
-                "Value is too large for this bitfield"
+                (v as #struct_type) < (1 << #size) as #struct_type,
+                #msg_size,
             );
         };
 
         if field.attr.dont_shift {
+            let field_mask: u64 = ((1 << size) - 1) << offset;
+            let msg_shift = format!(
+                "{struct_name}::{fn_name}: value contains bits outside \
+                 the {size}-bit field at bit offset {offset} (permitted \
+                 mask: {field_mask:#x})"
+            );
             checks.extend(quote! {
                 debug_assert!(
                     v & !((((1 << #size) - 1) as #struct_type) << #offset) == 0,
-                    "Value overrides flags on positions that are not in bounds of flag",
+                    #msg_shift,
                 );
             });
         }
@@ -107,16 +118,21 @@ impl<'a> BitFields<'a> {
         } = field;
 
         let (ty, repr_ty, struct_type) = self.types(field);
-        let checks = self.checks(field);
+        let checks = self.checks(field, &name.to_string());
         let shift = self.shift(field);
+        let expect_msg = format!(
+            "Can't convert value 'v' ({}) into {}",
+            quote!(#ty),
+            quote!(#repr_ty)
+        );
 
         quote! {
             #(#doc_attrs)*
             #[inline]
             #vis const fn #name(mut self, v: #ty) -> Self {
-                let v = #repr_ty::try_from(v)
+                let v = <#repr_ty as ::core::convert::TryFrom<_>>::try_from(v)
                     .ok()
-                    .expect("Can't convery value 'v' into the struct type");
+                    .expect(#expect_msg);
 
                 #checks
 
@@ -142,7 +158,15 @@ impl<'a> BitFields<'a> {
 
         let size = ty.size;
         let (ty, repr_ty, struct_type) = self.types(field);
-        let shift = self.shift(field);
+        let shift = if field.attr.dont_shift {
+            quote! {}
+        } else {
+            quote! { >> #offset } // right shift to normalise for reading
+        };
+        let expect_msg = format!(
+            "Cannot convert bit representation into {}",
+            quote!(#ty)
+        );
 
         let fn_name = if ty.path.get_ident().is_some_and(|i| i == "bool") {
             format_ident!("is_{}", name)
@@ -157,13 +181,13 @@ impl<'a> BitFields<'a> {
                 unsafe {
                     let addr = self as *const _ as *mut #struct_type;
                     let val = core::ptr::read_volatile(addr);
-                    #ty::try_from(
+                    <#ty as ::core::convert::TryFrom<_>>::try_from(
                         (
                             (
                             val & (((1 << #size) - 1) << #offset)
                             ) #shift
                         ) as #repr_ty
-                    ).expect("Cannot convert bit representation into the given type")
+                    ).expect(#expect_msg)
                 }
             }
         }
@@ -187,15 +211,25 @@ impl<'a> BitFields<'a> {
         let size = ty.size;
         let (ty, repr_ty, struct_type) = self.types(field);
         let shift = self.shift(field);
-        let checks = self.checks(field);
+        let checks = self.checks(field, &fn_name.to_string());
+        let expect_msg = format!(
+            "Can't convert value 'v' ({}) into {}",
+            quote!(#ty),
+            quote!(#repr_ty)
+        );
+        let unwrap_msg = format!(
+            "Can't convert value 'v' ({}) into {} (second conversion)",
+            quote!(#ty),
+            quote!(#repr_ty)
+        );
 
         quote! {
             #(#doc_attrs)*
             #[inline]
             #vis fn #fn_name(&mut self, v: #ty) {
-                let v = #repr_ty::try_from(v)
+                let v = <#repr_ty as ::core::convert::TryFrom<_>>::try_from(v)
                     .ok()
-                    .expect("Can't convery value 'v' into the struct type");
+                    .expect(#expect_msg);
 
                 #checks
 
@@ -203,7 +237,7 @@ impl<'a> BitFields<'a> {
                     let addr = self as *const _ as *mut #struct_type;
                     let val = ::core::ptr::read_volatile(addr);
                     let cleared = val & !(((1 << #size) - 1) << #offset);
-                    let new = cleared | ((#repr_ty::try_from(v).unwrap() as #struct_type) #shift);
+                    let new = cleared | ((<#repr_ty as ::core::convert::TryFrom<_>>::try_from(v).expect(#unwrap_msg) as #struct_type) #shift);
                     ::core::ptr::write_volatile(addr, new);
                 }
             }
@@ -226,16 +260,18 @@ impl<'a> BitFields<'a> {
         let fn_name = format_ident!("clear_{}", name);
         let size = ty.size;
         let (_, repr_ty, struct_type) = self.types(field);
-        let checks = self.checks(field);
+        let checks = self.checks(field, &fn_name.to_string());
         let shift = self.shift(field);
+        let expect_msg =
+            format!("Can't convert clear value into {}", quote!(#repr_ty));
 
         quote! {
             #(#doc_attrs)*
             #[inline]
             #vis fn #fn_name(&mut self) {
-                let v = #repr_ty::try_from(#clear_val)
+                let v = <#repr_ty as ::core::convert::TryFrom<_>>::try_from(#clear_val)
                     .ok()
-                    .expect("Can't convery value 'v' into the struct type");
+                    .expect(#expect_msg);
 
                 #checks
 
@@ -269,7 +305,7 @@ impl<'a> BitFields<'a> {
                 };
                 let name = f.name;
                 let ty = f.attr.flag_type.as_ref().unwrap_or(&f.ty.repr_ty);
-                quote! { stringify!(#name), &#ty::try_from(self.#getter()) }
+                quote! { stringify!(#name), &<#ty as ::core::convert::TryFrom<_>>::try_from(self.#getter()) }
             })
             .collect();
 
