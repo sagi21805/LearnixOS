@@ -163,20 +163,20 @@ impl Parse for FlagPermission {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut flag_permissions = FlagPermission::default();
 
-        let permission =
-            input.parse::<Ident>()?.to_string().to_lowercase();
+        let permission_ident = input.parse::<Ident>()?;
+        let permissions = permission_ident.to_string().to_lowercase();
 
-        if !permission.chars().all(|c| matches!(c, 'r' | 'w' | 'c')) {
+        if !permissions.chars().all(|c| matches!(c, 'r' | 'w' | 'c')) {
             return Err(syn::Error::new_spanned(
-                &permission,
+                &permission_ident,
                 "expected permission string (e.g. `rw`, `r`, `wc(0)`)",
             ));
         }
 
-        flag_permissions.read = permission.contains("r");
-        flag_permissions.write = permission.contains("w");
+        flag_permissions.read = permissions.contains("r");
+        flag_permissions.write = permissions.contains("w");
 
-        if permission.contains('c') {
+        if permissions.contains('c') {
             let content;
             let _ = syn::parenthesized!(content in input);
             let int =

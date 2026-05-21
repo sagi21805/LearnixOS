@@ -1,4 +1,4 @@
-use syn::{Field, Ident, Visibility, parse_quote};
+use syn::{Field, Ident, Visibility, parse_quote, spanned::Spanned};
 
 use crate::bitfields::{flag_attr::FlagAttribute, utils::BitSize};
 
@@ -31,7 +31,10 @@ fn extract_attributes(
 
 impl<'a> BitField<'a> {
     pub fn new(f: &'a Field, offset: usize) -> syn::Result<Self> {
-        let name = f.ident.as_ref().expect("Field must have a name");
+        let name = f.ident.as_ref().ok_or(syn::Error::new(
+            f.span(),
+            "Struct field must have a name",
+        ))?;
         let ty: BitSize = (&f.ty).try_into()?;
 
         let (flag_attrs, doc_attrs) = extract_attributes(f);

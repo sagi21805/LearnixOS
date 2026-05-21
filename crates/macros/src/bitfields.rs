@@ -48,7 +48,7 @@ impl<'a> BitFields<'a> {
         let size = field.ty.size;
         let offset = field.offset;
 
-        let max_val: u64 = (1 << size) - 1;
+        let max_val = u128::MAX >> (u128::BITS - size as u32);
         let msg_size = format!(
             "{struct_name}::{fn_name}: value out of range: must fit in \
              {size} bits (max {max_val:#x})"
@@ -62,7 +62,7 @@ impl<'a> BitFields<'a> {
         };
 
         if field.attr.dont_shift {
-            let field_mask: u64 = ((1 << size) - 1) << offset;
+            let field_mask = max_val << offset;
             let msg_shift = format!(
                 "{struct_name}::{fn_name}: value contains bits outside \
                  the {size}-bit field at bit offset {offset} (permitted \
@@ -70,7 +70,7 @@ impl<'a> BitFields<'a> {
             );
             checks.extend(quote! {
                 debug_assert!(
-                    v & !((((1 << #size) - 1) as #struct_type) << #offset) == 0,
+                    v & !(((#struct_type::MAX >> (#struct_type::BITS - #size as u32)) as #struct_type) << #offset) == 0,
                     #msg_shift,
                 );
             });
@@ -184,7 +184,7 @@ impl<'a> BitFields<'a> {
                     <#ty as ::core::convert::TryFrom<_>>::try_from(
                         (
                             (
-                            val & (((1 << #size) - 1) << #offset)
+                            val & ((#struct_type::MAX >> (#struct_type::BITS - #size as u32)) << #offset)
                             ) #shift
                         ) as #repr_ty
                     ).expect(#expect_msg)
@@ -236,7 +236,7 @@ impl<'a> BitFields<'a> {
                 unsafe {
                     let addr = self as *const _ as *mut #struct_type;
                     let val = ::core::ptr::read_volatile(addr);
-                    let cleared = val & !(((1 << #size) - 1) << #offset);
+                    let cleared = val & !((#struct_type::MAX >> (#struct_type::BITS - #size as u32)) << #offset);
                     let new = cleared | ((<#repr_ty as ::core::convert::TryFrom<_>>::try_from(v).expect(#unwrap_msg) as #struct_type) #shift);
                     ::core::ptr::write_volatile(addr, new);
                 }
@@ -278,7 +278,7 @@ impl<'a> BitFields<'a> {
                 unsafe {
                     let addr = self as *const _ as *mut #struct_type;
                     let val = ::core::ptr::read_volatile(addr);
-                    let cleared = val & !(((1 << #size) - 1) << #offset);
+                    let cleared = val & !((#struct_type::MAX >> (#struct_type::BITS - #size as u32)) << #offset);
                     let new = cleared | ((#clear_val as #struct_type) #shift);
                     ::core::ptr::write_volatile(addr, new);
                 }
