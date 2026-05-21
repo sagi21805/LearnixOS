@@ -1,68 +1,12 @@
+mod bitfields;
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    DeriveInput, ItemStruct, LitInt, Token, parse_macro_input,
-    punctuated::Punctuated,
+    ItemStruct, LitInt, Token, parse_macro_input, punctuated::Punctuated,
 };
 
-use crate::bitflags::bitfields_impl;
-
-mod bitflags;
-// ANCHOR: common_address_functions
-#[proc_macro_derive(Address)]
-pub fn common_address_functions(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let struct_name = &input.ident;
-    let expanded = quote! {
-        impl #struct_name {
-            pub const unsafe fn new_unchecked(address: usize) -> Self {
-                Self(address)
-            }
-            pub const fn as_usize(&self) -> usize {
-                self.0
-            }
-            pub const fn as_non_null<T>(&self) -> core::ptr::NonNull<T> {
-                core::ptr::NonNull::new(
-                    core::ptr::with_exposed_provenance_mut::<T>(self.0)
-                ).expect("Tried to create NonNull from address, found null")
-            }
-            pub const fn is_aligned(
-                &self,
-                alignment: core::ptr::Alignment,
-            ) -> bool {
-                self.0 & (alignment.as_usize() - 1) == 0
-            }
-            pub const fn align_up(
-                mut self,
-                alignment: core::ptr::Alignment,
-            ) -> Self {
-                self.0 = (self.0 + (alignment.as_usize() - 1))
-                    & !(alignment.as_usize() - 1);
-                self
-            }
-            pub const fn align_down(
-                mut self,
-                alignment: core::ptr::Alignment,
-            ) -> Self {
-                self.0 &= !(alignment.as_usize() - 1);
-                self
-            }
-            pub const fn alignment(&self) -> core::ptr::Alignment {
-                unsafe {
-                    if self.0 == 0 {
-                        // Address 0 is aligned to any alignment; return max representable.
-                        core::ptr::Alignment::new_unchecked(1 << (usize::BITS - 1))
-                    } else {
-                        core::ptr::Alignment::new_unchecked(1 << self.0.trailing_zeros())
-                    }
-                }
-            }
-        }
-    };
-
-    expanded.into()
-}
-// ANCHOR_END: common_address_functions
+use crate::bitfields::BitFields;
 
 #[proc_macro]
 pub fn generate_generics(input: TokenStream) -> TokenStream {
@@ -128,9 +72,10 @@ pub fn generate_generics(input: TokenStream) -> TokenStream {
 /// assert_eq!(b.get_flag3(), 20);
 /// assert_eq!(size_of::<MyBitField>(), size_of::<u16>());
 /// ```
-pub fn bitfields(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn bitfields(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let s = parse_macro_input!(item as ItemStruct);
-    bitfields_impl(s)
+    BitFields::try_from(&s)
+        .map(|bitfields| quote! {#bitfields})
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }
