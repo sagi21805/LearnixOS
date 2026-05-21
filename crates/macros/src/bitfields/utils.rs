@@ -53,8 +53,8 @@ pub fn type_from_size(size: usize) -> syn::Result<Box<TypePath>> {
         33..=64 => Ok(parse_quote!(u64)),
         65..=128 => Ok(parse_quote!(u128)),
         _ => {
-            return Err(syn::Error::new_spanned(
-                size,
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
                 "Bit width must be between 1 and 128",
             ));
         }
