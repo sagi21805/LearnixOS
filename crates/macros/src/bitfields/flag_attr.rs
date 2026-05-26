@@ -1,7 +1,6 @@
 use syn::{
     Ident, LitInt, Meta, Token, TypePath,
     parse::{Parse, discouraged::Speculative},
-    parse_quote,
 };
 
 mod keyword {
@@ -13,8 +12,7 @@ mod keyword {
 #[derive(Default, Debug)]
 pub struct FlagAttribute {
     pub permissions: FlagPermission,
-    pub flag_type: Option<Box<TypePath>>,
-    // TODO: Change into Option<keyword::dont_shift>
+    pub flag_type: Option<TypePath>,
     pub dont_shift: bool,
 }
 
@@ -24,6 +22,8 @@ fn try_parse<T: Parse>(
     error_count: &mut usize,
 ) -> Option<syn::Result<T>> {
     let fork = input.fork();
+
+    // Try to parse the fork, to see if there is a valid T.
     let parsed = match fork.parse::<T>() {
         Ok(parsed) => parsed,
         Err(_) => {
@@ -32,6 +32,7 @@ fn try_parse<T: Parse>(
         }
     };
 
+    // If we have seen this attribute before, return an error.
     if seen.is_some() {
         Some(Err(syn::Error::new(seen.unwrap(), "Duplicate attriubte")))
     } else {
@@ -45,12 +46,24 @@ impl Parse for FlagAttribute {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut attributes = FlagAttribute::default();
 
+        // We keep track of the position in the stream where we last saw
+        // each attribute. We don't just save a bool, because the
+        // span will help to put the error message at the right place.
         let mut seen_permissions: Option<proc_macro2::Span> = None;
         let mut seen_flag_type: Option<proc_macro2::Span> = None;
         let mut seen_dont_shift: Option<proc_macro2::Span> = None;
 
         while !input.is_empty() {
+            // We save an error count, each time we fail to parse an
+            // attribute, we increment it. If we have errors in
+            // the count of our attributes, we must have an unknown
+            // attribute.
             let mut error_count = 0;
+
+            // Our `try_parse` function returns an
+            // `Option<syn::Result<T>>`, we use `transpose` to
+            // convert it to `syn::Result<Option<T>>` which we can remove
+            // more easily with the `?` operator.
             let fp = try_parse::<FlagPermission>(
                 input,
                 &mut seen_permissions,
@@ -87,6 +100,8 @@ impl Parse for FlagAttribute {
                 ));
             }
 
+            // We peek at the next token, if it's a comma, we have more
+            // attributes.
             if input.peek(Token![,]) {
                 let _ = input.parse::<Token![,]>()?;
             } else {
@@ -98,42 +113,37 @@ impl Parse for FlagAttribute {
     }
 }
 
-impl FlagAttribute {
-    pub fn from_meta(
-        meta: &Meta,
-        size: usize,
-    ) -> syn::Result<FlagAttribute> {
-        if let Meta::List(list) = &meta {
-            let attr_ident = list.path.get_ident().ok_or_else(|| {
-                syn::Error::new_spanned(
-                    list,
-                    "Attribute path must be a single identifier",
-                )
-            })?;
+impl TryFrom<&Meta> for FlagAttribute {
+    type Error = syn::Error;
 
-            if attr_ident != "flag" {
-                return Err(syn::Error::new_spanned(
-                    list,
-                    "Only the `flag` attribute is supported on bitfield \
-                     members",
-                ));
-            }
+    fn try_from(meta: &Meta) -> syn::Result<Self> {
+        let Meta::List(list) = &meta else {
+            return Err(syn::Error::new_spanned(
+                meta,
+                "Attribute must be a list",
+            ));
+        };
 
-            let mut attr =
-                syn::parse2::<FlagAttribute>(list.tokens.clone())?;
+        let attr_ident = list.path.get_ident().ok_or_else(|| {
+            syn::Error::new_spanned(
+                &list.path,
+                "Attribute path must be a single identifier",
+            )
+        })?;
 
-            if attr.flag_type.is_none() && size == 1 {
-                attr.flag_type = Some(parse_quote!(bool))
-            }
-
-            return Ok(attr);
-        } else {
-            Err(syn::Error::new_spanned(
-                &meta,
-                "Attribute must be in the form `flag(permission)` or \
-                 `flag(permission, flag_type = Type)`",
-            ))
+        if attr_ident != "flag" {
+            return Err(syn::Error::new_spanned(
+                list,
+                "Only the `flag` attribute is supported on bitfield \
+                 members",
+            ));
         }
+
+        // Use our `Parse` trait implementation to parse the
+        // attribute's contents.
+        let attr = syn::parse2::<FlagAttribute>(list.tokens.clone())?;
+
+        Ok(attr)
     }
 }
 
@@ -161,11 +171,16 @@ impl Parse for FlagPermission {
     /// Valid inputs: `r`, `w`, `rw`, `c(<n>)`, `rc(<n>)`, `wc(<n>)`,
     /// `rwc(<n>)` (case-insensitive).
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        // First, we create a default attribute, that we will then modify
+        // based on the input.
         let mut flag_permissions = FlagPermission::default();
 
+        // Then, we parse the identifier which holds our permissions.
         let permission_ident = input.parse::<Ident>()?;
         let permissions = permission_ident.to_string().to_lowercase();
 
+        // Next, we make sure that our permission string contains the valid
+        // characters.
         if !permissions.chars().all(|c| matches!(c, 'r' | 'w' | 'c')) {
             return Err(syn::Error::new_spanned(
                 &permission_ident,
@@ -173,14 +188,18 @@ impl Parse for FlagPermission {
             ));
         }
 
+        // We set the flag permissions based on the parsed string.
         flag_permissions.read = permissions.contains("r");
         flag_permissions.write = permissions.contains("w");
 
         if permissions.contains('c') {
             let content;
+            // We use the `syn::parenthesized!` macro to parse to the
+            // content inside the parentheses.
             let _ = syn::parenthesized!(content in input);
             let int =
                 content.parse::<LitInt>()?.base10_parse::<usize>()?;
+
             flag_permissions.clear = Some(int);
         }
 
@@ -192,7 +211,7 @@ impl Parse for FlagPermission {
 pub struct FlagType {
     _flag_type_token: keyword::flag_type,
     _equal: Token![=],
-    ty: Box<TypePath>,
+    ty: TypePath,
 }
 
 impl Parse for FlagType {
