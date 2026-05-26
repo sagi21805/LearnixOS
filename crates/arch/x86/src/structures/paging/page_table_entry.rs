@@ -34,8 +34,8 @@ impl PageTableEntry {
         frame: PhysicalAddress,
         flags: PageEntryFlags,
     ) {
-        self.set_flags(flags.present());
-        self.set_address(frame.as_usize() as u64);
+        self.set_flags(flags.present(true));
+        self.set_address(frame);
     }
     // ANCHOR_END: page_table_entry_map_unchecked
 
