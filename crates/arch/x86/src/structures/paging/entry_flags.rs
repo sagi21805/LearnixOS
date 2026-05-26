@@ -24,34 +24,40 @@ pub struct PageEntryFlags {
 impl PageEntryFlags {
     /// Default flags for entry that contains page table.
     pub const fn table_flags() -> Self {
-        PageEntryFlags::default().present().writable().table()
+        PageEntryFlags::default()
+            .present(true)
+            .writable(true)
+            .table(true)
     }
 
     /// Default flags for entry that contains huge page.
     pub const fn huge_page_flags() -> Self {
-        PageEntryFlags::default().present().writable().huge_page()
+        PageEntryFlags::default()
+            .present(true)
+            .writable(true)
+            .huge_page(true)
     }
 
     /// Default flags for entry that contains regular page.
     pub const fn regular_page_flags() -> Self {
-        PageEntryFlags::default().present().writable()
+        PageEntryFlags::default().present(true).writable(true)
     }
 
     pub const fn regular_io_page_flags() -> Self {
         PageEntryFlags::default()
-            .present()
-            .writable()
-            .disable_cache()
-            .global()
+            .present(true)
+            .writable(true)
+            .disable_cache(true)
+            .global(true)
     }
 
     pub const fn huge_io_page_flags() -> Self {
         PageEntryFlags::default()
-            .present()
-            .writable()
-            .huge_page()
-            .disable_cache()
-            .global()
+            .present(true)
+            .writable(true)
+            .huge_page(true)
+            .disable_cache(true)
+            .global(true)
     }
 }
 // ANCHOR_END: impl_page_entry_flags
