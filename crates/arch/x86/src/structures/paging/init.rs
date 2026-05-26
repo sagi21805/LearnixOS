@@ -1,5 +1,3 @@
-use crate::registers::cr3;
-
 use super::{PageEntryFlags, PageTable};
 use common::address_types::Address;
 use common::{
