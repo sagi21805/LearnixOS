@@ -9,7 +9,7 @@ mod keyword {
     syn::custom_keyword!(dont_shift);
 }
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct FlagAttribute {
     pub permissions: FlagPermission,
     pub flag_type: Option<TypePath>,
@@ -75,21 +75,27 @@ impl Parse for FlagAttribute {
                 attributes.permissions = permissions;
             }
 
-            attributes.flag_type = try_parse::<FlagType>(
+            if let Some(flag_type) = try_parse::<FlagType>(
                 input,
                 &mut seen_flag_type,
                 &mut error_count,
             )
             .transpose()?
-            .map(|v| v.ty);
+            .map(|v| v.ty)
+            {
+                attributes.flag_type = Some(flag_type);
+            }
 
-            attributes.dont_shift = try_parse::<keyword::dont_shift>(
+            if try_parse::<keyword::dont_shift>(
                 input,
                 &mut seen_dont_shift,
                 &mut error_count,
             )
             .transpose()?
-            .is_some();
+            .is_some()
+            {
+                attributes.dont_shift = true;
+            }
 
             // Couldn't parse any part of the attribute.
             if error_count == 3 {
