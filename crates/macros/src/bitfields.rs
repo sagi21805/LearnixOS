@@ -189,8 +189,8 @@ impl<'a> BitFields<'a> {
             #[inline]
             #[track_caller]
             #vis const fn #name(mut self, v: #ty) -> Self {
-                #checks
                 #v_to_repr
+                #checks
                 self.0 |= (v as #struct_ty) #shift;
                 self
             }
@@ -250,8 +250,8 @@ impl<'a> BitFields<'a> {
             #[inline]
             #[track_caller]
             #vis fn #fn_name(&mut self, v: #ty) {
-                #checks
                 #v_to_repr
+                #checks
                 #write
             }
         }
