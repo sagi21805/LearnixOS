@@ -1,15 +1,15 @@
 use syn::{Type, TypePath, parse_quote};
 
-pub struct BitSize {
+pub struct FlagMeta {
     /// The type that represents the bit size.
     /// For example, `B2` is represented by `u8`, and `B9` is represented
     /// by `u16`
-    pub repr_ty: Box<TypePath>,
+    pub repr_ty: TypePath,
     /// The actual size of the bit field, in bits.
-    pub size: usize,
+    pub width: usize,
 }
 
-impl<'a> TryFrom<&'a Type> for BitSize {
+impl<'a> TryFrom<&'a Type> for FlagMeta {
     type Error = syn::Error;
 
     fn try_from(ty: &'a Type) -> syn::Result<Self> {
@@ -41,11 +41,14 @@ impl<'a> TryFrom<&'a Type> for BitSize {
 
         let repr_ty = type_from_size(size)?;
 
-        Ok(BitSize { repr_ty, size })
+        Ok(FlagMeta {
+            repr_ty,
+            width: size,
+        })
     }
 }
 
-pub fn type_from_size(size: usize) -> syn::Result<Box<TypePath>> {
+pub fn type_from_size(size: usize) -> syn::Result<TypePath> {
     match size {
         1..=8 => Ok(parse_quote!(u8)),
         9..=16 => Ok(parse_quote!(u16)),
