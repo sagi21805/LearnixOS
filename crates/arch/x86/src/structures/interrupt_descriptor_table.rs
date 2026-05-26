@@ -143,7 +143,7 @@ impl InterruptDescriptorTable {
             handler_address,
             InterruptStackTable::None,
             InterruptAttributes::default()
-                .present()
+                .present(true)
                 .dpl(dpl)
                 .int_type(handler_type),
             SegmentSelector::default()
