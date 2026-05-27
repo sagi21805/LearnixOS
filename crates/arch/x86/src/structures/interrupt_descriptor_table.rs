@@ -142,11 +142,11 @@ impl InterruptDescriptorTable {
         let entry = InterruptDescriptorTableEntry::new(
             handler_address,
             InterruptStackTable::None,
-            InterruptAttributes::default()
+            InterruptAttributes::new()
                 .present(true)
                 .dpl(dpl)
                 .int_type(handler_type),
-            SegmentSelector::default()
+            SegmentSelector::new()
                 .rpl(ProtectionLevel::Ring0)
                 .section(Sections::KernelCode),
         );
@@ -173,9 +173,9 @@ impl InterruptDescriptorTableEntry {
     pub const fn missing() -> Self {
         Self {
             handler_offset_low: 0,
-            segment_selector: SegmentSelector::default(),
+            segment_selector: SegmentSelector::new(),
             ist: InterruptStackTable::None,
-            attributes: InterruptAttributes::default()
+            attributes: InterruptAttributes::new()
                 .int_type(InterruptType::Fault),
             handler_offset_mid: 0,
             handler_offset_high: 0,

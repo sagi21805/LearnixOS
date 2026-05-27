@@ -52,8 +52,8 @@ impl const Default for GlobalDescriptorTableEntry32 {
             limit_low: 0,
             base_low: 0,
             base_mid: 0,
-            access_byte: AccessByte::default(),
-            limit_flags: LimitFlags::default(),
+            access_byte: AccessByte::new(),
+            limit_flags: LimitFlags::new(),
             base_high: 0,
         }
     }
@@ -138,8 +138,8 @@ impl const Default for SystemSegmentDescriptor64 {
             limit_low: 0,
             base_low: 0,
             base_mid: 0,
-            access_byte: SystemAccessByte::default(),
-            limit_flags: LimitFlags::default(),
+            access_byte: SystemAccessByte::new(),
+            limit_flags: LimitFlags::new(),
             base_high: 0,
             base_extra: 0,
             _reserved: 0,
@@ -172,7 +172,7 @@ impl SystemSegmentDescriptor64 {
         let limit_high = ((limit >> 16) & 0xf) as u8;
         let base_extra = (base >> 32) as u32;
 
-        let access_byte = SystemAccessByte::default()
+        let access_byte = SystemAccessByte::new()
             .present(true)
             .dpl(ProtectionLevel::Ring0)
             .segment_type(segment_type);
@@ -212,23 +212,23 @@ impl GlobalDescriptorTableProtected {
             code: GlobalDescriptorTableEntry32::new(
                 0,
                 0xfffff,
-                AccessByte::default()
+                AccessByte::new()
                     .present(true)
                     .dpl(ProtectionLevel::Ring0)
                     .segment_type(SegmentDescriptorType::CodeOrData)
                     .executable(true)
                     .readable_writable(true),
-                LimitFlags::default().granularity(true).protected(true),
+                LimitFlags::new().granularity(true).protected(true),
             ),
             data: GlobalDescriptorTableEntry32::new(
                 0,
                 0xfffff,
-                AccessByte::default()
+                AccessByte::new()
                     .present(true)
                     .dpl(ProtectionLevel::Ring0)
                     .segment_type(SegmentDescriptorType::CodeOrData)
                     .readable_writable(true),
-                LimitFlags::default().granularity(true).protected(true),
+                LimitFlags::new().granularity(true).protected(true),
             ),
         }
     }
@@ -278,44 +278,44 @@ impl GlobalDescriptorTableLong {
             kernel_code: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
-                AccessByte::default()
+                AccessByte::new()
                     .segment_type(SegmentDescriptorType::CodeOrData)
                     .present(true)
                     .dpl(ProtectionLevel::Ring0)
                     .readable_writable(true)
                     .executable(true),
-                LimitFlags::default().long(true),
+                LimitFlags::new().long(true),
             ),
             kernel_data: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
-                AccessByte::default()
+                AccessByte::new()
                     .segment_type(SegmentDescriptorType::CodeOrData)
                     .present(true)
                     .dpl(ProtectionLevel::Ring0)
                     .readable_writable(true),
-                LimitFlags::default(),
+                LimitFlags::new(),
             ),
             user_code: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
-                AccessByte::default()
+                AccessByte::new()
                     .segment_type(SegmentDescriptorType::CodeOrData)
                     .present(true)
                     .dpl(ProtectionLevel::Ring3)
                     .readable_writable(true)
                     .executable(true),
-                LimitFlags::default().long(true),
+                LimitFlags::new().long(true),
             ),
             user_data: GlobalDescriptorTableEntry32::new(
                 0,
                 0,
-                AccessByte::default()
+                AccessByte::new()
                     .segment_type(SegmentDescriptorType::CodeOrData)
                     .present(true)
                     .dpl(ProtectionLevel::Ring3)
                     .readable_writable(true),
-                LimitFlags::default(),
+                LimitFlags::new(),
             ),
             tss: SystemSegmentDescriptor64::default(),
         }
@@ -326,7 +326,7 @@ impl GlobalDescriptorTableLong {
     // ANCHOR: gdt_long_load_tss
     pub fn load_tss(&mut self, tss: SystemSegmentDescriptor64) {
         self.tss = tss;
-        let tss_selector = SegmentSelector::default()
+        let tss_selector = SegmentSelector::new()
             .rpl(ProtectionLevel::Ring0)
             .section(Sections::TaskStateSegment);
         unsafe {
