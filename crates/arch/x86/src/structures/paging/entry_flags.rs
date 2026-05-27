@@ -24,7 +24,7 @@ pub struct PageEntryFlags {
 impl PageEntryFlags {
     /// Default flags for entry that contains page table.
     pub const fn table_flags() -> Self {
-        PageEntryFlags::default()
+        PageEntryFlags::new()
             .present(true)
             .writable(true)
             .table(true)
@@ -32,7 +32,7 @@ impl PageEntryFlags {
 
     /// Default flags for entry that contains huge page.
     pub const fn huge_page_flags() -> Self {
-        PageEntryFlags::default()
+        PageEntryFlags::new()
             .present(true)
             .writable(true)
             .huge_page(true)
@@ -40,11 +40,11 @@ impl PageEntryFlags {
 
     /// Default flags for entry that contains regular page.
     pub const fn regular_page_flags() -> Self {
-        PageEntryFlags::default().present(true).writable(true)
+        PageEntryFlags::new().present(true).writable(true)
     }
 
     pub const fn regular_io_page_flags() -> Self {
-        PageEntryFlags::default()
+        PageEntryFlags::new()
             .present(true)
             .writable(true)
             .disable_cache(true)
@@ -52,7 +52,7 @@ impl PageEntryFlags {
     }
 
     pub const fn huge_io_page_flags() -> Self {
-        PageEntryFlags::default()
+        PageEntryFlags::new()
             .present(true)
             .writable(true)
             .huge_page(true)

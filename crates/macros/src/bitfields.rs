@@ -136,6 +136,13 @@ impl<'a> BitFields<'a> {
         }
     }
 
+    /// General write into the field.
+    ///
+    /// # Parameters
+    ///
+    /// - `field` - The field to write into.
+    /// - `v` - A token stream that represent the value we write. This
+    ///   token stream should be castable into an integer type.
     fn volatile_write(
         &self,
         field: &'a BitField,
@@ -150,7 +157,10 @@ impl<'a> BitFields<'a> {
             unsafe {
                 let addr = self as *const _ as *mut #struct_ty;
                 let val = ::core::ptr::read_volatile(addr);
-                let cleared = val & !((#struct_ty::MAX >> (#struct_ty::BITS - #width as u32)) << #offset);
+                let mask = (
+                    #struct_ty::MAX >> (#struct_ty::BITS - #width as u32)
+                ) << #offset;
+                let cleared = val & !mask;
                 let new = cleared | ((#v as #struct_ty) #shift);
                 ::core::ptr::write_volatile(addr, new);
             }
@@ -225,8 +235,12 @@ impl<'a> BitFields<'a> {
                 unsafe {
                     let addr = self as *const _ as *mut #struct_ty;
                     let val = ::core::ptr::read_volatile(addr);
-                    let bits = (val & ((#struct_ty::MAX >> (#struct_ty::BITS - #width as u32)) << #offset)) #shift;
-                    <#ty as ::core::convert::TryFrom<#repr_ty>>::try_from(bits as #repr_ty)
+                    let mask = (
+                        #struct_ty::MAX >> (#struct_ty::BITS - #width as u32)
+                    ) << #offset;
+                    let bits = (val & mask) #shift;
+                    <#ty as ::core::convert::TryFrom<#repr_ty>>
+                        ::try_from(bits as #repr_ty)
                         .expect(#expect_msg)
                 }
             }
@@ -342,13 +356,9 @@ impl<'a> ToTokens for BitFields<'a> {
 
             impl #struct_name {
                 #[inline]
-                pub fn new() -> Self { Self(0) }
+                pub const fn new() -> Self { Self(0) }
 
                 #(#methods)*
-            }
-
-            impl const Default for #struct_name {
-                fn default() -> Self { Self(0) }
             }
 
             #conversion_impls

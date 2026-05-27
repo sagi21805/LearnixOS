@@ -32,9 +32,7 @@ impl PageTable {
     #[inline]
     pub const fn empty() -> Self {
         Self {
-            entries: {
-                [PageTableEntry::default(); PAGE_DIRECTORY_ENTRIES]
-            },
+            entries: { [PageTableEntry::new(); PAGE_DIRECTORY_ENTRIES] },
         }
     }
     // ANCHOR_END: page_table_empty
