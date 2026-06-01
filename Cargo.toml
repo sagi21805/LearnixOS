@@ -13,6 +13,7 @@ members = [
     "crates/memory/buddy",
     "crates/memory/page",
     "crates/memory/slab",
+    "crates/libk",
     "kernel",
     "tests",
     "xtask",
