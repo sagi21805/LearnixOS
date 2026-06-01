@@ -17,6 +17,10 @@ impl<T> LateInit<T> {
     pub const fn write(&mut self, val: T) -> &mut T {
         self.0.write(val)
     }
+
+    pub const fn assume_init_ref(&self) -> &T {
+        unsafe { self.0.assume_init_ref() }
+    }
 }
 
 impl<T> Deref for LateInit<T> {

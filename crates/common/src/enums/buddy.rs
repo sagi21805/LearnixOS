@@ -1,11 +1,9 @@
-use crate::error::ConversionError;
-use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
+use num_enum::{ConstFromPrimitive, ConstIntoPrimitive};
 use strum::VariantArray;
 use strum_macros::VariantArray;
 
 pub const BUDDY_MAX_ORDER: usize = BuddyOrder::VARIANTS.len();
 
-// TODO: understand how to put option<enum> in bitfield struct.
 #[repr(u8)]
 #[derive(
     VariantArray,
@@ -14,10 +12,9 @@ pub const BUDDY_MAX_ORDER: usize = BuddyOrder::VARIANTS.len();
     PartialEq,
     Debug,
     Eq,
-    ConstTryFromPrimitive,
     ConstIntoPrimitive,
+    ConstFromPrimitive,
 )]
-#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum BuddyOrder {
     Order0 = 0,
     Order1 = 1,
@@ -30,6 +27,7 @@ pub enum BuddyOrder {
     Order8 = 8,
     Order9 = 9,
     Order10 = 10,
+    #[default]
     None,
 }
 
