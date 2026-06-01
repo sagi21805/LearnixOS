@@ -1,14 +1,7 @@
-use core::{
-    marker::PhantomData,
-    mem::ManuallyDrop,
-    ops::{Deref, DerefMut},
-    ptr::NonNull,
-};
+use core::ptr::NonNull;
 
 use common::{
-    address_types::PhysicalAddress,
-    enums::{BUDDY_MAX_ORDER, BuddyOrder},
-    late_init::LateInit,
+    address_types::PhysicalAddress, enums::BuddyOrder, late_init::LateInit,
 };
 
 use macros::bitfields;
@@ -51,7 +44,7 @@ impl MetaState for Head {
 impl private::Seald for Regular {}
 impl MetaState for Regular {
     type Next = Option<NonNull<BuddyMeta<Regular>>>;
-    type Prev = NonNull<BuddyMeta<Intermidiate>>;
+    type Prev = NonNull<BuddyMeta<Head>>;
     type Flags = BuddyFlags;
 }
 
@@ -61,13 +54,6 @@ impl MetaState for Detached {
     type Prev = Option<NonNull<()>>;
     type Flags = BuddyFlags;
 }
-impl private::Seald for Intermidiate {}
-impl MetaState for Intermidiate {
-    type Next = Option<NonNull<BuddyMeta<Regular>>>;
-    type Prev = ();
-    type Flags = ();
-}
-
 pub trait BuddyBlock: Sized {
     fn meta<S: MetaState>(&self) -> &BuddyMeta<S>;
 
@@ -175,12 +161,12 @@ impl Default for BuddyMeta<Head> {
     }
 }
 
-impl Default for BuddyMeta<Detached> {
-    fn default() -> Self {
+impl BuddyMeta<Detached> {
+    pub fn new(order: BuddyOrder) -> Self {
         Self {
             next: None,
             prev: None,
-            flags: BuddyFlags::default(),
+            flags: BuddyFlags::new().order(order).allocated(false),
         }
     }
 }

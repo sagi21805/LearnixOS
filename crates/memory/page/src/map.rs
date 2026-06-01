@@ -8,22 +8,19 @@ use core::{
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     constants::{PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_SIZE},
-    enums::BUDDY_MAX_ORDER,
+    enums::{BUDDY_MAX_ORDER, BuddyOrder, MemoryRegionType},
     late_init::LateInit,
 };
 
 use x86::memory_map::MemoryMap;
 
-use buddy::{
-    BuddyAllocator,
-    meta::{
-        BuddyArena, BuddyError, BuddyMeta, BuddyMetaType, Detached, Head,
-        Regular,
-    },
+use buddy::meta::{
+    BuddyArena, BuddyError, BuddyMeta, BuddyMetaType, Detached,
 };
 
 use crate::{Page, meta::PageMeta};
 
+#[derive(Debug)]
 pub struct PageMap(NonNull<[Page]>);
 
 impl Deref for PageMap {
@@ -56,7 +53,14 @@ impl BuddyArena<Page> for PageMap {
     /// Initializes all pages on the constant address
     /// ([`PAGE_ALLOCATOR_OFFSET`]) and returns the end address.
     fn init(uninit: &'static mut LateInit<PageMap>, mmap: MemoryMap) {
-        let last = mmap.last().unwrap();
+        let last = unsafe {
+            mmap.regions
+                .as_ref()
+                .iter()
+                .filter(|r| r.region_type == MemoryRegionType::Usable)
+                .last()
+                .expect("Memory map is empty, no useble region found")
+        };
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
 
@@ -74,7 +78,9 @@ impl BuddyArena<Page> for PageMap {
                     Page {
                         meta: PageMeta {
                             buddy: BuddyMetaType {
-                                detached: BuddyMeta::<Detached>::default(),
+                                detached: BuddyMeta::<Detached>::new(
+                                    BuddyOrder::Order0,
+                                ),
                             },
                         },
                     },
@@ -114,3 +120,5 @@ impl BuddyArena<Page> for PageMap {
         todo!()
     }
 }
+
+unsafe impl Sync for PageMap {}
