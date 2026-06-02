@@ -1,4 +1,4 @@
-use core::{alloc::Layout, ptr::Alignment};
+use core::{alloc::Layout, mem::Alignment};
 use num_enum::TryFromPrimitive;
 use strum_macros::{EnumIter, VariantArray};
 
@@ -127,9 +127,17 @@ impl PageSize {
             PageSize::Huge => 512 * 512,
         }
     }
+
+    pub const fn mapping_table(&self) -> PageTableLevel {
+        match self {
+            PageSize::Regular => PageTableLevel::PT,
+            PageSize::Big => PageTableLevel::PD,
+            PageSize::Huge => PageTableLevel::PDPT,
+        }
+    }
 }
 
-impl const From<PageSize> for Layout {
+const impl From<PageSize> for Layout {
     fn from(val: PageSize) -> Self {
         unsafe {
             match val {

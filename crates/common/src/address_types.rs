@@ -27,11 +27,11 @@ pub const trait Address: Sized + Clone + Copy {
         .expect("Tried to create NonNull from address, found null")
     }
 
-    fn is_aligned(&self, alignment: core::ptr::Alignment) -> bool {
+    fn is_aligned(&self, alignment: core::mem::Alignment) -> bool {
         self.as_usize() & (alignment.as_usize() - 1) == 0
     }
 
-    fn align_up(self, alignment: core::ptr::Alignment) -> Self {
+    fn align_up(self, alignment: core::mem::Alignment) -> Self {
         unsafe {
             Self::new_unchecked(
                 (self.as_usize() + (alignment.as_usize() - 1))
@@ -40,7 +40,7 @@ pub const trait Address: Sized + Clone + Copy {
         }
     }
 
-    fn align_down(self, alignment: core::ptr::Alignment) -> Self {
+    fn align_down(self, alignment: core::mem::Alignment) -> Self {
         unsafe {
             Self::new_unchecked(
                 self.as_usize() & !(alignment.as_usize() - 1),
@@ -48,14 +48,14 @@ pub const trait Address: Sized + Clone + Copy {
         }
     }
 
-    fn alignment(&self) -> core::ptr::Alignment {
+    fn alignment(&self) -> core::mem::Alignment {
         unsafe {
             if self.as_usize() == 0 {
                 // Address 0 is aligned to any alignment; return max
                 // representable.
-                core::ptr::Alignment::new_unchecked(1 << (usize::BITS - 1))
+                core::mem::Alignment::new_unchecked(1 << (usize::BITS - 1))
             } else {
-                core::ptr::Alignment::new_unchecked(
+                core::mem::Alignment::new_unchecked(
                     1 << self.as_usize().trailing_zeros(),
                 )
             }
@@ -86,7 +86,7 @@ pub const trait Address: Sized + Clone + Copy {
 #[repr(C)]
 pub struct PhysicalAddress(usize);
 
-impl const Address for PhysicalAddress {
+const impl Address for PhysicalAddress {
     unsafe fn new_unchecked(address: usize) -> Self {
         Self(address)
     }
@@ -110,19 +110,19 @@ impl const Address for PhysicalAddress {
     }
 }
 
-impl const From<usize> for PhysicalAddress {
+const impl From<usize> for PhysicalAddress {
     fn from(value: usize) -> Self {
         unsafe { PhysicalAddress::new_unchecked(value) }
     }
 }
 
-impl const From<u64> for PhysicalAddress {
+const impl From<u64> for PhysicalAddress {
     fn from(value: u64) -> Self {
         unsafe { PhysicalAddress::new_unchecked(value as usize) }
     }
 }
 
-impl const From<PhysicalAddress> for u64 {
+const impl From<PhysicalAddress> for u64 {
     fn from(value: PhysicalAddress) -> Self {
         value.0 as u64
     }
@@ -151,7 +151,7 @@ impl const From<PhysicalAddress> for u64 {
 #[repr(C)]
 pub struct VirtualAddress(usize);
 
-impl const Address for VirtualAddress {
+const impl Address for VirtualAddress {
     unsafe fn new_unchecked(address: usize) -> Self {
         Self(address)
     }
@@ -185,7 +185,7 @@ impl<T> From<NonNull<T>> for VirtualAddress {
     }
 }
 
-impl const From<usize> for VirtualAddress {
+const impl From<usize> for VirtualAddress {
     fn from(value: usize) -> Self {
         unsafe { VirtualAddress::new_unchecked(value) }
     }
