@@ -12,10 +12,10 @@ use macros::bitfields;
 #[bitfields]
 pub struct PageTableEntry {
     #[flag(rwc(0), flag_type = PageEntryFlags)]
-    flags: B12,
-    #[flag(rw, flag_type = PhysicalAddress, dont_shift)]
-    address: B51,
-    not_executable: B1,
+    pub(crate) flags: B12,
+    #[flag(rw, dont_shift, flag_type = PhysicalAddress)]
+    pub(crate) address: B51,
+    pub(crate) not_executable: B1,
 }
 // ANCHOR_END: page_table_entry
 

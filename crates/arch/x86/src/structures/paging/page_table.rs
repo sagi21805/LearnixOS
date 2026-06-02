@@ -8,14 +8,14 @@ use common::{
     error::EntryError,
 };
 
-// ANCHOR: page_table
+use extend;
+
 #[repr(C)]
 #[repr(align(4096))]
 #[derive(Debug)]
 pub struct PageTable {
     pub entries: [PageTableEntry; PAGE_DIRECTORY_ENTRIES],
 }
-// ANCHOR_END: page_table
 
 #[derive(Debug)]
 pub enum EntryIndex {
@@ -25,9 +25,7 @@ pub enum EntryIndex {
     OutOfEntries,
 }
 
-// ANCHOR: page_table_impl
 impl PageTable {
-    // ANCHOR: page_table_empty
     /// Create an empty page table
     #[inline]
     pub const fn empty() -> Self {
@@ -35,14 +33,12 @@ impl PageTable {
             entries: { [PageTableEntry::new(); PAGE_DIRECTORY_ENTRIES] },
         }
     }
-    // ANCHOR_END: page_table_empty
 
     /// Create an empty page table at the given virtual address
     ///
     /// # Safety
     /// This function works on every address, and will override the data at
     /// that address
-    // ANCHOR: page_table_empty_from_ptr
     #[inline]
     pub unsafe fn empty_from_ptr(
         page_table_ptr: VirtualAddress,
@@ -58,17 +54,13 @@ impl PageTable {
             Some(page_table_ptr.as_non_null::<PageTable>())
         }
     }
-    // ANCHOR_END: page_table_empty_from_ptr
 
-    // ANCHOR: page_table_current_table
     #[inline]
     pub fn current_table() -> NonNull<PageTable> {
         NonNull::new(cr3::read() as usize as *mut PageTable)
             .expect("Page table pointer is not present in cr3, found NULL")
     }
-    // ANCHOR_END: page_table_current_table
 
-    // ANCHOR: page_table_address
     #[inline]
     #[cfg(target_arch = "x86_64")]
     pub fn address(&self) -> VirtualAddress {
@@ -76,13 +68,11 @@ impl PageTable {
             VirtualAddress::new_unchecked(self as *const Self as usize)
         }
     }
-    // ANCHOR_END: page_table_address
 
     /// Tries to fetch a page table entry or an empty page starting from
     /// the given index.
     ///
     /// Returns the index of the found entry and the page table if found.
-    // Anchor: page_table_try_fetch_table
     #[cfg(target_arch = "x86_64")]
     pub fn try_fetch_table(
         &'static self,
@@ -108,4 +98,23 @@ impl PageTable {
         EntryIndex::OutOfEntries
     }
 }
-// ANCHOR_END: page_table_impl
+
+#[extend::ext]
+pub impl VirtualAddress {
+    fn walk(&self) -> impl Iterator<Item = NonNull<PageTableEntry>> {
+        let mut table = Some(PageTable::current_table());
+        let mut level = Some(PageTableLevel::PML4);
+        ::core::iter::from_fn(move || {
+            let entry =
+                unsafe { &table?.as_ref().entries[self.index_of(level?)] };
+
+            if entry.get_flags().is_present() {
+                table = entry.mapped_table().ok();
+                level = level?.next();
+                Some(NonNull::from_ref(entry))
+            } else {
+                None
+            }
+        })
+    }
+}
