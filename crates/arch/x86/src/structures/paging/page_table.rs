@@ -1,11 +1,14 @@
 use core::ptr::{self, NonNull};
 
-use crate::{registers::cr3, structures::paging::PageTableEntry};
+use crate::{
+    registers::cr3,
+    structures::paging::{PageEntryFlags, PageTableEntry},
+};
 use common::{
-    address_types::{Address, VirtualAddress},
+    address_types::{Address, PhysicalAddress, VirtualAddress},
     constants::{PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT},
     enums::{PageSize, PageTableLevel},
-    error::EntryError,
+    error::{EntryError, MappingError},
 };
 
 use extend;
@@ -101,6 +104,7 @@ impl PageTable {
 
 #[extend::ext]
 pub impl VirtualAddress {
+    #[cfg(target_arch = "x86_64")]
     fn walk(&self) -> impl Iterator<Item = NonNull<PageTableEntry>> {
         let mut table = Some(PageTable::current_table());
         let mut level = Some(PageTableLevel::PML4);
@@ -116,5 +120,25 @@ pub impl VirtualAddress {
                 None
             }
         })
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    fn map(
+        &self,
+        address: PhysicalAddress,
+        flags: Option<PageEntryFlags>,
+        page_size: PageSize,
+    ) -> Result<(), MappingError> {
+        let mut entry = self
+            .walk()
+            .nth(page_size.mapping_table() as usize)
+            .ok_or(MappingError::TableDoesNotExist)?;
+        unsafe {
+            entry.as_mut().map(
+                address,
+                flags.unwrap_or(PageEntryFlags::regular_page_flags()),
+            )
+        }
+        Ok(())
     }
 }
