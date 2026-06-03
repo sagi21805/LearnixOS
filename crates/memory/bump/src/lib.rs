@@ -3,7 +3,7 @@
 #![feature(ptr_alignment_type)]
 
 use core::{
-    alloc::{AllocError, Allocator},
+    alloc::{AllocError, Allocator, Layout},
     cell::Cell,
     ptr::NonNull,
 };
@@ -12,7 +12,8 @@ use common::{
     address_types::{Address, PhysicalAddress},
     enums::MemoryRegionType,
 };
-use x86::memory_map::MemoryMap;
+
+use x86::{memory_map::MemoryMap, structures::paging::PageTable};
 
 pub struct BumpAllocator<'a> {
     curser: Cell<PhysicalAddress>,
