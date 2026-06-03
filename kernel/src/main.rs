@@ -1,10 +1,18 @@
 #![no_std]
 #![no_main]
-use core::panic::PanicInfo;
+#![feature(ptr_alignment_type)]
+#![feature(allocator_api)]
 
+use core::{
+    alloc::{Allocator, Layout},
+    panic::PanicInfo,
+    ptr::Alignment,
+};
+
+use bump::BumpAllocator;
 use common::constants::{
-    IDENTITY_PAGE_TABLE_L4_OFFSET, MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET,
-    PARSED_MEMORY_MAP, PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_SIZE,
+    MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, PARSED_MEMORY_MAP,
+    REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
 };
 // use keyboard::ps2_keyboard::Keyboard;
 use vga_display::{eprintln, okprintln, println};
@@ -39,6 +47,9 @@ pub unsafe extern "C" fn _start() -> ! {
     let mmap = MemoryMap::parse_map(raw, buf).unwrap();
 
     println!("{}", mmap);
+
+    let bump = BumpAllocator::new(&mmap);
+
     // okprintln!("Obtained Memory Map");
     // println!("{}", MemoryMap(parsed_memory_map!()));
 
