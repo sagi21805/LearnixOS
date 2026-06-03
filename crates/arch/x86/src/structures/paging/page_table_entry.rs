@@ -12,7 +12,7 @@ use macros::bitfields;
 #[bitfields]
 pub struct PageTableEntry {
     #[flag(rwc(0), flag_type = PageEntryFlags)]
-    pub(crate) flags: B12,
+    pub flags: B12,
     #[flag(rw, dont_shift, flag_type = PhysicalAddress)]
     pub(crate) address: B51,
     pub(crate) not_executable: B1,
