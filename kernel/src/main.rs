@@ -28,9 +28,12 @@ use x86::{
     structures::paging::{PageTable, PageTableEntry},
 };
 
-use libk::alloc::{BUMP_ALLOCATOR, VirtualAddressExt};
+use libk::alloc::{BUMP_ALLOCATOR, GlobalAllocator, VirtualAddressExt};
 
 static mut MMAP: LateInit<MemoryMap> = LateInit::uninit();
+
+#[global_allocator]
+static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -61,12 +64,14 @@ pub unsafe extern "C" fn _start() -> ! {
     let bump =
         BUMP_ALLOCATOR.write(BumpAllocator::new(MMAP.assume_init_ref()));
 
+    GLOBAL_ALLOCATOR.init(BUMP_ALLOCATOR.assume_init_ref());
     let v =
-        VirtualAddress::new_unchecked(PHYSICAL_MEMORY_OFFSET + 0x10000);
+        VirtualAddress::new_unchecked(PHYSICAL_MEMORY_OFFSET + 0x1000000);
     let p = PhysicalAddress::new_unchecked(6 * MiB);
 
-    v.map(p, None, PageSize::Big, &bump);
+    v.map(p, None, PageSize::Big);
 
+    *v.as_non_null::<u8>().as_mut() = 3;
     // okprintln!("Obtained Memory Map");
     // println!("{}", MemoryMap(parsed_memory_map!()));
 
