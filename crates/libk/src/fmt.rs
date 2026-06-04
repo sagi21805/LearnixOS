@@ -15,7 +15,7 @@ unsafe extern "Rust" {
 macro_rules! print {
     // Case 1: Standard print with optional arguments.
     ($fmt:expr $(, $arg:expr)* $(;)?) => {{
-        unsafe { $crate::kprint(format_args!($fmt, $($arg,)*)) }
+        unsafe { $crate::fmt::kprint(format_args!($fmt, $($arg,)*)) }
     }};
 }
 
@@ -26,6 +26,6 @@ macro_rules! print {
 macro_rules! println {
     // Case 1: Standard println with optional arguments.
     ($fmt:expr $(, $arg:expr)* $(;)?) => {
-        $crate::print!(concat!($fmt, "\n") $(, $arg)*)
+        $crate::fmt::print!(concat!($fmt, "\n") $(, $arg)*)
     };
 }

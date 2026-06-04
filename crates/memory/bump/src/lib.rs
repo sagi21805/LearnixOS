@@ -3,7 +3,7 @@
 #![feature(ptr_alignment_type)]
 
 use core::{
-    alloc::{AllocError, Allocator, Layout},
+    alloc::{AllocError, Allocator, GlobalAlloc, Layout},
     cell::Cell,
     ptr::NonNull,
 };
@@ -31,11 +31,8 @@ impl<'a> BumpAllocator<'a> {
     }
 }
 
-unsafe impl<'a> Allocator for BumpAllocator<'a> {
-    fn allocate(
-        &self,
-        layout: core::alloc::Layout,
-    ) -> Result<NonNull<[u8]>, core::alloc::AllocError> {
+unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let mut aligned_cursor =
             self.curser.get().align_up(layout.alignment());
 
@@ -66,20 +63,13 @@ unsafe impl<'a> Allocator for BumpAllocator<'a> {
                     aligned_cursor.as_usize() + layout.size(),
                 )
             });
-            Ok(NonNull::slice_from_raw_parts(
-                aligned_cursor.as_non_null(),
-                layout.size(),
-            ))
+            unsafe { aligned_cursor.as_non_null().as_mut() }
         } else {
-            Err(AllocError)
+            core::ptr::null_mut()
         }
     }
 
-    unsafe fn deallocate(
-        &self,
-        _ptr: NonNull<u8>,
-        _layout: core::alloc::Layout,
-    ) {
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         unimplemented!("Bump allocator does not support deallocation")
     }
 }
