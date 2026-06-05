@@ -1,6 +1,8 @@
-// ANCHOR: use_thiserror
 use thiserror::Error;
-// ANCHOR_END: use_thiserror
+
+use crate::constants::{
+    BIG_PAGE_ALIGNMENT, HUGE_PAGE_ALIGNMENT, REGULAR_PAGE_ALIGNMENT,
+};
 
 #[derive(Error, Debug)]
 pub enum TableError {
@@ -10,7 +12,6 @@ pub enum TableError {
     Full,
 }
 
-// ANCHOR: entry_error
 #[derive(Error, Debug)]
 pub enum EntryError {
     #[error("There is no mapping to this entry")]
@@ -18,4 +19,11 @@ pub enum EntryError {
     #[error("This entry contains memory block and not a table")]
     NotATable,
 }
-// ANCHOR_END: entry_error
+
+#[derive(Error, Debug)]
+pub enum MappingError {
+    #[error("The given address is already mapped")]
+    AlreadyMapped,
+    #[error("The table the address belongs to does not exist")]
+    TableDoesNotExist,
+}
