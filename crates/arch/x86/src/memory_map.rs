@@ -46,20 +46,12 @@ pub struct MemoryMap {
     pub capacity: usize,
 }
 
-impl Deref for MemoryMap {
-    type Target = [MemoryRegion];
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { self.regions.as_ref() }
-    }
-}
-
 impl Display for MemoryMap {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut usable = 0u64;
         let mut reserved = 0u64;
 
-        for entry in self.iter() {
+        for entry in unsafe { self.regions.as_ref().iter() } {
             let size_mib = entry.length / MiB as u64;
             let size_kib = (entry.length % MiB as u64) / KiB as u64;
 

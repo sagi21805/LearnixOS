@@ -15,7 +15,7 @@ use core::{
 use x86::structures::paging::PageTable;
 
 use common::{
-    address_types::PhysicalAddress,
+    address_types::{Address, PhysicalAddress},
     enums::{BUDDY_MAX_ORDER, BuddyOrder},
     iter,
 };
@@ -39,17 +39,18 @@ where
     Arena: BuddyArena<Block>,
     Block: BuddyBlock,
 {
-    pub fn init(uninit: &'static Self, arena: NonNull<Arena>) {
-        let freelist = [BuddyMeta::<Head>::default(); BUDDY_MAX_ORDER];
+    pub fn init(uninit: &'static mut Self, arena: NonNull<Arena>) {
+        let mut freelist = [BuddyMeta::<Head>::default(); BUDDY_MAX_ORDER];
 
-        for (mut block, order) in iter::power_chunk_firsts(
+        for (block, order) in iter::power_chunk_firsts(
             unsafe { arena.as_ref().iter() },
             BUDDY_MAX_ORDER,
         ) {
-
-            // unsafe { block.as_mut().meta_mut::<Regular>() =
-            // BuddyMeta::<Regular>::new(, flags) }
+            freelist[order].attach_block(block);
         }
+
+        uninit.freelist = freelist;
+        uninit.arena = arena;
     }
 
     pub fn alloc_pages(&mut self, num_pages: usize) -> PhysicalAddress {
@@ -132,9 +133,11 @@ where
             }
         };
 
-        if unsafe { buddy.as_ref().meta().flags.is_allocated() } {
+        if unsafe { buddy.as_ref().meta::<Regular>().flags.is_allocated() }
+        {
+            // Attach block, cannot be merged anymore.
             self.freelist[unsafe {
-                page.as_ref().meta().flags.get_order() as usize
+                page.as_ref().meta::<Regular>().flags.get_order() as usize
             }]
             .attach_block(page);
             return;

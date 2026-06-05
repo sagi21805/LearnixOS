@@ -4,37 +4,36 @@
 pub mod map;
 // pub mod meta;
 
-// use crate::meta::PageMeta;
-// use buddy::meta::{BuddyBlock, BuddyMeta, Regular};
-// use core::{cell::Ref, marker::PhantomData, ptr::NonNull};
+use crate::meta::PageMeta;
+use buddy::meta::{BuddyBlock, BuddyMeta, Regular};
+use core::ptr::NonNull;
 
 // pub struct Page {
 //     pub meta: PageMeta,
 // }
 
-// impl BuddyBlock for Page {
-//     #[inline]
-//     fn from_meta(
-//         meta: core::ptr::NonNull<BuddyMeta<Regular>>,
-//     ) -> core::ptr::NonNull<Self> {
-//         let offset = core::mem::offset_of!(Page, meta.buddy);
-//         unsafe {
-//             NonNull::new_unchecked(
-//                 meta.as_ptr().cast::<u8>().sub(offset).cast::<Self>(),
-//             )
-//         }
-//     }
+impl BuddyBlock for Page {
+    fn from_meta<S: buddy::meta::MetaState>(
+        meta: NonNull<BuddyMeta<S>>,
+    ) -> NonNull<Self> {
+        let offset = core::mem::offset_of!(Page, meta.buddy);
+        unsafe {
+            NonNull::new_unchecked(
+                meta.as_ptr().cast::<u8>().sub(offset).cast::<Self>(),
+            )
+        }
+    }
 
-//     #[inline]
-//     fn meta(&self) -> &BuddyMeta<Regular> {
-//         unsafe { &self.meta.buddy.regular }
-//     }
+    fn meta_mut<S: buddy::meta::MetaState>(
+        &mut self,
+    ) -> &mut BuddyMeta<S> {
+        unsafe { NonNull::from_ref(&self.meta.buddy).cast().as_mut() }
+    }
 
-//     #[inline]
-//     fn meta_mut(&mut self) -> &mut BuddyMeta<Regular> {
-//         unsafe { &mut self.meta.buddy.regular }
-//     }
-// }
+    fn meta<S: buddy::meta::MetaState>(&self) -> &BuddyMeta<S> {
+        unsafe { NonNull::from_ref(&self.meta.buddy).cast().as_ref() }
+    }
+}
 
 // impl AssignSlab for NonNull<Page<()>> {
 //     type Target<Unassigned: Slab> = NonNull<Page<Unassigned>>;
