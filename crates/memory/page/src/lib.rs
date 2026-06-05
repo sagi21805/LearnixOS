@@ -1,15 +1,16 @@
 #![no_std]
 
+// pub mod arena;
 pub mod map;
-pub mod meta;
+// pub mod meta;
 
 use crate::meta::PageMeta;
 use buddy::meta::{BuddyBlock, BuddyMeta, Regular};
 use core::ptr::NonNull;
 
-pub struct Page {
-    pub meta: PageMeta,
-}
+// pub struct Page {
+//     pub meta: PageMeta,
+// }
 
 impl BuddyBlock for Page {
     fn from_meta<S: buddy::meta::MetaState>(

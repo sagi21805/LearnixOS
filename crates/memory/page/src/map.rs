@@ -1,9 +1,3 @@
-use core::{
-    default,
-    mem::ManuallyDrop,
-    ops::{Deref, DerefMut},
-    ptr::NonNull,
-};
 
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},

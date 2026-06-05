@@ -1,0 +1,10 @@
+[package]
+name = "libk"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+common = { path = "../common" }
+bump = { path = "../memory/bump" }
+x86 = { path = "../arch/x86" }
+extend = "1.2.0"

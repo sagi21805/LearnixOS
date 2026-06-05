@@ -1,4 +1,4 @@
-use core::ptr::Alignment;
+use core::mem::Alignment;
 pub const PAGE_DIRECTORY_ENTRIES: usize = 512;
 pub const REGULAR_PAGE_SIZE: usize = 4096;
 pub const BIG_PAGE_SIZE: usize =
