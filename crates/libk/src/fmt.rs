@@ -26,6 +26,6 @@ macro_rules! print {
 macro_rules! println {
     // Case 1: Standard println with optional arguments.
     ($fmt:expr $(, $arg:expr)* $(;)?) => {
-        $crate::fmt::print!(concat!($fmt, "\n") $(, $arg)*)
+        $crate::print!(concat!($fmt, "\n") $(, $arg)*)
     };
 }
