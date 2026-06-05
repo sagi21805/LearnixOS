@@ -20,7 +20,9 @@ use common::{
     iter,
 };
 
-use crate::meta::{BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head, Regular};
+use crate::meta::{
+    BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head, Regular,
+};
 
 pub struct BuddyAllocator<Arena, Block>
 where
@@ -45,7 +47,8 @@ where
             BUDDY_MAX_ORDER,
         ) {
 
-            unsafe { block.as_mut().meta_mut::<Regular>() = BuddyMeta::<Regular>::new(, flags) }
+            // unsafe { block.as_mut().meta_mut::<Regular>() =
+            // BuddyMeta::<Regular>::new(, flags) }
         }
     }
 
