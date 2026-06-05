@@ -9,12 +9,14 @@ use alloc::alloc::{AllocError, Allocator, GlobalAlloc, alloc};
 
 use bump::BumpAllocator;
 use common::{
-    address_types::{PhysicalAddress, VirtualAddress},
+    address_types::{Address, PhysicalAddress, VirtualAddress},
     enums::{PageSize, PageTableLevel},
     error::{EntryError, MappingError},
     late_init::LateInit,
 };
-use x86::structures::paging::{PageEntryFlags, PageTable, PageTableEntry};
+use x86::structures::paging::{
+    PageEntryFlags, PageTable, PageTableEntry, entry_flags,
+};
 
 use crate::{fmt::kprint, println};
 
@@ -47,7 +49,6 @@ impl<'a> GlobalAllocator<'a> {
 
 unsafe impl<'a> GlobalAlloc for GlobalAllocator<'a> {
     unsafe fn alloc(&self, layout: alloc::alloc::Layout) -> *mut u8 {
-        unsafe { kprint(format_args!("Layout: {:?}\n", layout)) };
         unsafe { self.allocator.alloc(layout) }
     }
 
@@ -69,10 +70,19 @@ unsafe impl<'a> GlobalAlloc for GlobalAllocator<'a> {
     }
 }
 
-pub fn alloc_table() -> Result<NonNull<PageTable>, AllocError> {
+/// Allocate a new table, point to it from a given [`PageTableEntry`]
+pub fn alloc_table(
+    entry: &mut PageTableEntry,
+) -> Result<NonNull<PageTable>, AllocError> {
     let ptr = unsafe { alloc(Layout::new::<PageTable>()) };
-
-    Ok(NonNull::new(ptr).ok_or(AllocError)?.cast())
+    let table = NonNull::new(ptr).ok_or(AllocError)?.cast::<PageTable>();
+    unsafe {
+        entry.map(
+            PhysicalAddress::new_unchecked(ptr as usize),
+            PageEntryFlags::table_flags(),
+        );
+    }
+    Ok(table)
 }
 
 #[extend::ext]
@@ -81,17 +91,22 @@ pub impl VirtualAddress {
     fn walk(&self) -> impl Iterator<Item = NonNull<PageTableEntry>> {
         let mut table = Some(PageTable::current_table());
         let mut level = Some(PageTableLevel::PML4);
+        let mut prev_entry: Option<NonNull<PageTableEntry>> = None;
         ::core::iter::from_fn(move || {
-            let entry =
-                unsafe { &table?.as_ref().entries[self.index_of(level?)] };
+            let current_level = level?;
+
+            let entry = unsafe {
+                &table?.as_ref().entries[self.index_of(current_level)]
+            };
 
             if entry.get_flags().is_present() {
                 table = entry.mapped_table().ok();
-                level = level?.next();
-                Some(NonNull::from_ref(entry))
+                level = current_level.next();
             } else {
-                None
+                // Stop at the next iteration.
+                level = None;
             }
+            Some(NonNull::from_ref(entry))
         })
     }
 
@@ -99,24 +114,40 @@ pub impl VirtualAddress {
     fn walk_map(&self) -> impl Iterator<Item = NonNull<PageTableEntry>> {
         let mut table = PageTable::current_table();
         let mut level = Some(PageTableLevel::PML4);
+        let mut prev_entry: Option<NonNull<PageTableEntry>> = None;
         ::core::iter::from_fn(move || {
-            unsafe { kprint(format_args!("Here")) };
-            let entry =
-                unsafe { &table.as_ref().entries[self.index_of(level?)] };
+            use x86::structures::paging::EntryIndex::Entry;
 
-            unsafe { kprint(format_args!("Table: {:?}\n", table)) };
-            table = match entry.mapped_table() {
-                Ok(t) => t,
-                Err(EntryError::NoMapping) => {
-                    alloc_table().expect("Cannot allocate table")
-                }
-                Err(EntryError::NotATable) => {
-                    todo!("Mapping to this entry already exists")
-                }
+            if let Some(mut prev_entry) = prev_entry {
+                table = match unsafe { prev_entry.as_ref().mapped_table() }
+                {
+                    Ok(t) => t,
+                    Err(EntryError::NoMapping) => {
+                        alloc_table(unsafe { prev_entry.as_mut() })
+                            .expect("Cannot allocate table")
+                    }
+                    Err(EntryError::NotATable) => {
+                        todo!("Mapping to this entry already exists")
+                    }
+                };
+            }
+
+            let current_level = level?;
+            let entry = unsafe {
+                NonNull::from_ref(
+                    &table.as_mut().entries[self.index_of(current_level)],
+                )
             };
-            level = level?.next();
-            Some(NonNull::from_ref(entry))
+            level = current_level.next();
+            prev_entry = Some(entry);
+
+            Some(entry)
         })
+    }
+
+    fn is_mapped(&self) -> bool {
+        self.walk()
+            .all(|e| unsafe { e.as_ref().get_flags().is_present() })
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -130,6 +161,7 @@ pub impl VirtualAddress {
             .walk_map()
             .nth(page_size.mapping_table() as usize)
             .ok_or(MappingError::TableDoesNotExist)?;
+
         unsafe {
             entry.as_mut().map(
                 address,
@@ -141,7 +173,7 @@ pub impl VirtualAddress {
                         PageEntryFlags::huge_page_flags()
                     }
                 }),
-            );
+            )
         }
         Ok(())
     }
