@@ -1,20 +1,29 @@
+use core::{
+    default,
+    mem::ManuallyDrop,
+    ops::{Deref, DerefMut},
+    ptr::NonNull,
+};
 
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     constants::{PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_SIZE},
-    enums::{BUDDY_MAX_ORDER, BuddyOrder, MemoryRegionType},
+    enums::BUDDY_MAX_ORDER,
     late_init::LateInit,
 };
 
 use x86::memory_map::MemoryMap;
 
-use buddy::meta::{
-    BuddyArena, BuddyError, BuddyMeta, BuddyMetaType, Detached,
+use buddy::{
+    BuddyAllocator,
+    meta::{
+        BuddyArena, BuddyError, BuddyMeta, BuddyMetaType, Detached, Head,
+        Regular,
+    },
 };
 
 use crate::{Page, meta::PageMeta};
 
-#[derive(Debug)]
 pub struct PageMap(NonNull<[Page]>);
 
 impl Deref for PageMap {
@@ -47,14 +56,7 @@ impl BuddyArena<Page> for PageMap {
     /// Initializes all pages on the constant address
     /// ([`PAGE_ALLOCATOR_OFFSET`]) and returns the end address.
     fn init(uninit: &'static mut LateInit<PageMap>, mmap: MemoryMap) {
-        let last = unsafe {
-            mmap.regions
-                .as_ref()
-                .iter()
-                .filter(|r| r.region_type == MemoryRegionType::Usable)
-                .last()
-                .expect("Memory map is empty, no useble region found")
-        };
+        let last = mmap.last().unwrap();
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
 
@@ -72,9 +74,7 @@ impl BuddyArena<Page> for PageMap {
                     Page {
                         meta: PageMeta {
                             buddy: BuddyMetaType {
-                                detached: BuddyMeta::<Detached>::new(
-                                    BuddyOrder::Order0,
-                                ),
+                                detached: BuddyMeta::<Detached>::default(),
                             },
                         },
                     },
@@ -114,5 +114,3 @@ impl BuddyArena<Page> for PageMap {
         todo!()
     }
 }
-
-unsafe impl Sync for PageMap {}

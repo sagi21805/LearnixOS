@@ -11,5 +11,7 @@ num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features
     "complex-expressions",
 ] }
 macros = { path = "../../macros" }
+libk = { path = "../../libk" }
 strum_macros = { version = "0.27", default-features = false }
 strum = { version = "0.27", default-features = false }
+extend = "1.2.0"

@@ -21,5 +21,7 @@ nonmax = { version = "0.5.5", default-features = false }
 # keyboard = { path = "../crates/drivers/keyboard" }
 # pci = { path = "../crates/drivers/pci" }
 vga_display = { path = "../crates/drivers/vga-display" }
+bump = { path = "../crates/memory/bump"}
+libk = { path = "../crates/libk" }
 buddy = { path = "../crates/memory/buddy" }
 page = { path = "../crates/memory/page" }

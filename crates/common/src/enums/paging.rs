@@ -1,4 +1,4 @@
-use core::{alloc::Layout, ptr::Alignment};
+use core::{alloc::Layout, mem::Alignment};
 use num_enum::TryFromPrimitive;
 use strum_macros::{EnumIter, VariantArray};
 
@@ -30,16 +30,14 @@ pub enum PageTableLevel {
 }
 
 impl PageTableLevel {
-    pub fn next(&self) -> Option<Self> {
-        let n = (*self as u8) - 1;
-        (n > 0).then(|| unsafe { core::mem::transmute(n) })
+    pub fn next(&self) -> Option<PageTableLevel> {
+        let n = (*self as i8) + 1;
+        (n < 4).then(|| unsafe { core::mem::transmute(n) })
     }
 
-    pub fn prev(&self) -> Result<Self, TableError> {
-        let n = (*self as u8) + 1;
-        (n <= 4)
-            .then(|| unsafe { core::mem::transmute(n) })
-            .ok_or(TableError::Full)
+    pub fn prev(&self) -> Option<PageTableLevel> {
+        let n = (*self as i8) - 1;
+        (n > 0).then(|| unsafe { core::mem::transmute(n) })
     }
 }
 #[repr(u8)]
@@ -127,9 +125,17 @@ impl PageSize {
             PageSize::Huge => 512 * 512,
         }
     }
+
+    pub const fn mapping_table(&self) -> PageTableLevel {
+        match self {
+            PageSize::Regular => PageTableLevel::PT,
+            PageSize::Big => PageTableLevel::PD,
+            PageSize::Huge => PageTableLevel::PDPT,
+        }
+    }
 }
 
-impl const From<PageSize> for Layout {
+const impl From<PageSize> for Layout {
     fn from(val: PageSize) -> Self {
         unsafe {
             match val {
