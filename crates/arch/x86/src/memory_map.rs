@@ -158,6 +158,10 @@ impl MemoryMap {
             capacity,
         })
     }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a MemoryRegion> {
+        unsafe { self.regions.as_ref().iter() }
+    }
 }
 
 /// Return a filler entry if there is a gap between A and B
