@@ -20,15 +20,17 @@ use common::{
     enums::PageSize,
     late_init::LateInit,
 };
-// use keyboard::ps2_keyboard::Keyboard;
-use vga_display::{eprintln, okprintln, println};
+use vga_display::{eprintln, okprintln, print};
 use x86::{
-    instructions::interrupts,
+    instructions::{self, interrupts},
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
     structures::paging::{PageTable, PageTableEntry},
 };
 
-use libk::alloc::{BUMP_ALLOCATOR, GlobalAllocator, VirtualAddressExt};
+use libk::{
+    alloc::{BUMP_ALLOCATOR, GlobalAllocator, VirtualAddressExt},
+    println,
+};
 
 static mut MMAP: LateInit<MemoryMap> = LateInit::uninit();
 
@@ -57,21 +59,31 @@ pub unsafe extern "C" fn _start() -> ! {
         )
     };
 
-    let mmap = MMAP.write(MemoryMap::parse_map(raw, buf).unwrap());
+    unsafe {
+        let mmap = MMAP.write(MemoryMap::parse_map(raw, buf).unwrap());
 
-    println!("{}", mmap);
+        println!("{}", mmap);
 
-    let bump =
-        BUMP_ALLOCATOR.write(BumpAllocator::new(MMAP.assume_init_ref()));
+        let bump = BUMP_ALLOCATOR
+            .write(BumpAllocator::new(MMAP.assume_init_ref()));
 
-    GLOBAL_ALLOCATOR.init(BUMP_ALLOCATOR.assume_init_ref());
-    let v =
-        VirtualAddress::new_unchecked(PHYSICAL_MEMORY_OFFSET + 0x1000000);
-    let p = PhysicalAddress::new_unchecked(6 * MiB);
+        GLOBAL_ALLOCATOR.init(BUMP_ALLOCATOR.assume_init_ref());
+        let v = VirtualAddress::new_unchecked(
+            PHYSICAL_MEMORY_OFFSET + 6 * MiB,
+        );
+        let p = PhysicalAddress::new_unchecked(6 * MiB);
 
-    v.map(p, None, PageSize::Big);
+        println!("Virtual address: {:x?} is mapped: {}", v, v.is_mapped());
 
-    *v.as_non_null::<u8>().as_mut() = 3;
+        let succ = v.map(p, None, PageSize::Regular);
+
+        println!("Map succeeded: {:?}", succ);
+
+        println!("Virtual address: {:x?} is mapped: {}", v, v.is_mapped());
+        // instructions::interrupts::hlt();
+        *v.as_non_null::<u8>().as_mut() = 3;
+        println!("Map succeeded: {:?}", succ);
+    }
     // okprintln!("Obtained Memory Map");
     // println!("{}", MemoryMap(parsed_memory_map!()));
 
