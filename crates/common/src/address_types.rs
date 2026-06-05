@@ -206,16 +206,6 @@ impl VirtualAddress {
         Self::from_indexes(indices[0], indices[1], indices[2], indices[3])
     }
 
-    /// indexing for the n_th page table
-    ///
-    /// 4 -> index of 4th table
-    ///
-    /// 3 -> index of 3rd table
-    ///
-    /// 2 -> index of 2nd table
-    ///
-    /// 1 -> index of 1st table
-    // ANCHOR: virtual_nth_pt_index_unchecked
     pub const fn index_of(&self, level: PageTableLevel) -> usize {
         (self.0 >> (39 - 9 * (level as usize))) & 0o777
     }
