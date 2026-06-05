@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 num_enum = {
-    git = "https://github.com/sagi21805/num_enum.git", rev = "2e53bd356ae93c537f3345f38679617bb977633c", default-features = false, features = ["complex-expressions"]
+    git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = ["complex-expressions"]
 }
 common = { path = "../crates/common" }
 x86 = { path = "../crates/arch/x86" }
@@ -23,3 +23,5 @@ nonmax = { version = "0.5.5", default-features = false }
 vga_display = { path = "../crates/drivers/vga-display" }
 bump = { path = "../crates/memory/bump"}
 libk = { path = "../crates/libk" }
+buddy = { path = "../crates/memory/buddy" }
+page = { path = "../crates/memory/page" }
