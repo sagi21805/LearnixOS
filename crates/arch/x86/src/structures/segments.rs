@@ -10,7 +10,7 @@ pub struct SegmentSelector {
     #[flag(flag_type = ProtectionLevel)]
     pub rpl: B2,
     pub use_ldt: B1,
-    #[flag(flag_type = Sections)]
+    #[flag(flag_type = Sections, dont_shift)]
     pub section: B13,
 }
 
