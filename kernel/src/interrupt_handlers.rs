@@ -1,16 +1,19 @@
-use crate::{
-    registers::cr2,
-    structures::interrupt_descriptor_table::{
-        InterruptDescriptorTable, InterruptStackFrame,
-    },
-};
 use common::{
-    address_types::VirtualAddress,
+    address_types::{Address, VirtualAddress},
     enums::{
         ProtectionLevel,
         interrupts::{Interrupt, InterruptType},
     },
 };
+use libk::println;
+use x86::{
+    registers::cr2,
+    structures::interrupt_descriptor_table::{
+        InterruptDescriptorTable, InterruptStackFrame,
+    },
+};
+
+use crate::timer::timer_handler;
 
 pub extern "x86-interrupt" fn division_error_handler(
     stack_frame: InterruptStackFrame,
@@ -184,7 +187,7 @@ pub extern "x86-interrupt" fn control_protection_handler(
     println!("Error code: {:#x}", error_code);
 }
 
-pub fn init(idt: &'static mut InterruptDescriptorTable) {
+pub fn init(idt: &mut InterruptDescriptorTable) {
     unsafe {
         idt.set_interrupt_handler(
             Interrupt::DivisionError,
@@ -376,29 +379,29 @@ pub fn init(idt: &'static mut InterruptDescriptorTable) {
         );
 
         // TODO: ADD THESE INTERRUPT ON A DIFFERENT OCCASION
-        //     idt.set_interrupt_handler(
-        //         Interrupt::Timer,
-        //         VirtualAddress::new_unchecked(
-        //             timer_handler as *const () as usize,
-        //         ),
-        //         ProtectionLevel::Ring0,
-        //         InterruptType::Trap,
-        //     );
-        //     idt.set_interrupt_handler(
-        //         Interrupt::Keyboard,
-        //         VirtualAddress::new_unchecked(
-        //             keyboard_handler as *const () as usize,
-        //         ),
-        //         ProtectionLevel::Ring0,
-        //         InterruptType::Trap,
-        //     );
-        //     idt.set_interrupt_handler(
-        //         Interrupt::Ahci,
-        //         VirtualAddress::new_unchecked(
-        //             ahci_interrupt as *const () as usize,
-        //         ),
-        //         ProtectionLevel::Ring0,
-        //         InterruptType::Trap,
-        //     );
+        idt.set_interrupt_handler(
+            Interrupt::Timer,
+            VirtualAddress::new_unchecked(
+                timer_handler as *const () as usize,
+            ),
+            ProtectionLevel::Ring0,
+            InterruptType::Trap,
+        );
+        // idt.set_interrupt_handler(
+        //     Interrupt::Keyboard,
+        //     VirtualAddress::new_unchecked(
+        //         keyboard_handler as *const () as usize,
+        //     ),
+        //     ProtectionLevel::Ring0,
+        //     InterruptType::Trap,
+        // );
+        // idt.set_interrupt_handler(
+        //     Interrupt::Ahci,
+        //     VirtualAddress::new_unchecked(
+        //         ahci_interrupt as *const () as usize,
+        //     ),
+        //     ProtectionLevel::Ring0,
+        //     InterruptType::Trap,
+        // );
     }
 }
