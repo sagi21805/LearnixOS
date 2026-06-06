@@ -5,7 +5,6 @@ use macros::bitfields;
 
 use crate::{instructions, structures::segments::SegmentSelector};
 
-// ANCHOR: access_byte
 #[bitfields]
 pub struct AccessByte {
     #[flag(r)]
@@ -19,9 +18,7 @@ pub struct AccessByte {
     dpl: B2,
     present: B1,
 }
-// ANCHOR_END: access_byte
 
-// ANCHOR: limit_flags
 /// Low 4 bits limit high 4 bits flags
 #[bitfields]
 struct LimitFlags {
@@ -32,9 +29,7 @@ struct LimitFlags {
     protected: B1,
     granularity: B1,
 }
-// ANCHOR_END: limit_flags
 
-// ANCHOR: gdt_entry32
 #[repr(C, packed)]
 struct GlobalDescriptorTableEntry32 {
     limit_low: u16,
@@ -44,7 +39,6 @@ struct GlobalDescriptorTableEntry32 {
     limit_flags: LimitFlags,
     base_high: u8,
 }
-// ANCHOR_END: gdt_entry32
 
 impl const Default for GlobalDescriptorTableEntry32 {
     fn default() -> Self {
@@ -59,7 +53,6 @@ impl const Default for GlobalDescriptorTableEntry32 {
     }
 }
 
-// ANCHOR: gdt_entry32_impl
 impl GlobalDescriptorTableEntry32 {
     /// Create a new entry
     ///
@@ -69,7 +62,6 @@ impl GlobalDescriptorTableEntry32 {
     /// - `limit`: The size of the segment
     /// - `access_byte`: The type and access privileges of the entry
     /// - `flags`: Configuration flags of the entry
-    // ANCHOR: gdt_entry32_new
     pub const fn new(
         base: u32,
         limit: u32,
@@ -94,17 +86,13 @@ impl GlobalDescriptorTableEntry32 {
             base_high,
         }
     }
-    // ANCHOR_END: gdt_entry32_new
 }
-// ANCHOR_END: gdt_entry32_impl
 
-// ANCHOR: gdtr
 #[repr(C, packed)]
 pub struct GlobalDescriptorTableRegister {
     pub limit: u16,
     pub base: usize,
 }
-// ANCHOR_END: gdtr
 
 #[bitfields]
 pub struct SystemAccessByte {
@@ -117,7 +105,6 @@ pub struct SystemAccessByte {
     present: B1,
 }
 
-// ANCHOR: system_segment_descriptor64
 #[repr(C, packed)]
 pub struct SystemSegmentDescriptor64 {
     limit_low: u16,
@@ -129,9 +116,7 @@ pub struct SystemSegmentDescriptor64 {
     base_extra: u32,
     _reserved: u32,
 }
-// ANCHOR_END: system_segment_descriptor64
 
-// ANCHOR: system_segment_descriptor64_empty
 impl const Default for SystemSegmentDescriptor64 {
     fn default() -> Self {
         SystemSegmentDescriptor64 {
@@ -146,9 +131,7 @@ impl const Default for SystemSegmentDescriptor64 {
         }
     }
 }
-// ANCHOR_END: system_segment_descriptor64_empty
 
-// ANCHOR: system_segment_descriptor64_impl
 impl SystemSegmentDescriptor64 {
     #[cfg(target_arch = "x86_64")]
     /// Construct a new system segment
@@ -159,7 +142,6 @@ impl SystemSegmentDescriptor64 {
     /// - `limit`: The limit value of the segment, for each segment this
     ///   may mean something different.
     /// - `segment_type`: The type of the constructed segment
-    // ANCHOR: system_segment_descriptor64_new
     pub const fn new(
         base: u64,
         limit: u32,
@@ -191,7 +173,6 @@ impl SystemSegmentDescriptor64 {
     // ANCHOR_END: system_segment_descriptor64_new
 }
 
-// ANCHOR: gdt_protected
 /// Initial temporary GDT
 #[repr(C, packed)]
 pub struct GlobalDescriptorTableProtected {
@@ -199,13 +180,10 @@ pub struct GlobalDescriptorTableProtected {
     code: GlobalDescriptorTableEntry32,
     data: GlobalDescriptorTableEntry32,
 }
-// ANCHOR_END: gdt_protected
 
-// ANCHOR: gdt_protected_impl
 impl GlobalDescriptorTableProtected {
     /// Creates default global descriptor table for
     /// protected mode
-    // ANCHOR: gdt_default
     pub const fn default() -> Self {
         Self {
             null: GlobalDescriptorTableEntry32::default(),
@@ -232,14 +210,12 @@ impl GlobalDescriptorTableProtected {
             ),
         }
     }
-    // ANCHOR_END: gdt_default
 
     /// Load the GDT with the `lgdt` instruction
     ///
     /// # Safety
     /// This function doesn't check if a GDT already exists, and just
     /// overrides it.
-    // ANCHOR: gdt_load
     pub unsafe fn load(&'static self) {
         let gdtr = {
             GlobalDescriptorTableRegister {
@@ -251,11 +227,8 @@ impl GlobalDescriptorTableProtected {
             instructions::lgdt(&gdtr);
         }
     }
-    // ANCHOR_END: gdt_load
 }
-// ANCHOR_END: gdt_protected_impl
 
-// ANCHOR: gdt_long
 /// kernel GDT
 #[repr(C, packed)]
 pub struct GlobalDescriptorTableLong {
@@ -266,12 +239,10 @@ pub struct GlobalDescriptorTableLong {
     user_data: GlobalDescriptorTableEntry32,
     tss: SystemSegmentDescriptor64,
 }
-// ANCHOR_END: gdt_long
 
 impl GlobalDescriptorTableLong {
     /// Creates default global descriptor table for long
     /// mode
-    // ANCHOR: gdt_long_default
     pub const fn default() -> Self {
         Self {
             null: GlobalDescriptorTableEntry32::default(),
@@ -320,27 +291,25 @@ impl GlobalDescriptorTableLong {
             tss: SystemSegmentDescriptor64::default(),
         }
     }
-    // ANCHOR_END: gdt_long_default
 
     /// Load the TSS segment into the GDT
-    // ANCHOR: gdt_long_load_tss
+    #[cfg(target_arch = "x86_64")]
     pub fn load_tss(&mut self, tss: SystemSegmentDescriptor64) {
         self.tss = tss;
         let tss_selector = SegmentSelector::new()
             .rpl(ProtectionLevel::Ring0)
             .section(Sections::TaskStateSegment);
+
         unsafe {
             instructions::ltr(tss_selector);
         }
     }
-    // ANCHOR_END: gdt_long_load_tss
 
     /// Load the GDT with the `lgdt` instruction
     ///
     /// # Safety
     /// This function doesn't check if a GDT already exists, and just
     /// overrides it.
-    // ANCHOR: gdt_long_load
     pub unsafe fn load(&'static self) {
         let gdtr = {
             GlobalDescriptorTableRegister {
@@ -352,7 +321,6 @@ impl GlobalDescriptorTableLong {
             instructions::lgdt(&gdtr);
         }
     }
-    // ANCHOR_END: gdt_long_load
 }
 unsafe impl Send for GlobalDescriptorTableRegister {}
 unsafe impl Sync for GlobalDescriptorTableRegister {}
