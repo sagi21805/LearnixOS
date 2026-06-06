@@ -1,11 +1,8 @@
 extern crate alloc;
 
-use core::{
-    alloc::Layout,
-    ptr::{NonNull, null, null_mut},
-};
+use core::{alloc::Layout, ptr::NonNull};
 
-use alloc::alloc::{AllocError, Allocator, GlobalAlloc, alloc};
+use alloc::alloc::{AllocError, GlobalAlloc, alloc};
 
 use bump::BumpAllocator;
 use common::{
@@ -14,11 +11,7 @@ use common::{
     error::{EntryError, MappingError},
     late_init::LateInit,
 };
-use x86::structures::paging::{
-    PageEntryFlags, PageTable, PageTableEntry, entry_flags,
-};
-
-use crate::{fmt::kprint, println};
+use x86::structures::paging::{PageEntryFlags, PageTable, PageTableEntry};
 
 pub static mut BUMP_ALLOCATOR: LateInit<BumpAllocator> =
     LateInit::uninit();
@@ -38,12 +31,12 @@ impl<'a> GlobalAllocator<'a> {
         }
     }
 
-    pub fn swap(&mut self, allocator: &'a dyn GlobalAlloc) {
+    pub fn swap(&mut self, _allocator: &'a dyn GlobalAlloc) {
         todo!(
             "Ensure allocation is passsed to the next allocator, or it \
              deallocated all"
         );
-        self.allocator = LateInit::new(allocator);
+        // self.allocator = LateInit::new(allocator);
     }
 }
 
@@ -91,7 +84,6 @@ pub impl VirtualAddress {
     fn walk(&self) -> impl Iterator<Item = NonNull<PageTableEntry>> {
         let mut table = Some(PageTable::current_table());
         let mut level = Some(PageTableLevel::PML4);
-        let mut prev_entry: Option<NonNull<PageTableEntry>> = None;
         ::core::iter::from_fn(move || {
             let current_level = level?;
 
@@ -116,8 +108,6 @@ pub impl VirtualAddress {
         let mut level = Some(PageTableLevel::PML4);
         let mut prev_entry: Option<NonNull<PageTableEntry>> = None;
         ::core::iter::from_fn(move || {
-            use x86::structures::paging::EntryIndex::Entry;
-
             if let Some(mut prev_entry) = prev_entry {
                 table = match unsafe { prev_entry.as_ref().mapped_table() }
                 {
