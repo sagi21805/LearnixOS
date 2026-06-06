@@ -6,9 +6,6 @@ use common::enums::{
     PicInterruptVectorOffset, PicMode, Port,
 };
 
-// TODO: move the creation of this var into the kernel module
-pub static mut PIC: CascadedPIC = CascadedPIC::default();
-
 struct ProgrammableInterruptController {
     command: Port,
     data: Port,
