@@ -1,17 +1,19 @@
+extern crate alloc;
+
+use core::{arch::asm, mem::MaybeUninit};
+
 use common::{
     address_types::{Address, VirtualAddress},
     enums::{
         ProtectionLevel, Sections, SystemSegmentType,
         interrupts::{Interrupt, InterruptStackTable, InterruptType},
     },
+    late_init::LateInit,
 };
-use core::{arch::asm, panic};
-use core::{mem::MaybeUninit, ptr};
+
 use macros::bitfields;
 
-/// Global reference into the interrupt table
-pub static mut IDT: MaybeUninit<&mut InterruptDescriptorTable> =
-    MaybeUninit::uninit();
+use alloc::boxed::Box;
 
 /// Global TSS segment
 pub static TSS: TaskStateSegment = TaskStateSegment::default();
@@ -32,11 +34,8 @@ use crate::{
 /// privilege level
 #[bitfields]
 pub struct InterruptAttributes {
-    ist: B3,
-    #[flag(r)]
-    reserved: B5,
     #[flag(flag_type = InterruptType)]
-    int_type: B3,
+    int_type: B4,
     #[flag(rc(0))]
     zero: B1,
     #[flag(flag_type = ProtectionLevel)]
@@ -47,7 +46,7 @@ pub struct InterruptAttributes {
 /// Interrupt Descriptor Table structure
 #[repr(C, align(4096))]
 pub struct InterruptDescriptorTable {
-    interrupts: [InterruptDescriptorTableEntry; 256],
+    pub interrupts: [InterruptDescriptorTableEntry; 256],
 }
 
 impl InterruptDescriptorTable {
@@ -58,10 +57,7 @@ impl InterruptDescriptorTable {
     ///
     /// - `uninit`: An uninitialized IDT.
     /// - `base_address`: A virtual address that the IDT will be placed on.
-    pub fn init(
-        uninit: &'static mut MaybeUninit<&mut Self>,
-        base_address: VirtualAddress,
-    ) {
+    pub fn init(uninit: &mut LateInit<Box<Self>>) {
         let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
             MaybeUninit::uninit();
         let gdt = unsafe {
@@ -89,29 +85,26 @@ impl InterruptDescriptorTable {
             SystemSegmentType::TaskStateSegmentAvailable,
         );
 
+        let mut boxed = Box::<InterruptDescriptorTable>::new_uninit();
+
         gdt.load_tss(tss);
         unsafe {
-            ptr::write_volatile(
-                base_address
-                    .as_non_null::<InterruptDescriptorTable>()
-                    .as_ptr(),
+            ::core::ptr::write_volatile(
+                boxed.as_mut_ptr(),
                 InterruptDescriptorTable {
                     interrupts: [const {
                         InterruptDescriptorTableEntry::missing()
                     }; 256],
                 },
             );
-            uninit.write(
-                base_address
-                    .as_non_null::<InterruptDescriptorTable>()
-                    .as_mut(),
-            );
-            uninit.assume_init_ref().load();
         }
+
+        let init = unsafe { uninit.write(boxed.assume_init()) };
+        init.as_ref().load();
     }
 
     /// Load the IDT with the `lidt` instruction
-    fn load(&'static self) {
+    fn load(&self) {
         let idtr = {
             InterruptDescriptorTableRegister {
                 limit: (size_of::<Self>() - 1) as u16,
@@ -150,7 +143,13 @@ impl InterruptDescriptorTable {
                 .rpl(ProtectionLevel::Ring0)
                 .section(Sections::KernelCode),
         );
-        self.interrupts[routine as usize] = entry;
+        let position = &mut self.interrupts[routine as usize];
+        unsafe {
+            ::core::ptr::write_volatile(
+                position as *mut InterruptDescriptorTableEntry,
+                entry,
+            );
+        }
     }
 }
 
