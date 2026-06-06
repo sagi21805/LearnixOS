@@ -1,8 +1,10 @@
 #![no_std]
 #![no_main]
 #![feature(ptr_alignment_type)]
+#![feature(abi_x86_interrupt)]
 #![feature(allocator_api)]
 #![allow(static_mut_refs)]
+extern crate alloc;
 
 use core::{
     alloc::{Allocator, Layout},
@@ -10,6 +12,7 @@ use core::{
     ptr::Alignment,
 };
 
+use alloc::boxed::Box;
 use bump::BumpAllocator;
 use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
@@ -20,11 +23,12 @@ use common::{
     enums::PageSize,
     late_init::LateInit,
 };
-use vga_display::{eprintln, okprintln, print};
+use vga_display::{eprintln, okprintln};
 use x86::{
     instructions::{self, interrupts},
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
-    structures::paging::{PageTable, PageTableEntry},
+    pic8259::CascadedPIC,
+    structures::interrupt_descriptor_table::InterruptDescriptorTable,
 };
 
 use libk::{
@@ -32,7 +36,13 @@ use libk::{
     println,
 };
 
+mod interrupt_handlers;
+mod timer;
+
 static mut MMAP: LateInit<MemoryMap> = LateInit::uninit();
+static mut PIC: CascadedPIC = CascadedPIC::default();
+static mut IDT: LateInit<Box<InterruptDescriptorTable>> =
+    LateInit::uninit();
 
 #[global_allocator]
 static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
@@ -60,11 +70,9 @@ pub unsafe extern "C" fn _start() -> ! {
     };
 
     unsafe {
-        let mmap = MMAP.write(MemoryMap::parse_map(raw, buf).unwrap());
+        let _ = MMAP.write(MemoryMap::parse_map(raw, buf).unwrap());
 
-        println!("{}", mmap);
-
-        let bump = BUMP_ALLOCATOR
+        let _ = BUMP_ALLOCATOR
             .write(BumpAllocator::new(MMAP.assume_init_ref()));
 
         GLOBAL_ALLOCATOR.init(BUMP_ALLOCATOR.assume_init_ref());
@@ -75,51 +83,35 @@ pub unsafe extern "C" fn _start() -> ! {
 
         println!("Virtual address: {:x?} is mapped: {}", v, v.is_mapped());
 
-        let succ = v.map(p, None, PageSize::Regular);
+        let succ = v.map(p, None, PageSize::Big);
 
         println!("Map succeeded: {:?}", succ);
 
         println!("Virtual address: {:x?} is mapped: {}", v, v.is_mapped());
-        // instructions::interrupts::hlt();
-        *v.as_non_null::<u8>().as_mut() = 3;
         println!("Map succeeded: {:?}", succ);
     }
-    // okprintln!("Obtained Memory Map");
-    // println!("{}", MemoryMap(parsed_memory_map!()));
 
-    // PageMap::init(unsafe { &mut PAGES },
-    // MemoryMap(parsed_memory_map!())); unsafe { BUDDY_ALLOCATOR.
-    // init(MemoryMap(parsed_memory_map!()), 0) };
+    unsafe {
+        interrupts::disable();
+        InterruptDescriptorTable::init(&mut IDT);
+        okprintln!("Initialized interrupt descriptor table");
+        interrupt_handlers::init(IDT.as_mut());
+        okprintln!("Initialized interrupts handlers");
+        CascadedPIC::init(&mut PIC);
 
-    // let last = MemoryMap(parsed_memory_map!()).last().unwrap();
+        okprintln!("Initialized Programmable Interrupt Controller");
 
-    // unsafe {
-    //     PageTable::current_table().as_mut().map_physical_memory(
-    //         (last.base_address + last.length) as usize,
-    //     );
-    // }
-    // okprintln!("Initialized buddy allocator");
-    // unsafe {
-    //     InterruptDescriptorTable::init(
-    //         &mut IDT,
-    //         alloc_pages!(1).translate(),
-    //     );
-    //     okprintln!("Initialized interrupt descriptor table");
-    //     interrupt_handlers::init(IDT.assume_init_mut());
-    //     okprintln!("Initialized interrupts handlers");
-    //     CascadedPIC::init(&mut PIC);
-
-    //     okprintln!("Initialized Programmable Interrupt Controller");
-    //     let keyboard_buffer_address:
-    // common::address_types::VirtualAddress = alloc_pages!(1).translate();
-    //     Keyboard::init(
-    //         &mut KEYBOARD,
-    //         keyboard_buffer_address,
-    //         NonZero::new(REGULAR_PAGE_SIZE).unwrap(),
-    //     );
-    //     okprintln!("Initialized Keyboard");
-    //     interrupts::enable();
-    // }
+        // ::core::arch::asm!("int 2");
+        //     let keyboard_buffer_address:
+        // common::address_types::VirtualAddress =
+        // alloc_pages!(1).translate();     Keyboard::init(
+        //         &mut KEYBOARD,
+        //         keyboard_buffer_address,
+        //         NonZero::new(REGULAR_PAGE_SIZE).unwrap(),
+        //     );
+        //     okprintln!("Initialized Keyboard");
+        interrupts::enable();
+    }
 
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
