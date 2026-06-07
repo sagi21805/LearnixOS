@@ -2,7 +2,7 @@ use core::fmt;
 
 #[repr(u8)]
 #[non_exhaustive]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PS2ScanCode {
     None,
 
@@ -193,9 +193,10 @@ pub enum PS2ScanCode {
     ReleasedSuperKey,
 }
 
-impl PS2ScanCode {
-    pub fn from_scancode(scancode: u8) -> Self {
-        match scancode {
+#[rustfmt::skip]
+impl const From<u8> for PS2ScanCode {
+    fn from(value: u8) -> Self {
+        match value {
             // Number row
             0x01 => PS2ScanCode::Esc,
             0x81 => PS2ScanCode::ReleasedEsc,
