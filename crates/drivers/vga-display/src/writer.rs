@@ -7,6 +7,7 @@ use core::ascii::Char;
 use common::{
     constants::VGA_BUFFER_PTR,
     enums::{Port, VgaCommand},
+    ring_buffer::RingBuffer,
 };
 use x86::instructions::port::PortExt;
 
@@ -15,7 +16,7 @@ pub struct Writer<const W: usize, const H: usize> {
     pub cursor_position: usize,
     pub color: ColorCode,
     pub screen: &'static mut [ScreenChar],
-    pub offscreen: Option<Box<[ScreenChar]>>,
+    pub offscreen: Option<RingBuffer<ScreenChar>>,
 }
 
 #[rustfmt::skip]
