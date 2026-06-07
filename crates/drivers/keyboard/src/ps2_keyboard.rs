@@ -2,7 +2,10 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 
-use common::{constants::{REGULAR_PAGE_SIZE}, enums::PS2ScanCode, late_init::LateInit, ring_buffer::RingBuffer};
+use common::{
+    constants::REGULAR_PAGE_SIZE, enums::PS2ScanCode, late_init::LateInit,
+    ring_buffer::RingBuffer,
+};
 
 use macros::bitfields;
 
@@ -22,7 +25,9 @@ pub struct Keyboard {
 
 impl Keyboard {
     pub fn init(uninit: &mut LateInit<Self>) {
-        let buffer = unsafe { Box::<[u8; REGULAR_PAGE_SIZE]>::new_zeroed().assume_init() };
+        let buffer = unsafe {
+            Box::<[u8; REGULAR_PAGE_SIZE]>::new_zeroed().assume_init()
+        };
 
         uninit.write(Keyboard {
             buffer: RingBuffer::new(buffer),
@@ -30,15 +35,15 @@ impl Keyboard {
         });
     }
 
-    pub fn read_raw_scancode(&mut self) -> Option<u8> {
-        self.buffer.read()
+    pub fn read_raw_scancode(&mut self) -> Option<PS2ScanCode> {
+        PS2ScanCode::try_from(self.buffer.read()?).ok()
     }
 
     /// TODO change in the future to just return the
     /// relevant ascii code and not a long str
     pub fn read_char(&mut self) -> &'static str {
         let key = match self.read_raw_scancode() {
-            Some(scancode) => PS2ScanCode::from_scancode(scancode),
+            Some(scancode) => PS2ScanCode::from(scancode),
             None => return "",
         };
         if self.flags.is_lshift_pressed()

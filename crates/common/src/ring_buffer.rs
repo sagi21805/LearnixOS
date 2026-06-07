@@ -18,7 +18,7 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
     }
 
     pub fn write(&mut self, value: T) {
-        self.buffer.as_mut()[self.write_idx] = value ;
+        self.buffer.as_mut()[self.write_idx] = value;
         self.write_idx = (self.write_idx + 1) % self.buffer.len();
     }
 
@@ -29,7 +29,7 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
             return None;
         }
 
-        let val =  self.buffer.as_mut()[self.read_idx];
+        let val = self.buffer.as_mut()[self.read_idx];
         self.read_idx = (self.read_idx + 1) % self.buffer.len();
 
         Some(val)
