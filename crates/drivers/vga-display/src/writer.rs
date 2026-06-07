@@ -1,9 +1,13 @@
+extern crate alloc;
+
+use alloc::boxed::Box;
+
 use core::ascii::Char;
 
-use super::color_code::ColorCode;
-use super::screen_char::ScreenChar;
-use common::constants::addresses::VGA_BUFFER_PTR;
-use common::enums::{Port, VgaCommand};
+use common::{
+    constants::VGA_BUFFER_PTR,
+    enums::{Port, VgaCommand},
+};
 use x86::instructions::port::PortExt;
 
 /// Writer implementation for the VGA driver.
@@ -11,6 +15,7 @@ pub struct Writer<const W: usize, const H: usize> {
     pub cursor_position: usize,
     pub color: ColorCode,
     pub screen: &'static mut [ScreenChar],
+    pub offscreen: Option<Box<[ScreenChar]>>,
 }
 
 #[rustfmt::skip]
@@ -25,6 +30,7 @@ impl<const W: usize, const H: usize> const Default for Writer<W, H> {
                     W * H + 1,
                 )
             },
+            offscreen: None,
         }
     }
 }
@@ -62,18 +68,59 @@ impl<const W: usize, const H: usize> Writer<W, H> {
     }
 
     /// Scroll `lines` down.
-    fn scroll_down(&mut self, lines: usize) {
-        let lines_index = W * (H - lines) + 1;
+    pub fn scroll_down(&mut self, lines: usize) {
+        let lines_index = W * (H - lines);
+        let region_size = lines * W;
+
+        // Copy to offscreen buffer
+        if let Some(ref mut buf) = self.offscreen {
+            for x in &mut self.screen[..region_size] {
+                buf.write(*x);
+            }
+        }
 
         // Copy the buffer to the left
-        self.screen.copy_within(lines * W.., 0);
+        self.screen.copy_within(region_size.., 0);
 
         // Fill remaining place with empty characters
         for x in &mut self.screen[lines_index..] {
-            *x = ScreenChar::default()
+            *x = self
+                .offscreen
+                .as_mut()
+                .and_then(|buf| buf.read())
+                .unwrap_or_default();
         }
 
-        self.cursor_position -= lines * W;
+        self.cursor_position =
+            self.cursor_position.saturating_sub(lines * W - 1);
+    }
+
+    /// Scroll `lines` up.
+    pub fn scroll_up(&mut self, lines: usize) {
+        let lines_index = W * (H - lines);
+        let region_size = lines * W;
+
+        // Copy to offscreen buffer
+        if let Some(ref mut buf) = self.offscreen {
+            for x in &mut self.screen[lines_index..] {
+                buf.write(*x);
+            }
+        }
+
+        // Copy the buffer to the left
+        self.screen.copy_within(..lines_index, region_size);
+
+        // Fill remaining place with empty characters
+        for x in &mut self.screen[..region_size] {
+            *x = self
+                .offscreen
+                .as_mut()
+                .and_then(|buf| buf.read())
+                .unwrap_or_default();
+        }
+
+        self.cursor_position =
+            self.cursor_position.saturating_sub(lines * W - 1);
     }
 
     fn new_line(&mut self) {
