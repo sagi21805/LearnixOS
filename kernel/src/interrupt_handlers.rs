@@ -5,6 +5,7 @@ use common::{
         interrupts::{Interrupt, InterruptType},
     },
 };
+use keyboard::keyboard_handler;
 use libk::println;
 use x86::{
     registers::cr2,
@@ -387,14 +388,14 @@ pub fn init(idt: &mut InterruptDescriptorTable) {
             ProtectionLevel::Ring0,
             InterruptType::Trap,
         );
-        // idt.set_interrupt_handler(
-        //     Interrupt::Keyboard,
-        //     VirtualAddress::new_unchecked(
-        //         keyboard_handler as *const () as usize,
-        //     ),
-        //     ProtectionLevel::Ring0,
-        //     InterruptType::Trap,
-        // );
+        idt.set_interrupt_handler(
+            Interrupt::Keyboard,
+            VirtualAddress::new_unchecked(
+                keyboard_handler as *const () as usize,
+            ),
+            ProtectionLevel::Ring0,
+            InterruptType::Trap,
+        );
         // idt.set_interrupt_handler(
         //     Interrupt::Ahci,
         //     VirtualAddress::new_unchecked(
