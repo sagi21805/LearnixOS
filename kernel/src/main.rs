@@ -3,13 +3,12 @@
 #![feature(ptr_alignment_type)]
 #![feature(abi_x86_interrupt)]
 #![feature(allocator_api)]
+#![feature(const_default)]
+#![feature(const_trait_impl)]
 #![allow(static_mut_refs)]
 extern crate alloc;
 
-use core::{
-    alloc::{Allocator, Layout},
-    panic::PanicInfo,
-};
+use core::panic::PanicInfo;
 
 use alloc::boxed::Box;
 use bump::BumpAllocator;
@@ -17,13 +16,16 @@ use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
     constants::{
         MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, MiB, PARSED_MEMORY_MAP,
-        PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+        PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_SIZE,
     },
-    enums::PageSize,
-    late_init::{ LateInit},
+    enums::{PS2ScanCode, PageSize},
+    late_init::LateInit,
+    ring_buffer::RingBuffer,
 };
 use keyboard::ps2_keyboard::Keyboard;
-use vga_display::{eprintln, okprintln};
+use vga_display::{
+    eprintln, okprintln, screen_char::ScreenChar, writer::Writer,
+};
 use x86::{
     instructions::interrupts,
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
@@ -32,7 +34,8 @@ use x86::{
 };
 
 use libk::{
-    alloc::{BUMP_ALLOCATOR, GlobalAllocator, VirtualAddressExt}, print, println
+    alloc::{BUMP_ALLOCATOR, GlobalAllocator, VirtualAddressExt},
+    print, println,
 };
 
 mod interrupt_handlers;
@@ -46,7 +49,9 @@ static mut IDT: LateInit<Box<InterruptDescriptorTable>> =
 
 #[unsafe(no_mangle)]
 static mut KEYBOARD: LateInit<Keyboard> = LateInit::uninit();
-
+#[unsafe(no_mangle)]
+static mut WRITER: LateInit<Writer<80, 25>> =
+    LateInit::new(Writer::default());
 #[global_allocator]
 static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
 
@@ -106,6 +111,12 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
+
+    let offscreen = RingBuffer::new(unsafe {
+        Box::<[ScreenChar; REGULAR_PAGE_SIZE]>::new_zeroed().assume_init()
+    });
+
+    WRITER.offscreen = Some(offscreen);
 
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
@@ -183,7 +194,14 @@ pub unsafe extern "C" fn _start() -> ! {
     // }
 
     loop {
-            print!("{}", KEYBOARD.read_char())
+        let scancode = KEYBOARD.read_raw_scancode();
+        if let Some(scancode) = scancode {
+            match scancode {
+                PS2ScanCode::Keypad8 => WRITER.scroll_up(1),
+                PS2ScanCode::Keypad2 => WRITER.scroll_down(1),
+                _ => print!("{}", scancode),
+            }
+        }
     }
 }
 
@@ -193,6 +211,6 @@ unsafe fn panic(_info: &PanicInfo) -> ! {
     unsafe {
         interrupts::disable();
     }
-    eprintln!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
+    eprintln!("{}", _info ; color = ColorCode::new().foreground(Color::Yellow).background(Color::Black));
     loop {}
 }

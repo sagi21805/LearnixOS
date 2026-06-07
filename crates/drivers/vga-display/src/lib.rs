@@ -3,10 +3,13 @@
 #![feature(const_trait_impl)]
 #![feature(const_default)]
 #![feature(ascii_char_variants)]
+#![feature(const_convert)]
+#![feature(const_result_trait_fn)]
+#![feature(generic_const_exprs)]
 #![allow(static_mut_refs)]
 pub mod color_code;
-mod screen_char;
-mod writer;
+pub mod screen_char;
+pub mod writer;
 
 use color_code::ColorCode;
 use common::late_init::LateInit;
@@ -78,7 +81,7 @@ macro_rules! eprintln {
         use $crate::drivers::vga_display::color_code::ColorCode;
         use common::enums::Color;
         $crate::print!("[");
-        $crate::print!("FAIL" ; color = ColorCode::new(Color::Red, Color::Black));
+        $crate::print!("FAIL" ; color = ColorCode::new().foreground(Color::Red).background(Color::Black));
         $crate::print!("]: ");
         $crate::println!($fmt $(, $arg)*);
     }};
@@ -88,7 +91,7 @@ macro_rules! eprintln {
         use vga_display::color_code::ColorCode;
         use common::enums::Color;
         $crate::print!("[");
-        $crate::print!("FAIL" ; color = ColorCode::new(Color::Red, Color::Black));
+        $crate::print!("FAIL" ; color = ColorCode::new().foreground(Color::Red).background(Color::Black));
         $crate::print!("]: ");
         $crate::println!($fmt $(, $arg)* ; color = $color);
     }};
@@ -103,7 +106,7 @@ macro_rules! okprintln {
         use vga_display::color_code::ColorCode;
         use common::enums::Color;
         $crate::print!("[");
-        $crate::print!(" OK " ; color = ColorCode::new(Color::Green, Color::Black));
+        $crate::print!(" OK " ; color = ColorCode::new().foreground(Color::Green).background(Color::Black));
         $crate::print!("]: ");
         $crate::println!($fmt $(, $arg)*);
     }};
@@ -113,7 +116,7 @@ macro_rules! okprintln {
         use $crate::drivers::vga_display::color_code::ColorCode;
         use common::enums::Color;
         $crate::print!("[");
-        $crate::print!(" OK " ; color = ColorCode::new(Color::Green, Color::Black));
+        $crate::print!(" OK " ; color = ColorCode::new().foreground(Color::Green).background(Color::Black));
         $crate::print!("]: ");
         $crate::println!($fmt $(, $arg)* ; color = $color);
     }};

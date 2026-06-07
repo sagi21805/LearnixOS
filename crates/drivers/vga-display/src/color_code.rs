@@ -1,4 +1,5 @@
 use common::enums::Color;
+use macros::bitfields;
 
 #[derive(Clone, Copy)]
 pub struct ColorCode(u8);
@@ -18,6 +19,8 @@ impl ColorCode {
 #[rustfmt::skip]
 impl const Default for ColorCode {
     fn default() -> Self {
-        ColorCode::new(Color::White, Color::Black)
+        ColorCode::new()
+            .foreground(Color::White)
+            .background(Color::Black)
     }
 }
