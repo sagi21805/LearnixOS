@@ -1,24 +1,24 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
-#![feature(const_default)]
 #![feature(const_trait_impl)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
 
 use common::{
-    enums::{CascadedPicInterruptLine, PS2ScanCode, Port},
-    late_init::LateInit,
+    enums::{CascadedPicInterruptLine, PS2ScanCode, Port}, late_init::LateInit,
 };
 use x86::{
-    instructions::port::PortExt, pic8259::PIC,
-    structures::interrupt_descriptor_table::InterruptStackFrame,
+    instructions::port::PortExt, pic8259::CascadedPIC, structures::interrupt_descriptor_table::InterruptStackFrame
 };
 
 use crate::ps2_keyboard::Keyboard;
 
 pub mod ps2_keyboard;
 
-pub static mut KEYBOARD: LateInit<Keyboard> = LateInit::uninit();
+unsafe extern "Rust" {
+    static mut KEYBOARD: LateInit<Keyboard>;
+    static mut PIC: CascadedPIC;
+}
 
 #[allow(static_mut_refs)]
 pub extern "x86-interrupt" fn keyboard_handler(
