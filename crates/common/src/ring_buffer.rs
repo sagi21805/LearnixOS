@@ -1,13 +1,15 @@
-use core::ptr::NonNull;
+extern crate alloc;
+
+use alloc::boxed::Box;
 
 pub struct RingBuffer<T: 'static + Clone + Copy> {
     read_idx: usize,
     write_idx: usize,
-    buffer: NonNull<[T]>,
+    buffer: Box<[T]>,
 }
 
 impl<T: 'static + Clone + Copy> RingBuffer<T> {
-    pub fn new(buffer: NonNull<[T]>) -> Self {
+    pub fn new(buffer: Box<[T]>) -> Self {
         Self {
             read_idx: 0,
             write_idx: 0,
@@ -16,7 +18,7 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
     }
 
     pub fn write(&mut self, value: T) {
-        unsafe { self.buffer.as_mut()[self.write_idx] = value };
+        self.buffer.as_mut()[self.write_idx] = value ;
         self.write_idx = (self.write_idx + 1) % self.buffer.len();
     }
 
@@ -27,7 +29,7 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
             return None;
         }
 
-        let val = unsafe { self.buffer.as_mut()[self.read_idx] };
+        let val =  self.buffer.as_mut()[self.read_idx];
         self.read_idx = (self.read_idx + 1) % self.buffer.len();
 
         Some(val)

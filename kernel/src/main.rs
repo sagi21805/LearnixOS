@@ -9,7 +9,6 @@ extern crate alloc;
 use core::{
     alloc::{Allocator, Layout},
     panic::PanicInfo,
-    ptr::Alignment,
 };
 
 use alloc::boxed::Box;
@@ -21,28 +20,32 @@ use common::{
         PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
     enums::PageSize,
-    late_init::LateInit,
+    late_init::{ LateInit},
 };
+use keyboard::ps2_keyboard::Keyboard;
 use vga_display::{eprintln, okprintln};
 use x86::{
-    instructions::{self, interrupts},
+    instructions::interrupts,
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
     pic8259::CascadedPIC,
     structures::interrupt_descriptor_table::InterruptDescriptorTable,
 };
 
 use libk::{
-    alloc::{BUMP_ALLOCATOR, GlobalAllocator, VirtualAddressExt},
-    println,
+    alloc::{BUMP_ALLOCATOR, GlobalAllocator, VirtualAddressExt}, print, println
 };
 
 mod interrupt_handlers;
 mod timer;
 
 static mut MMAP: LateInit<MemoryMap> = LateInit::uninit();
+#[unsafe(no_mangle)]
 static mut PIC: CascadedPIC = CascadedPIC::default();
 static mut IDT: LateInit<Box<InterruptDescriptorTable>> =
     LateInit::uninit();
+
+#[unsafe(no_mangle)]
+static mut KEYBOARD: LateInit<Keyboard> = LateInit::uninit();
 
 #[global_allocator]
 static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
@@ -98,18 +101,9 @@ pub unsafe extern "C" fn _start() -> ! {
         interrupt_handlers::init(IDT.as_mut());
         okprintln!("Initialized interrupts handlers");
         CascadedPIC::init(&mut PIC);
-
         okprintln!("Initialized Programmable Interrupt Controller");
-
-        // ::core::arch::asm!("int 2");
-        //     let keyboard_buffer_address:
-        // common::address_types::VirtualAddress =
-        // alloc_pages!(1).translate();     Keyboard::init(
-        //         &mut KEYBOARD,
-        //         keyboard_buffer_address,
-        //         NonZero::new(REGULAR_PAGE_SIZE).unwrap(),
-        //     );
-        //     okprintln!("Initialized Keyboard");
+        Keyboard::init(&mut KEYBOARD);
+        okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
 
@@ -188,13 +182,9 @@ pub unsafe extern "C" fn _start() -> ! {
     //     }
     // }
 
-    // loop {
-    //     unsafe {
-    //         print!("{}", KEYBOARD.assume_init_mut().read_char() ; color
-    // = ColorCode::new(Color::Green, Color::Black));
-    //     }
-    // }
-    loop {}
+    loop {
+            print!("{}", KEYBOARD.read_char())
+    }
 }
 
 /// This function is called on panic.

@@ -1,6 +1,8 @@
-use core::{mem::MaybeUninit, ptr::NonNull};
+extern crate alloc;
 
-use common::{enums::PS2ScanCode, ring_buffer::RingBuffer};
+use alloc::boxed::Box;
+
+use common::{constants::{REGULAR_PAGE_SIZE}, enums::PS2ScanCode, late_init::LateInit, ring_buffer::RingBuffer};
 
 use macros::bitfields;
 
@@ -19,10 +21,12 @@ pub struct Keyboard {
 }
 
 impl Keyboard {
-    pub fn init(uninit: &mut MaybeUninit<Self>, buffer: NonNull<[u8]>) {
+    pub fn init(uninit: &mut LateInit<Self>) {
+        let buffer = unsafe { Box::<[u8; REGULAR_PAGE_SIZE]>::new_zeroed().assume_init() };
+
         uninit.write(Keyboard {
             buffer: RingBuffer::new(buffer),
-            flags: KeyboardFlags::default(),
+            flags: KeyboardFlags::new(),
         });
     }
 
