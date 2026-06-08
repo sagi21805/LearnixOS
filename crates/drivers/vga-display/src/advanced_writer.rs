@@ -2,36 +2,40 @@ extern crate alloc;
 
 use core::ascii::Char;
 
+use alloc::boxed::Box;
+
 use common::{
-    constants::VGA_BUFFER_PTR,
+    constants::REGULAR_PAGE_SIZE,
     enums::{Port, VgaCommand},
+    ring_buffer::RingBuffer,
 };
 use x86::instructions::port::PortExt;
 
-/// Writer implementation for the VGA driver.
-pub struct Writer<const W: usize, const H: usize> {
-    pub cursor_position: usize,
+use crate::{color_code::ColorCode, screen_char::ScreenChar};
+
+pub struct AdvancedWriter<const W: usize, const H: usize> {
     pub color: ColorCode,
-    pub screen: &'static mut [ScreenChar],
+    pub buffer: RingBuffer<ScreenChar>,
 }
 
-#[rustfmt::skip]
-impl<const W: usize, const H: usize> const Default for Writer<W, H> {
+impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
     fn default() -> Self {
+        const BUFFER_SIZE: usize =
+            REGULAR_PAGE_SIZE / size_of::<ScreenChar>();
+
         Self {
-            cursor_position: 0,
             color: ColorCode::default(),
-            screen: unsafe {
-                core::slice::from_raw_parts_mut(
-                    VGA_BUFFER_PTR as *mut ScreenChar,
-                    W * H,
+            buffer: unsafe {
+                RingBuffer::new(
+                    Box::<[ScreenChar; BUFFER_SIZE]>::new_zeroed()
+                        .assume_init(),
                 )
             },
         }
     }
 }
 
-impl<const W: usize, const H: usize> Writer<W, H> {
+impl<const W: usize, const H: usize> AdvancedWriter<W, H> {
     /// Writes the given `char` to the screen with the color
     /// stored in self
     ///
@@ -50,9 +54,7 @@ impl<const W: usize, const H: usize> Writer<W, H> {
             }
             _ => {
                 if !c.is_control() {
-                    self.screen[self.cursor_position] =
-                        ScreenChar::new(char, self.color);
-                    self.cursor_position += 1;
+                    self.buffer.write(ScreenChar::new(char, self.color));
                 }
             }
         }
@@ -63,47 +65,46 @@ impl<const W: usize, const H: usize> Writer<W, H> {
         self.change_cursor_position_on_screen();
     }
 
+    fn cursor_position(&self) -> usize {
+        self.buffer.read_idx()
+    }
+
     /// Scroll `lines` down.
     fn scroll_down(&mut self, lines: usize) {
-        let lines_index = W * (H - lines) + 1;
-
-        // Copy the buffer to the left
-        self.screen.copy_within(lines * W.., 0);
-
-        // Fill remaining place with empty characters
-        for x in &mut self.screen[lines_index..] {
-            *x = ScreenChar::default()
-        }
-
-        self.cursor_position -= lines * W;
+        self.buffer.forward_advance_read(lines * W);
     }
 
     fn new_line(&mut self) {
-        self.cursor_position += W - (self.cursor_position % W)
+        let offset = W - (self.buffer.read_idx() % W);
+        self.buffer.forward_advance_read(offset);
     }
 
     fn backspace(&mut self) {
-        self.cursor_position -= 1;
-        self.screen[self.cursor_position] = ScreenChar::default();
+        unsafe {
+            self.buffer.advance_write(-1);
+        }
+        self.buffer.write(ScreenChar::default());
     }
 
     fn change_cursor_position_on_screen(&self) {
         unsafe {
             Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
-            Port::VgaData.outb((self.cursor_position & 0xff) as u8);
+            Port::VgaData.outb((self.buffer.read_idx() & 0xff) as u8);
             Port::VgaControl.outb(VgaCommand::CursorOffsetHigh as u8);
-            Port::VgaData.outb(((self.cursor_position >> 8) & 0xff) as u8);
+            Port::VgaData
+                .outb(((self.buffer.read_idx() >> 8) & 0xff) as u8);
         }
     }
 
     /// Clears the screen by setting all of the buffer bytes
     /// to zero
     fn clear(&mut self) {
-        self.screen.fill(ScreenChar::default());
-        self.cursor_position = 0;
+        self.buffer.advance_to_write();
     }
+    // ANCHOR_END: clear
 }
 
+// ANCHOR: format_impl
 impl<const W: usize, const H: usize> core::fmt::Write for Writer<W, H> {
     /// Print the given string to the string with the color
     /// in self
@@ -127,3 +128,4 @@ impl<const W: usize, const H: usize> core::fmt::Write for Writer<W, H> {
         Ok(())
     }
 }
+// ANCHOR_END: format_impl
