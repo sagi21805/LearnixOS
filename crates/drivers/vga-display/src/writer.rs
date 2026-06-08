@@ -1,13 +1,10 @@
 extern crate alloc;
 
-use alloc::boxed::Box;
-
 use core::ascii::Char;
 
 use common::{
     constants::VGA_BUFFER_PTR,
     enums::{Port, VgaCommand},
-    ring_buffer::RingBuffer,
 };
 use x86::instructions::port::PortExt;
 
@@ -16,7 +13,6 @@ pub struct Writer<const W: usize, const H: usize> {
     pub cursor_position: usize,
     pub color: ColorCode,
     pub screen: &'static mut [ScreenChar],
-    pub offscreen: Option<RingBuffer<ScreenChar>>,
 }
 
 #[rustfmt::skip]
@@ -31,7 +27,6 @@ impl<const W: usize, const H: usize> const Default for Writer<W, H> {
                     W * H,
                 )
             },
-            offscreen: None,
         }
     }
 }
@@ -69,59 +64,18 @@ impl<const W: usize, const H: usize> Writer<W, H> {
     }
 
     /// Scroll `lines` down.
-    pub fn scroll_down(&mut self, lines: usize) {
-        let lines_index = W * (H - lines);
-        let region_size = lines * W;
-
-        // Copy to offscreen buffer
-        if let Some(ref mut buf) = self.offscreen {
-            for x in &mut self.screen[..region_size] {
-                buf.write(*x);
-            }
-        }
+    fn scroll_down(&mut self, lines: usize) {
+        let lines_index = W * (H - lines) + 1;
 
         // Copy the buffer to the left
-        self.screen.copy_within(region_size.., 0);
+        self.screen.copy_within(lines * W.., 0);
 
         // Fill remaining place with empty characters
         for x in &mut self.screen[lines_index..] {
-            *x = self
-                .offscreen
-                .as_mut()
-                .and_then(|buf| buf.read())
-                .unwrap_or_default();
+            *x = ScreenChar::default()
         }
 
-        self.cursor_position =
-            self.cursor_position.saturating_sub(lines * W);
-    }
-
-    /// Scroll `lines` up.
-    pub fn scroll_up(&mut self, lines: usize) {
-        let lines_index = W * (H - lines);
-        let region_size = lines * W;
-
-        // Copy to offscreen buffer
-        if let Some(ref mut buf) = self.offscreen {
-            for x in &mut self.screen[lines_index..] {
-                buf.write(*x);
-            }
-        }
-
-        // Copy the buffer to the left
-        self.screen.copy_within(..lines_index, region_size);
-
-        // Fill remaining place with empty characters
-        for x in &mut self.screen[..region_size] {
-            *x = self
-                .offscreen
-                .as_mut()
-                .and_then(|buf| buf.read())
-                .unwrap_or_default();
-        }
-
-        self.cursor_position =
-            self.cursor_position.saturating_sub(lines * W);
+        self.cursor_position -= lines * W;
     }
 
     fn new_line(&mut self) {

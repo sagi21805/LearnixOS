@@ -5,8 +5,8 @@
 #![feature(ascii_char_variants)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
-#![feature(generic_const_exprs)]
 #![allow(static_mut_refs)]
+pub mod advanced_writer;
 pub mod color_code;
 pub mod screen_char;
 pub mod writer;
