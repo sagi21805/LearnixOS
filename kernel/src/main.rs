@@ -117,10 +117,10 @@ pub unsafe extern "C" fn _start() -> ! {
     });
 
     WRITER.offscreen = Some(offscreen);
-
+    // WRITER.screen = ::core::slice::from_raw_parts_mut(data, len)
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
-
+    ::core::arch::asm!("int 3");
     // panic!("")
     // let mut pci_devices = pci::scan_pci();
     // println!("Press ENTER to enumerate PCI devices!");
@@ -197,8 +197,8 @@ pub unsafe extern "C" fn _start() -> ! {
         let scancode = KEYBOARD.read_raw_scancode();
         if let Some(scancode) = scancode {
             match scancode {
-                PS2ScanCode::Keypad8 => WRITER.scroll_up(1),
-                PS2ScanCode::Keypad2 => WRITER.scroll_down(1),
+                PS2ScanCode::Keypad8 => WRITER.scroll_down(1),
+                PS2ScanCode::Keypad2 => WRITER.scroll_up(1),
                 _ => print!("{}", scancode),
             }
         }

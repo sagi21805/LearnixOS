@@ -28,7 +28,7 @@ impl<const W: usize, const H: usize> const Default for Writer<W, H> {
             screen: unsafe {
                 core::slice::from_raw_parts_mut(
                     VGA_BUFFER_PTR as *mut ScreenChar,
-                    W * H + 1,
+                    W * H,
                 )
             },
             offscreen: None,
@@ -61,7 +61,7 @@ impl<const W: usize, const H: usize> Writer<W, H> {
                 }
             }
         }
-        if self.cursor_position > W * H {
+        if self.cursor_position == (W * H) {
             self.scroll_down(1);
         }
 
@@ -93,7 +93,7 @@ impl<const W: usize, const H: usize> Writer<W, H> {
         }
 
         self.cursor_position =
-            self.cursor_position.saturating_sub(lines * W - 1);
+            self.cursor_position.saturating_sub(lines * W);
     }
 
     /// Scroll `lines` up.
@@ -121,7 +121,7 @@ impl<const W: usize, const H: usize> Writer<W, H> {
         }
 
         self.cursor_position =
-            self.cursor_position.saturating_sub(lines * W - 1);
+            self.cursor_position.saturating_sub(lines * W);
     }
 
     fn new_line(&mut self) {
