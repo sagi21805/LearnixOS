@@ -117,7 +117,9 @@ pub unsafe extern "C" fn _start() -> ! {
     });
 
     WRITER.offscreen = Some(offscreen);
-    // WRITER.screen = ::core::slice::from_raw_parts_mut(data, len)
+
+    unsafe { ::core::arch::asm!("int 3") };
+
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
     ::core::arch::asm!("int 3");
