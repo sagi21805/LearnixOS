@@ -1,15 +1,13 @@
 extern crate alloc;
 
-use core::ascii::Char;
-
-use common::{
-    constants::VGA_BUFFER_PTR,
-    enums::{Port, VgaCommand},
+use crate::{
+    color_code::ColorCode, generic_writer::GenericWriter,
+    screen_char::ScreenChar,
 };
 use x86::instructions::port::PortExt;
 
 /// Writer implementation for the VGA driver.
-pub struct Writer<const W: usize, const H: usize> {
+pub struct SimpleWriter<const W: usize, const H: usize> {
     pub cursor_position: usize,
     pub color: ColorCode,
     pub screen: &'static mut [ScreenChar],
@@ -31,51 +29,37 @@ impl<const W: usize, const H: usize> const Default for Writer<W, H> {
     }
 }
 
-impl<const W: usize, const H: usize> Writer<W, H> {
-    /// Writes the given `char` to the screen with the color
-    /// stored in self
-    ///
-    /// # Parameters
-    ///
-    /// - `char`: The char that will be printed to the screen
-    fn write_char(&mut self, char: u8) {
-        let c =
-            Char::from_u8(char).expect("Entered invalid ascii character");
-        match c {
-            Char::LineFeed => {
-                self.new_line();
-            }
-            Char::Backspace | Char::Delete => {
-                self.backspace();
-            }
-            _ => {
-                if !c.is_control() {
-                    self.screen[self.cursor_position] =
-                        ScreenChar::new(char, self.color);
-                    self.cursor_position += 1;
-                }
-            }
-        }
-        if self.cursor_position == (W * H) {
-            self.scroll_down(1);
-        }
-
-        self.change_cursor_position_on_screen();
-    }
-
-    /// Scroll `lines` down.
+impl<const W: usize, const H: usize> GenericWriter for SimpleWriter<W, H> {
     fn scroll_down(&mut self, lines: usize) {
-        let lines_index = W * (H - lines) + 1;
+        let lines_index = W * (H - lines);
+        let region_size = lines * W;
 
         // Copy the buffer to the left
-        self.screen.copy_within(lines * W.., 0);
+        self.screen.copy_within(region_size.., 0);
 
         // Fill remaining place with empty characters
         for x in &mut self.screen[lines_index..] {
             *x = ScreenChar::default()
         }
 
-        self.cursor_position -= lines * W;
+        self.cursor_position =
+            self.cursor_position.saturating_sub(lines * W);
+    }
+
+    fn scroll_up(&mut self, lines: usize) {
+        let lines_index = W * (H - lines);
+        let region_size = lines * W;
+
+        // Copy the buffer to the left
+        self.screen.copy_within(..lines_index, region_size);
+
+        // Fill remaining place with empty characters
+        for x in &mut self.screen[..region_size] {
+            *x = ScreenChar::default()
+        }
+
+        self.cursor_position =
+            self.cursor_position.saturating_add(lines * W);
     }
 
     fn new_line(&mut self) {
@@ -87,20 +71,12 @@ impl<const W: usize, const H: usize> Writer<W, H> {
         self.screen[self.cursor_position] = ScreenChar::default();
     }
 
-    fn change_cursor_position_on_screen(&self) {
-        unsafe {
-            Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
-            Port::VgaData.outb((self.cursor_position & 0xff) as u8);
-            Port::VgaControl.outb(VgaCommand::CursorOffsetHigh as u8);
-            Port::VgaData.outb(((self.cursor_position >> 8) & 0xff) as u8);
-        }
+    fn color(&self) -> Option<ColorCode> {
+        Some(self.color)
     }
 
-    /// Clears the screen by setting all of the buffer bytes
-    /// to zero
-    fn clear(&mut self) {
-        self.screen.fill(ScreenChar::default());
-        self.cursor_position = 0;
+    fn screen_height(&self) -> usize {
+        H
     }
 }
 
