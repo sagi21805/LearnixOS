@@ -21,6 +21,10 @@ impl<T> LateInit<T> {
     pub const fn assume_init_ref(&self) -> &T {
         unsafe { self.0.assume_init_ref() }
     }
+
+    pub const fn assume_init_mut(&mut self) -> &mut T {
+        unsafe { self.0.assume_init_mut() }
+    }
 }
 
 impl<T> Deref for LateInit<T> {

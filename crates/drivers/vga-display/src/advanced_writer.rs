@@ -1,17 +1,13 @@
 extern crate alloc;
 
-use core::ascii::Char;
-
 use alloc::boxed::Box;
 
-use common::{
-    constants::REGULAR_PAGE_SIZE,
-    enums::{Port, VgaCommand},
-    ring_buffer::RingBuffer,
-};
-use x86::instructions::port::PortExt;
+use common::{constants::REGULAR_PAGE_SIZE, ring_buffer::RingBuffer};
 
-use crate::{color_code::ColorCode, screen_char::ScreenChar};
+use crate::{
+    color_code::ColorCode, generic_writer::GenericWriter,
+    screen_char::ScreenChar,
+};
 
 pub struct AdvancedWriter<const W: usize, const H: usize> {
     pub color: ColorCode,
@@ -35,97 +31,90 @@ impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
     }
 }
 
-impl<const W: usize, const H: usize> AdvancedWriter<W, H> {
-    /// Writes the given `char` to the screen with the color
-    /// stored in self
-    ///
-    /// # Parameters
-    ///
-    /// - `char`: The char that will be printed to the screen
-    fn write_char(&mut self, char: u8) {
-        let c =
-            Char::from_u8(char).expect("Entered invalid ascii character");
-        match c {
-            Char::LineFeed => {
-                self.new_line();
-            }
-            Char::Backspace | Char::Delete => {
-                self.backspace();
-            }
-            _ => {
-                if !c.is_control() {
-                    self.buffer.write(ScreenChar::new(char, self.color));
-                }
-            }
-        }
-        if self.cursor_position == (W * H) {
-            self.scroll_down(1);
-        }
-
-        self.change_cursor_position_on_screen();
-    }
-
-    fn cursor_position(&self) -> usize {
-        self.buffer.read_idx()
-    }
-
-    /// Scroll `lines` down.
-    fn scroll_down(&mut self, lines: usize) {
-        self.buffer.forward_advance_read(lines * W);
-    }
-
-    fn new_line(&mut self) {
-        let offset = W - (self.buffer.read_idx() % W);
-        self.buffer.forward_advance_read(offset);
-    }
-
+impl<const W: usize, const H: usize> GenericWriter
+    for AdvancedWriter<W, H>
+{
     fn backspace(&mut self) {
         unsafe {
             self.buffer.advance_write(-1);
         }
-        self.buffer.write(ScreenChar::default());
+        self.buffer
+            .write(ScreenChar::new(b' ', ColorCode::default()));
     }
 
-    fn change_cursor_position_on_screen(&self) {
+    fn new_line(&mut self) {
         unsafe {
-            Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
-            Port::VgaData.outb((self.buffer.read_idx() & 0xff) as u8);
-            Port::VgaControl.outb(VgaCommand::CursorOffsetHigh as u8);
-            Port::VgaData
-                .outb(((self.buffer.read_idx() >> 8) & 0xff) as u8);
+            self.buffer
+                .advance_write((W - self.buffer.write_idx() % W) as isize);
         }
     }
 
-    /// Clears the screen by setting all of the buffer bytes
-    /// to zero
-    fn clear(&mut self) {
-        self.buffer.advance_to_write();
+    fn screen_height(&self) -> usize {
+        H
     }
-    // ANCHOR_END: clear
-}
 
-// ANCHOR: format_impl
-impl<const W: usize, const H: usize> core::fmt::Write for Writer<W, H> {
-    /// Print the given string to the string with the color
-    /// in self
-    ///
-    /// # Parameters
-    ///
-    /// - `str`: The string that will be printed to the screen with the
-    ///   color in self
-    ///
-    /// # Safety
-    /// THIS FUNCTION IS NOT THREAD SAFE AND NOT MARKED
-    /// UNSAFE BECAUSE OF TRAIT IMPLEMENTATION!
-    /// THE FUNCTION WILL ADD LOCK AND WILL BE SAFE IN THE
-    /// FUTURE
-    ///
-    /// TODO: use lock in the future
-    fn write_str(&mut self, str: &str) -> core::fmt::Result {
-        for char in str.bytes() {
-            self.write_char(char);
+    fn screen_width(&self) -> usize {
+        W
+    }
+
+    fn scroll_down(&mut self, lines: usize) {
+        if lines == 0 {
+            return;
         }
-        Ok(())
+        unsafe {
+            self.buffer.advance_write(
+                ((W - self.buffer.write_idx() % W) + (W * (lines - 1)))
+                    as isize,
+            );
+        }
+        unsafe {
+            // Read pointer is always on the start of the line.
+            // So modulo is not needed.
+            self.buffer.advance_read((W * lines) as isize);
+        }
+    }
+
+    fn scroll_up(&mut self, lines: usize) {
+        if lines == 0 {
+            return;
+        }
+        unsafe {
+            self.buffer.advance_write(
+                (-1 * self.buffer.write_idx() as isize)
+                    + (-1 * W as isize * (lines - 1) as isize),
+            );
+        }
+        unsafe {
+            // Read pointer is always on the start of the line.
+            // So line offset is not needed.
+            self.buffer.advance_read(-1 * W as isize * lines as isize);
+        }
+    }
+
+    fn update(&self) {
+        let vga = unsafe {
+            ::core::slice::from_raw_parts_mut(
+                0xb8000 as *mut ScreenChar,
+                80 * 25,
+            )
+        };
+
+        unsafe { self.buffer.read_bulk_no_advance(vga) };
+    }
+
+    fn write_cursor_position(&self) -> usize {
+        self.buffer.write_idx()
+    }
+
+    fn write_vga_char(&mut self, char: ScreenChar) {
+        self.buffer.write(char);
+    }
+
+    fn set_color(&mut self, color: Option<ColorCode>) {
+        self.color = color.unwrap_or_default();
+    }
+
+    fn color(&self) -> Option<ColorCode> {
+        Some(self.color)
     }
 }
-// ANCHOR_END: format_impl
