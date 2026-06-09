@@ -24,7 +24,8 @@ use common::{
 };
 use keyboard::ps2_keyboard::Keyboard;
 use vga_display::{
-    eprintln, okprintln, screen_char::ScreenChar, writer::Writer,
+    advanced_writer::AdvancedWriter, eprintln, generic_writer::Writer,
+    okprintln, screen_char::ScreenChar, writer::SimpleWriter,
 };
 use x86::{
     instructions::interrupts,
@@ -50,10 +51,15 @@ static mut IDT: LateInit<Box<InterruptDescriptorTable>> =
 #[unsafe(no_mangle)]
 static mut KEYBOARD: LateInit<Keyboard> = LateInit::uninit();
 #[unsafe(no_mangle)]
-static mut WRITER: LateInit<Writer<80, 25>> =
-    LateInit::new(Writer::default());
+static mut SIMPLE_WRITER: LateInit<SimpleWriter<80, 25>> =
+    LateInit::new(SimpleWriter::default());
+#[unsafe(no_mangle)]
+static mut WRITER: Writer<'static> =
+    Writer::new(unsafe { SIMPLE_WRITER.assume_init_mut() });
 #[global_allocator]
 static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
+static mut ADVANCED_WRITER: LateInit<AdvancedWriter<80, 25>> =
+    LateInit::uninit();
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -111,13 +117,8 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
-
-    let offscreen = RingBuffer::new(unsafe {
-        Box::<[ScreenChar; REGULAR_PAGE_SIZE]>::new_zeroed().assume_init()
-    });
-
-    WRITER.offscreen = Some(offscreen);
-
+    ADVANCED_WRITER.write(AdvancedWriter::default());
+    WRITER.set_writer(ADVANCED_WRITER.assume_init_mut());
     unsafe { ::core::arch::asm!("int 3") };
 
     // unsafe { SLAB_ALLOCATOR.init() }
@@ -199,8 +200,8 @@ pub unsafe extern "C" fn _start() -> ! {
         let scancode = KEYBOARD.read_raw_scancode();
         if let Some(scancode) = scancode {
             match scancode {
-                PS2ScanCode::Keypad8 => WRITER.scroll_down(1),
-                PS2ScanCode::Keypad2 => WRITER.scroll_up(1),
+                PS2ScanCode::Keypad8 => WRITER.inner.scroll_down(1),
+                PS2ScanCode::Keypad2 => WRITER.inner.scroll_up(1),
                 _ => print!("{}", scancode),
             }
         }

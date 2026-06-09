@@ -8,12 +8,11 @@
 #![allow(static_mut_refs)]
 pub mod advanced_writer;
 pub mod color_code;
+pub mod generic_writer;
 pub mod screen_char;
 pub mod writer;
 
 use color_code::ColorCode;
-use common::late_init::LateInit;
-use writer::Writer;
 
 use core::fmt::{self, Write};
 
@@ -22,13 +21,11 @@ static mut WRITER: LateInit<Writer<80, 25>> =
 
 pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
     unsafe {
-        if let Some(c) = color {
-            WRITER.color = c;
-        }
+        WRITER.inner.set_color(color);
 
         WRITER.write_fmt(args).unwrap();
 
-        WRITER.color = ColorCode::default();
+        WRITER.inner.set_color(Some(ColorCode::default()));
     }
 }
 #[unsafe(no_mangle)]

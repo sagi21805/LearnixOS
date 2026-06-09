@@ -26,13 +26,55 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
     }
 
     pub unsafe fn advance_read(&mut self, steps: isize) {
-        self.read_idx =
-            (self.read_idx as isize + steps) as usize % self.buffer.len();
+        let new = self.read_idx as isize + steps;
+
+        if new > 0 {
+            self.read_idx = new as usize % self.buffer.len();
+        } else {
+            self.read_idx = (self.buffer.len() as isize + new) as usize;
+        }
     }
 
     pub unsafe fn advance_write(&mut self, steps: isize) {
-        self.write_idx =
-            (self.write_idx as isize + steps) as usize % self.buffer.len();
+        let new = self.write_idx as isize + steps;
+
+        if new > 0 {
+            self.write_idx = new as usize % self.buffer.len();
+        } else {
+            self.write_idx = (self.buffer.len() as isize + new) as usize;
+        }
+    }
+
+    // Advances `idx` forward by `steps`, clamping so it never passes
+    // `limit` for a ring buffer of length `len`.
+    fn ring_advance_clamped(
+        idx: usize,
+        steps: usize,
+        limit: usize,
+        len: usize,
+    ) -> usize {
+        debug_assert!(len != 0);
+        debug_assert!(idx < len, "idx {idx} must be < len {len}");
+
+        if idx == limit {
+            return idx;
+        }
+        let new = (idx + steps) % len;
+        let overshot = if idx < limit {
+            new >= limit || new < idx
+        } else {
+            new >= limit && new < idx
+        };
+        if overshot { limit } else { new }
+    }
+
+    // Returns the forward distance from `from` to `to` on a ring of `len`.
+    fn ring_distance(from: usize, to: usize, len: usize) -> usize {
+        if to >= from {
+            to - from
+        } else {
+            len - from + to
+        }
     }
 
     pub fn write(&mut self, value: T) {
@@ -53,25 +95,57 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
         Some(val)
     }
 
-    // Advances the read index forward by `steps` steps.
-    //
-    // This operation ensures the read idx will not pass the write index.
-    pub fn forward_advance_read(&mut self, steps: usize) {
-        if self.read_idx == self.write_idx {
-            return;
-        }
+    // Return the amout of steps between the read and write pointer
+    pub fn steps_between(&self) -> usize {
+        Self::ring_distance(
+            self.read_idx,
+            self.write_idx,
+            self.buffer.len(),
+        )
+    }
 
-        debug_assert!(self.buffer.len() != 0);
+    // Reads `steps` elements from the ring buffer into `buffer`, returning
+    // the number of elements read.
+    pub fn read_bulk(&mut self, buffer: &mut [T]) -> usize {
+        let steps = unsafe { self.read_bulk_no_advance(buffer) };
+        self.forward_advance_read(steps);
+        steps
+    }
 
-        let new = (self.read_idx + steps) % self.buffer.len();
+    /// Reads `steps` elements from the ring buffer into `buffer`,
+    /// returning the number of elements read.
+    ///
+    /// # SAFETY
+    ///
+    /// This function does not increment the read pointer!
+    pub unsafe fn read_bulk_no_advance(&self, buffer: &mut [T]) -> usize {
+        let steps = buffer.len().min(self.steps_between());
+        let len = self.buffer.len();
+        let end = (self.read_idx + steps) % len;
 
-        let overshot = if self.read_idx < self.write_idx {
-            new >= self.write_idx || new < self.read_idx
+        if end > self.read_idx || steps == 0 {
+            buffer[..steps].copy_from_slice(
+                &self.buffer[self.read_idx..self.read_idx + steps],
+            );
         } else {
-            new >= self.write_idx && new < self.read_idx
-        };
+            let first_chunk = len - self.read_idx;
+            buffer[..first_chunk]
+                .copy_from_slice(&self.buffer[self.read_idx..]);
+            buffer[first_chunk..steps]
+                .copy_from_slice(&self.buffer[..end]);
+        }
+        steps
+    }
 
-        self.read_idx = if overshot { self.write_idx } else { new };
+    /// Advances the read index forward by `steps`, clamping at the write
+    /// index.
+    pub fn forward_advance_read(&mut self, steps: usize) {
+        self.read_idx = Self::ring_advance_clamped(
+            self.read_idx,
+            steps,
+            self.write_idx,
+            self.buffer.len(),
+        );
     }
 
     pub fn advance_to_write(&mut self) {
