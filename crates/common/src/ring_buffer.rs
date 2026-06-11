@@ -1,13 +1,14 @@
 extern crate alloc;
 
-use core::cell::Cell;
+use core::{cell::Cell, ptr};
 
 use alloc::boxed::Box;
 
+#[derive(Debug)]
 pub struct RingBuffer<T: 'static + Clone + Copy> {
     read_idx: Cell<usize>,
     write_idx: Cell<usize>,
-    buffer: Box<[T]>,
+    pub buffer: Box<[T]>,
 }
 
 impl<T: 'static + Clone + Copy> RingBuffer<T> {
@@ -82,22 +83,31 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
     }
 
     pub fn write(&mut self, value: T) {
-        self.buffer.as_mut()[self.write_idx.get()] = value;
+        unsafe {
+            self.write_no_advance(value);
+        }
         self.write_idx
             .set((self.write_idx.get() + 1) % self.buffer.len());
     }
 
-    // TODO: remove sti and cli from here to the keyboard or interrupt
-    // handle logic
+    pub unsafe fn write_no_advance(&mut self, value: T) {
+        self.buffer.as_mut()[self.write_idx.get()] = value;
+    }
+
     pub fn read(&mut self) -> Option<T> {
+        let val = unsafe { self.read_no_advance()? };
+        self.read_idx
+            .set((self.read_idx.get() + 1) % self.buffer.len());
+
+        Some(val)
+    }
+
+    pub unsafe fn read_no_advance(&mut self) -> Option<T> {
         if self.write_idx == self.read_idx {
             return None;
         }
 
         let val = self.buffer.as_mut()[self.read_idx.get()];
-        self.read_idx
-            .set((self.read_idx.get() + 1) % self.buffer.len());
-
         Some(val)
     }
 
@@ -112,7 +122,7 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
 
     // Reads `steps` elements from the ring buffer into `buffer`, returning
     // the number of elements read.
-    pub fn read_bulk(&mut self, buffer: &mut [T]) -> usize {
+    pub fn read_bulk(&self, buffer: &mut [T]) -> usize {
         let steps = unsafe { self.read_bulk_no_advance(buffer) };
         self.forward_advance_read(steps);
         steps
@@ -130,23 +140,36 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
         let end = (self.read_idx.get() + steps) % len;
 
         if end > self.read_idx.get() || steps == 0 {
-            buffer[..steps].copy_from_slice(
-                &self.buffer
-                    [self.read_idx.get()..self.read_idx.get() + steps],
-            );
+            for i in 0..steps {
+                unsafe {
+                    buffer[i] = ptr::read_volatile(
+                        &self.buffer[self.read_idx.get() + i],
+                    );
+                }
+            }
         } else {
             let first_chunk = len - self.read_idx.get();
-            buffer[..first_chunk]
-                .copy_from_slice(&self.buffer[self.read_idx.get()..]);
-            buffer[first_chunk..steps]
-                .copy_from_slice(&self.buffer[..end]);
+            for i in 0..first_chunk {
+                unsafe {
+                    buffer[i] = ptr::read_volatile(
+                        &self.buffer[self.read_idx.get() + i],
+                    );
+                }
+            }
+            for i in 0..end {
+                unsafe {
+                    buffer[first_chunk + i] =
+                        ptr::read_volatile(&self.buffer[i]);
+                }
+            }
         }
+
         steps
     }
 
     /// Advances the read index forward by `steps`, clamping at the write
     /// index.
-    pub fn forward_advance_read(&mut self, steps: usize) {
+    pub fn forward_advance_read(&self, steps: usize) {
         self.read_idx.set(Self::ring_advance_clamped(
             self.read_idx.get(),
             steps,

@@ -28,7 +28,7 @@ use vga_display::{
     okprintln, screen_char::ScreenChar, writer::SimpleWriter,
 };
 use x86::{
-    instructions::interrupts,
+    instructions::interrupts::{self, hlt},
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
     pic8259::CascadedPIC,
     structures::interrupt_descriptor_table::InterruptDescriptorTable,
@@ -119,11 +119,9 @@ pub unsafe extern "C" fn _start() -> ! {
     }
     ADVANCED_WRITER.write(AdvancedWriter::default());
     WRITER.set_writer(ADVANCED_WRITER.assume_init_mut());
-    unsafe { ::core::arch::asm!("int 3") };
-
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
-    ::core::arch::asm!("int 3");
+    // ::core::arch::asm!("int 3");
     // panic!("")
     // let mut pci_devices = pci::scan_pci();
     // println!("Press ENTER to enumerate PCI devices!");
