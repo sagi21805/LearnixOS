@@ -1,47 +1,51 @@
 extern crate alloc;
 
+use core::cell::Cell;
+
 use alloc::boxed::Box;
 
 pub struct RingBuffer<T: 'static + Clone + Copy> {
-    read_idx: usize,
-    write_idx: usize,
+    read_idx: Cell<usize>,
+    write_idx: Cell<usize>,
     buffer: Box<[T]>,
 }
 
 impl<T: 'static + Clone + Copy> RingBuffer<T> {
     pub fn new(buffer: Box<[T]>) -> Self {
         Self {
-            read_idx: 0,
-            write_idx: 0,
+            read_idx: Cell::new(0),
+            write_idx: Cell::new(0),
             buffer,
         }
     }
 
     pub fn read_idx(&self) -> usize {
-        self.read_idx
+        self.read_idx.get()
     }
 
     pub fn write_idx(&self) -> usize {
-        self.write_idx
+        self.write_idx.get()
     }
 
     pub unsafe fn advance_read(&mut self, steps: isize) {
-        let new = self.read_idx as isize + steps;
+        let new = self.read_idx.get() as isize + steps;
 
         if new > 0 {
-            self.read_idx = new as usize % self.buffer.len();
+            self.read_idx.set(new as usize % self.buffer.len());
         } else {
-            self.read_idx = (self.buffer.len() as isize + new) as usize;
+            self.read_idx
+                .set((self.buffer.len() as isize + new) as usize);
         }
     }
 
     pub unsafe fn advance_write(&mut self, steps: isize) {
-        let new = self.write_idx as isize + steps;
+        let new = self.write_idx.get() as isize + steps;
 
         if new > 0 {
-            self.write_idx = new as usize % self.buffer.len();
+            self.write_idx.set(new as usize % self.buffer.len());
         } else {
-            self.write_idx = (self.buffer.len() as isize + new) as usize;
+            self.write_idx
+                .set((self.buffer.len() as isize + new) as usize);
         }
     }
 
@@ -78,8 +82,9 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
     }
 
     pub fn write(&mut self, value: T) {
-        self.buffer.as_mut()[self.write_idx] = value;
-        self.write_idx = (self.write_idx + 1) % self.buffer.len();
+        self.buffer.as_mut()[self.write_idx.get()] = value;
+        self.write_idx
+            .set((self.write_idx.get() + 1) % self.buffer.len());
     }
 
     // TODO: remove sti and cli from here to the keyboard or interrupt
@@ -89,8 +94,9 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
             return None;
         }
 
-        let val = self.buffer.as_mut()[self.read_idx];
-        self.read_idx = (self.read_idx + 1) % self.buffer.len();
+        let val = self.buffer.as_mut()[self.read_idx.get()];
+        self.read_idx
+            .set((self.read_idx.get() + 1) % self.buffer.len());
 
         Some(val)
     }
@@ -98,8 +104,8 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
     // Return the amout of steps between the read and write pointer
     pub fn steps_between(&self) -> usize {
         Self::ring_distance(
-            self.read_idx,
-            self.write_idx,
+            self.read_idx.get(),
+            self.write_idx.get(),
             self.buffer.len(),
         )
     }
@@ -121,16 +127,17 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
     pub unsafe fn read_bulk_no_advance(&self, buffer: &mut [T]) -> usize {
         let steps = buffer.len().min(self.steps_between());
         let len = self.buffer.len();
-        let end = (self.read_idx + steps) % len;
+        let end = (self.read_idx.get() + steps) % len;
 
-        if end > self.read_idx || steps == 0 {
+        if end > self.read_idx.get() || steps == 0 {
             buffer[..steps].copy_from_slice(
-                &self.buffer[self.read_idx..self.read_idx + steps],
+                &self.buffer
+                    [self.read_idx.get()..self.read_idx.get() + steps],
             );
         } else {
-            let first_chunk = len - self.read_idx;
+            let first_chunk = len - self.read_idx.get();
             buffer[..first_chunk]
-                .copy_from_slice(&self.buffer[self.read_idx..]);
+                .copy_from_slice(&self.buffer[self.read_idx.get()..]);
             buffer[first_chunk..steps]
                 .copy_from_slice(&self.buffer[..end]);
         }
@@ -140,15 +147,15 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
     /// Advances the read index forward by `steps`, clamping at the write
     /// index.
     pub fn forward_advance_read(&mut self, steps: usize) {
-        self.read_idx = Self::ring_advance_clamped(
-            self.read_idx,
+        self.read_idx.set(Self::ring_advance_clamped(
+            self.read_idx.get(),
             steps,
-            self.write_idx,
+            self.write_idx.get(),
             self.buffer.len(),
-        );
+        ));
     }
 
     pub fn advance_to_write(&mut self) {
-        self.read_idx = self.write_idx;
+        self.read_idx.set(self.write_idx.get());
     }
 }
