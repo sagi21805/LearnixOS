@@ -1,5 +1,3 @@
-use core::ascii::Char;
-
 use common::enums::{Port, VgaCommand};
 use x86::instructions::port::PortExt;
 
@@ -14,20 +12,24 @@ impl<'a> Writer<'a> {
         Self { inner }
     }
 
-    pub const fn set_writer(&mut self, inner: &'a mut dyn GenericWriter) {
+    pub fn set_writer(&mut self, inner: &'a mut dyn GenericWriter) {
+        let cursor = self.inner.write_cursor_position();
         self.inner = inner;
+        self.inner.set_cursor_position(cursor);
     }
 }
 
 pub trait GenericWriter {
     /// Update text to the VGA buffer
-    fn update(&self);
+    fn update(&mut self);
 
     /// Write single char
     fn write_vga_char(&mut self, char: ScreenChar);
 
     /// Get cursor position
     fn write_cursor_position(&self) -> usize;
+
+    fn set_cursor_position(&mut self, position: usize);
 
     // Go down a line
     fn new_line(&mut self);
@@ -72,33 +74,7 @@ pub trait GenericWriter {
     /// # Parameters
     ///
     /// - `char`: The char that will be printed to the screen
-    fn write_char(&mut self, char: char) {
-        let c = char.as_ascii().expect("Entered invalid ascii character");
-
-        match c {
-            Char::LineFeed => {
-                self.new_line();
-            }
-            Char::Backspace | Char::Delete => {
-                self.backspace();
-            }
-            _ => {
-                if !c.is_control() {
-                    self.write_vga_char(ScreenChar::new(
-                        c.to_u8(),
-                        self.color().unwrap_or_default(),
-                    ));
-                }
-            }
-        }
-        if self.write_cursor_position()
-            == (self.screen_width() * self.screen_height())
-        {
-            self.scroll_down(1);
-        }
-
-        self.change_cursor_position_on_screen();
-    }
+    fn write_char(&mut self, char: char);
 }
 
 impl<'a> ::core::fmt::Write for Writer<'a> {

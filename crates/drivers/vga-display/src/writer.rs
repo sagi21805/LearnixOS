@@ -1,5 +1,7 @@
 extern crate alloc;
 
+use core::ascii::Char;
+
 use crate::{
     color_code::ColorCode, generic_writer::GenericWriter,
     screen_char::ScreenChar,
@@ -101,5 +103,34 @@ impl<const W: usize, const H: usize> core::fmt::Write for Writer<W, H> {
             self.write_char(char);
         }
         Ok(())
+    }
+
+    fn write_char(&mut self, char: char) {
+        let c = char.as_ascii().expect("Entered invalid ascii character");
+
+        match c {
+            Char::LineFeed => {
+                self.new_line();
+            }
+            Char::Backspace | Char::Delete => {
+                self.backspace();
+            }
+            _ => {
+                if !c.is_control() {
+                    self.write_vga_char(ScreenChar::new(
+                        c,
+                        self.color().unwrap_or_default(),
+                    ));
+                }
+            }
+        }
+        if self.write_cursor_position()
+            == (self.screen_width() * self.screen_height())
+        {
+            self.scroll_down(1);
+        }
+
+        #[cfg(not(test))]
+        self.change_cursor_position_on_screen();
     }
 }
