@@ -2,8 +2,8 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 
-use common::{constants::REGULAR_PAGE_SIZE, ring_buffer::RingBuffer};
-use core::ascii::Char;
+use common::constants::REGULAR_PAGE_SIZE;
+use core::{ascii::Char, cell::Cell};
 
 use crate::{
     color_code::ColorCode, generic_writer::GenericWriter,
@@ -13,9 +13,9 @@ use crate::{
 #[derive(Debug)]
 pub struct AdvancedWriter<const W: usize, const H: usize> {
     pub color: ColorCode,
-    pub screen_start: usize,
-    pub cursor: usize,
-    pub screen_position: usize,
+    pub screen_start: Cell<usize>,
+    pub cursor: Cell<usize>,
+    pub screen_position: Cell<usize>,
     pub buffer: Box<[ScreenChar]>,
     pub backing: &'static mut [ScreenChar],
 }
@@ -38,9 +38,9 @@ impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
                 Box::<[ScreenChar; BUFFER_SIZE]>::new_zeroed()
                     .assume_init()
             },
-            screen_start: 0,
-            screen_position: 0,
-            cursor: 0,
+            screen_start: Cell::new(0),
+            screen_position: Cell::new(0),
+            cursor: Cell::new(0),
             backing: vga,
         }
     }
@@ -61,78 +61,79 @@ impl<const W: usize, const H: usize> GenericWriter
         W
     }
 
-    fn scroll_down(&mut self, lines: usize) {
-        // if lines == 0 {
-        //     return;
-        // }
-        // unsafe {
-        //     self.buffer.advance_write(
-        //         ((W - self.buffer.write_idx() % W) + (W * (lines - 1)))
-        //             as isize,
-        //     );
-        // }
-        // unsafe {
-        //     // Read pointer is always on the start of the line.
-        //     // So modulo is not needed.
-        //     self.buffer.advance_read((W * lines) as isize);
-        // }
+    fn scroll_down(&self, lines: usize) {
+        if self.cursor.get() < W * H {
+            return;
+        }
+        self.screen_start
+            .set(self.screen_start.get().saturating_add(lines * W));
+        self.screen_position.set(self.screen_start.get());
     }
 
-    fn scroll_up(&mut self, lines: usize) {
-        // if lines == 0 {
-        //     return;
-        // }
-        // unsafe {
-        //     self.buffer.advance_write(
-        //         (-1 * self.buffer.write_idx() as isize)
-        //             + (-1 * W as isize * (lines - 1) as isize),
-        //     );
-        // }
-        // unsafe {
-        //     // Read pointer is always on the start of the line.
-        //     // So line offset is not needed.
-        //     self.buffer.advance_read(-1 * W as isize * lines as isize);
-        // }
+    fn scroll_up(&self, lines: usize) {
+        if self.screen_start.get() > 0 {
+            return;
+        }
+        self.screen_start
+            .set(self.screen_start.get().saturating_sub(lines * W));
+        self.screen_position.set(self.screen_start.get());
     }
 
     fn update(&mut self) {
-        for char in &self.buffer.as_ref()[self.screen_position
-            ..self.cursor.min(self.screen_position + W * H)]
+        for char in &self.buffer.as_ref()[self.screen_position.get()
+            ..self.cursor.get().min(self.screen_position.get() + W * H)]
         {
             match char.char {
                 Char::Backspace | Char::Delete => {
-                    self.screen_position =
-                        self.screen_position.saturating_sub(1);
-                    self.backing[self.screen_position] =
-                        ScreenChar::default();
+                    self.screen_position
+                        .set(self.screen_position.get().saturating_sub(1));
+                    self.backing[self.screen_position.get()
+                        - self.screen_start.get()] = ScreenChar::default();
                 }
                 Char::LineFeed => {
-                    self.screen_position = self.screen_position + W
-                        - (self.screen_position % W);
+                    self.screen_position.set(
+                        self.screen_position.get() + W
+                            - (self.screen_position.get() % W),
+                    );
+                    self.cursor.set(self.screen_position.get());
                 }
                 _ => {
-                    self.backing[self.screen_position] = *char;
-                    self.screen_position =
-                        self.screen_position.saturating_add(1);
+                    self.backing[self.screen_position.get()
+                        - self.screen_start.get()] = *char;
+                    self.screen_position
+                        .set(self.screen_position.get().saturating_add(1));
+                    if self.screen_position.get() == W * H {
+                        self.scroll_down(1);
+                        return;
+                    }
                 }
             }
-            #[cfg(not(test))]
+
             self.change_cursor_position_on_screen();
         }
     }
 
     fn write_cursor_position(&self) -> usize {
-        self.screen_position
+        self.screen_position.get()
     }
 
     fn set_cursor_position(&mut self, position: usize) {
-        self.screen_position = position;
-        self.cursor = self.screen_position;
+        self.screen_position.set(position);
+        self.cursor.set(position);
+        // Copy to the buffer information from the backing.
+        if self.screen_start.get() != self.screen_position.get() {
+            self.buffer
+                [self.screen_start.get()..self.screen_position.get()]
+                .copy_from_slice(
+                    &self.backing[self.screen_start.get()
+                        ..self.screen_position.get()],
+                );
+        }
     }
 
     fn write_vga_char(&mut self, char: ScreenChar) {
-        self.buffer.as_mut()[self.cursor] = char;
-        self.cursor += 1;
+        self.buffer.as_mut()[self.cursor.get()] = char;
+        self.cursor.set(self.cursor.get() + 1);
     }
 
     fn set_color(&mut self, color: Option<ColorCode>) {
