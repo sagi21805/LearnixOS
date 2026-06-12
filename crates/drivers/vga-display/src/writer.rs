@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use core::ascii::Char;
+use core::{ascii::Char, cell::Cell};
 
 use crate::{
     color_code::ColorCode, generic_writer::GenericWriter,
@@ -10,7 +10,7 @@ use x86::instructions::port::PortExt;
 
 /// Writer implementation for the VGA driver.
 pub struct SimpleWriter<const W: usize, const H: usize> {
-    pub cursor_position: usize,
+    pub cursor_position: Cell<usize>,
     pub color: ColorCode,
     pub screen: &'static mut [ScreenChar],
 }
@@ -19,7 +19,7 @@ pub struct SimpleWriter<const W: usize, const H: usize> {
 impl<const W: usize, const H: usize> const Default for Writer<W, H> {
     fn default() -> Self {
         Self {
-            cursor_position: 0,
+            cursor_position: Cell::new(0),
             color: ColorCode::default(),
             screen: unsafe {
                 core::slice::from_raw_parts_mut(
@@ -32,45 +32,24 @@ impl<const W: usize, const H: usize> const Default for Writer<W, H> {
 }
 
 impl<const W: usize, const H: usize> GenericWriter for SimpleWriter<W, H> {
-    fn scroll_down(&mut self, lines: usize) {
-        let lines_index = W * (H - lines);
-        let region_size = lines * W;
-
-        // Copy the buffer to the left
-        self.screen.copy_within(region_size.., 0);
-
-        // Fill remaining place with empty characters
-        for x in &mut self.screen[lines_index..] {
-            *x = ScreenChar::default()
-        }
-
-        self.cursor_position =
-            self.cursor_position.saturating_sub(lines * W);
+    fn scroll_down(&self, _lines: usize) {
+        unimplemented!()
     }
 
-    fn scroll_up(&mut self, lines: usize) {
-        let lines_index = W * (H - lines);
-        let region_size = lines * W;
-
-        // Copy the buffer to the left
-        self.screen.copy_within(..lines_index, region_size);
-
-        // Fill remaining place with empty characters
-        for x in &mut self.screen[..region_size] {
-            *x = ScreenChar::default()
-        }
-
-        self.cursor_position =
-            self.cursor_position.saturating_add(lines * W);
+    fn scroll_up(&self, _lines: usize) {
+        unimplemented!()
     }
 
     fn new_line(&mut self) {
-        self.cursor_position += W - (self.cursor_position % W)
+        self.cursor_position.set(
+            self.cursor_position.get()
+                + (W - (self.cursor_position.get() % W)),
+        );
     }
 
     fn backspace(&mut self) {
-        self.cursor_position -= 1;
-        self.screen[self.cursor_position] = ScreenChar::default();
+        self.cursor_position.set(self.cursor_position.get() - 1);
+        self.screen[self.cursor_position.get()] = ScreenChar::default();
     }
 
     fn color(&self) -> Option<ColorCode> {
@@ -130,7 +109,6 @@ impl<const W: usize, const H: usize> core::fmt::Write for Writer<W, H> {
             self.scroll_down(1);
         }
 
-        #[cfg(not(test))]
         self.change_cursor_position_on_screen();
     }
 }

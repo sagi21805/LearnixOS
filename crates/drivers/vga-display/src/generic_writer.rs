@@ -44,13 +44,17 @@ pub trait GenericWriter {
     fn screen_height(&self) -> usize;
 
     /// Scroll down by `lines`
-    fn scroll_down(&mut self, lines: usize);
+    fn scroll_down(&self, lines: usize);
 
     /// Scroll up by `lines`
-    fn scroll_up(&mut self, lines: usize);
+    fn scroll_up(&self, lines: usize);
 
     /// Change cursor position on screen
     fn change_cursor_position_on_screen(&self) {
+        #[cfg(feature = "host")]
+        // Disable this function when running tests on the host computer
+        return;
+
         unsafe {
             Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
             Port::VgaData
