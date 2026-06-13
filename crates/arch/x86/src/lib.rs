@@ -7,9 +7,13 @@
 #![feature(const_result_trait_fn)]
 #![feature(iter_map_windows)]
 
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod instructions;
 #[cfg(target_arch = "x86_64")]
 pub mod memory_map;
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod pic8259;
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod registers;
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod structures;
