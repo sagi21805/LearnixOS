@@ -5,7 +5,6 @@
 #![feature(ascii_char_variants)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
-#![feature(unsafe_cell_access)]
 #![allow(static_mut_refs)]
 pub mod advanced_writer;
 pub mod color_code;
