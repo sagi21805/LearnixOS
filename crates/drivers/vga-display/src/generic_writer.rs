@@ -1,4 +1,6 @@
 use common::enums::{Port, VgaCommand};
+
+#[cfg(not(feature = "host"))]
 use x86::instructions::port::PortExt;
 
 use crate::{color_code::ColorCode, screen_char::ScreenChar};
@@ -55,6 +57,7 @@ pub trait GenericWriter {
         // Disable this function when running tests on the host computer
         return;
 
+        #[cfg(not(feature = "host"))]
         unsafe {
             Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
             Port::VgaData
@@ -89,3 +92,6 @@ impl<'a> ::core::fmt::Write for Writer<'a> {
         Ok(())
     }
 }
+
+unsafe impl<'a> Send for Writer<'a> {}
+unsafe impl<'a> Sync for Writer<'a> {}

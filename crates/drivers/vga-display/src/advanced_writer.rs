@@ -2,7 +2,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 
-use common::constants::REGULAR_PAGE_SIZE;
+use common::constants::{REGULAR_PAGE_SIZE, VGA_BUFFER_PTR};
 use core::{ascii::Char, cell::Cell};
 
 use crate::{
@@ -27,7 +27,7 @@ impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
 
         let vga = unsafe {
             ::core::slice::from_raw_parts_mut(
-                0xb8000 as *mut ScreenChar,
+                VGA_BUFFER_PTR as *mut ScreenChar,
                 80 * 25,
             )
         };
