@@ -72,10 +72,6 @@ fn it_works() {
     //     }))
     //     .unwrap();
 
-    std::println!("Screen Start: \n{:?}", unsafe {
-        unsafe { ADVANCED_WRITER.screen_start.get() }
-    });
-
     std::println!("Cursor: \n{:?}", unsafe {
         unsafe { ADVANCED_WRITER.cursor.get() }
     });
