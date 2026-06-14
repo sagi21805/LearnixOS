@@ -13,11 +13,13 @@ use crate::{
 #[derive(Debug)]
 pub struct AdvancedWriter<const W: usize, const H: usize> {
     pub color: ColorCode,
-    pub screen_start: Cell<usize>,
     pub cursor: Cell<usize>,
     pub screen_position: Cell<usize>,
+    pub read_position: Cell<usize>,
     pub buffer: Box<[ScreenChar]>,
     pub backing: &'static mut [ScreenChar],
+    pub row_table: Cell<[usize; H]>,
+    pub line: Cell<usize>,
 }
 
 impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
@@ -38,10 +40,12 @@ impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
                 Box::<[ScreenChar; BUFFER_SIZE]>::new_zeroed()
                     .assume_init()
             },
-            screen_start: Cell::new(0),
             screen_position: Cell::new(0),
+            read_position: Cell::new(0),
             cursor: Cell::new(0),
             backing: vga,
+            row_table: Cell::new([0; H]),
+            line: Cell::new(0),
         }
     }
 }
@@ -62,84 +66,68 @@ impl<const W: usize, const H: usize> GenericWriter
     }
 
     fn scroll_down(&self, lines: usize) {
-        #[cfg(feature = "host")]
-        {
-            extern crate std;
-            std::println!("Scroll Down Function Call");
-        }
         if self.screen_position.get() < W * H {
             return;
         }
-        self.screen_start
-            .set(self.screen_start.get().saturating_add(lines * W));
-        self.screen_position.set(self.screen_start.get());
+
+        self.screen_position.set(
+            self.screen_position.get().saturating_sub((H - lines) * W),
+        );
+        self.read_position
+            .set(self.read_position.get().saturating_sub((H - lines) * W));
     }
 
     fn scroll_up(&self, lines: usize) {
-        if self.screen_start.get() > 0 {
-            return;
-        }
-        self.screen_start
-            .set(self.screen_start.get().saturating_sub(lines * W));
-        self.screen_position.set(self.screen_start.get());
+        // if self.screen_start.get() > 0 {
+        //     return;
+        // }
+        // self.screen_start
+        //     .set(self.screen_start.get().saturating_sub(lines * W));
+        // self.screen_position.set(self.screen_start.get());
     }
 
     fn update(&mut self) {
-        #[cfg(feature = "host")]
-        {
-            extern crate std;
-            std::println!("Update Function Call");
-        }
-
-        if self.screen_position.get() - self.screen_start.get() >= W * H {
+        if self.screen_position.get() >= W * H {
             self.scroll_down(1);
             return;
         }
-        for char in &self.buffer.as_ref()[self.screen_position.get()
-            ..self.cursor.get().min(self.screen_position.get() + W * H)]
+        for char in &self.buffer.as_ref()
+            [self.read_position.get()..self.cursor.get()]
         {
             match char.char {
                 Char::Backspace | Char::Delete => {
                     self.screen_position
                         .set(self.screen_position.get().saturating_sub(1));
 
-                    self.backing[self.screen_position.get()
-                        - self.screen_start.get()] = ScreenChar::default();
+                    self.backing[self.screen_position.get()] =
+                        ScreenChar::default();
                 }
                 Char::LineFeed => {
                     self.screen_position.set(
                         self.screen_position.get()
                             + (W - (self.screen_position.get() % W)),
                     );
-                    if self.screen_position.get() - self.screen_start.get()
-                        >= W * H
-                    {
+                    self.line.set(self.line.get().saturating_add(1));
+
+                    if self.screen_position.get() >= W * H {
                         self.scroll_down(1);
+                        self.read_position.set(
+                            self.read_position.get().saturating_add(1),
+                        );
                         return;
                     }
-                    #[cfg(feature = "host")]
-                    {
-                        extern crate std;
-                        std::println!(
-                            "Screen Position: {}",
-                            self.screen_position.get()
-                        );
-                    }
-
-                    // self.cursor.set(self.screen_position.get());
                 }
                 _ => {
-                    if self.screen_position.get() - self.screen_start.get()
-                        >= W * H
-                    {
+                    if self.screen_position.get() >= W * H {
                         self.scroll_down(1);
                         return;
                     }
-                    self.backing[self.screen_position.get()
-                        - self.screen_start.get()] = *char;
+                    self.backing[self.screen_position.get()] = *char;
 
                     self.screen_position
                         .set(self.screen_position.get().saturating_add(1));
+                    self.read_position
+                        .set(self.read_position.get().saturating_add(1));
                 }
             }
 
@@ -155,11 +143,11 @@ impl<const W: usize, const H: usize> GenericWriter
         self.screen_position.set(position);
         self.cursor.set(position);
         // Copy to the buffer information from the backing.
-        if self.screen_start.get() != self.screen_position.get() {
+        if self.read_position.get() != self.screen_position.get() {
             self.buffer
-                [self.screen_start.get()..self.screen_position.get()]
+                [self.read_position.get()..self.screen_position.get()]
                 .copy_from_slice(
-                    &self.backing[self.screen_start.get()
+                    &self.backing[self.read_position.get()
                         ..self.screen_position.get()],
                 );
         }
