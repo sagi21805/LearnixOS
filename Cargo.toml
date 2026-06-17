@@ -14,10 +14,11 @@ members = [
     "crates/memory/buddy",
     "crates/memory/slab",
     "crates/memory/page",
+    "crates/sync",
     "crates/libk",
     "kernel",
     "tests",
-    "xtask", "crates/sync",
+    "xtask",
     # "snippets",
 ]
 
