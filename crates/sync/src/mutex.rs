@@ -7,15 +7,17 @@ use core::{
 
 use crate::strategy::{RelaxStrategy, Spin};
 
-pub struct SpinLockMutex<T, R: RelaxStrategy = Spin> {
+pub type SpinMutex<T> = Mutex<T, Spin>;
+
+pub struct Mutex<T, R: RelaxStrategy> {
     strategy: PhantomData<R>,
     locked: AtomicBool,
     data: UnsafeCell<T>,
 }
 
-unsafe impl<T, S: RelaxStrategy> Sync for SpinLockMutex<T, S> where T: Send {}
+unsafe impl<T, S: RelaxStrategy> Sync for Mutex<T, S> where T: Send {}
 
-impl<T> SpinLockMutex<T> {
+impl<T, R: RelaxStrategy> Mutex<T, R> {
     pub const fn new(data: T) -> Self {
         Self {
             strategy: PhantomData,
@@ -24,7 +26,7 @@ impl<T> SpinLockMutex<T> {
         }
     }
 
-    pub fn lock(&self) -> SpinlockGuard<'_, T> {
+    pub fn lock(&self) -> MutexGuard<'_, T, R> {
         // While the lock is `true`, a swap to `true` returns the previous
         // value which is `true` which keeps the mutex locked.
         // Only when unlocking, the swap would return `false` which would
@@ -35,15 +37,31 @@ impl<T> SpinLockMutex<T> {
             Spin::relax(tick);
         }
 
-        SpinlockGuard { mutex: self }
+        MutexGuard { mutex: self }
+    }
+
+    pub fn try_lock(&self) -> Option<MutexGuard<'_, T, R>> {
+        if self.locked.swap(true, Ordering::Acquire) {
+            return None;
+        }
+        Some(MutexGuard { mutex: self })
     }
 }
 
-pub struct SpinlockGuard<'a, T> {
-    mutex: &'a SpinLockMutex<T>,
+pub struct MutexGuard<'a, T, R: RelaxStrategy> {
+    mutex: &'a Mutex<T, R>,
 }
 
-impl<T> Deref for SpinlockGuard<'_, T> {
+unsafe impl<T: Sized, R: RelaxStrategy> Sync for MutexGuard<'_, T, R> where
+    for<'a> &'a T: Sync
+{
+}
+unsafe impl<T: Sized, R: RelaxStrategy> Send for MutexGuard<'_, T, R> where
+    for<'a> &'a T: Send
+{
+}
+
+impl<T, R: RelaxStrategy> Deref for MutexGuard<'_, T, R> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -51,13 +69,13 @@ impl<T> Deref for SpinlockGuard<'_, T> {
     }
 }
 
-impl<T> DerefMut for SpinlockGuard<'_, T> {
+impl<T, R: RelaxStrategy> DerefMut for MutexGuard<'_, T, R> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.mutex.data.get() }
     }
 }
 
-impl<T> Drop for SpinlockGuard<'_, T> {
+impl<T, R: RelaxStrategy> Drop for MutexGuard<'_, T, R> {
     fn drop(&mut self) {
         self.mutex.locked.store(false, Ordering::Release);
     }
