@@ -38,7 +38,6 @@ impl DiskAddressPacket {
     ///   load the sectors to
     /// - `segment`: The memory segment start address
     /// - `abs_block_num`: The starting sector Logical Block Address (LBA)
-    // ANCHOR: new
     pub fn new(
         num_of_sectors: u16,
         memory_address: u16,
@@ -64,7 +63,6 @@ impl DiskAddressPacket {
             abs_block_num,
         }
     }
-    // ANCHOR_END: new
 
     /// Load the sectors specified in the disk packet to the
     /// given memory segment
@@ -72,7 +70,6 @@ impl DiskAddressPacket {
     /// # Parameters
     ///
     /// - `disk_number`: The disk number to read the sectors from
-    // ANCHOR: load
     pub unsafe fn load(&self, disk_number: u8) {
         unsafe {
             // This is an inline assembly block
@@ -99,5 +96,4 @@ impl DiskAddressPacket {
             )
         }
     }
-    // ANCHOR_END: load
 }

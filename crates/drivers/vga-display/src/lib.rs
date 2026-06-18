@@ -14,12 +14,9 @@ use writer::Writer;
 
 use core::fmt::{self, Write};
 
-// ANCHOR: writer
 static mut WRITER: LateInit<Writer<80, 25>> =
     LateInit::new(Writer::default());
-// ANCHOR_END: writer
 
-// ANCHOR: vga_print
 pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
     unsafe {
         if let Some(c) = color {
@@ -31,7 +28,6 @@ pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
         WRITER.color = ColorCode::default();
     }
 }
-// ANCHOR_END: vga_print
 #[unsafe(no_mangle)]
 pub fn kprint(args: fmt::Arguments<'_>) {
     vga_print(args, None);

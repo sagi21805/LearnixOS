@@ -6,16 +6,14 @@ use common::constants::addresses::VGA_BUFFER_PTR;
 use common::enums::{Port, VgaCommand};
 use x86::instructions::port::PortExt;
 
-// ANCHOR: writer
 /// Writer implementation for the VGA driver.
 pub struct Writer<const W: usize, const H: usize> {
     pub cursor_position: usize,
     pub color: ColorCode,
     pub screen: &'static mut [ScreenChar],
 }
-// ANCHOR_END: writer
 
-// ANCHOR: writer_default
+#[rustfmt::skip]
 impl<const W: usize, const H: usize> const Default for Writer<W, H> {
     fn default() -> Self {
         Self {
@@ -30,7 +28,6 @@ impl<const W: usize, const H: usize> const Default for Writer<W, H> {
         }
     }
 }
-// ANCHOR_END: writer_default
 
 impl<const W: usize, const H: usize> Writer<W, H> {
     /// Writes the given `char` to the screen with the color
@@ -40,7 +37,6 @@ impl<const W: usize, const H: usize> Writer<W, H> {
     ///
     /// - `char`: The char that will be printed to the screen
     fn write_char(&mut self, char: u8) {
-        // ANCHOR: handle_char
         let c =
             Char::from_u8(char).expect("Entered invalid ascii character");
         match c {
@@ -61,14 +57,10 @@ impl<const W: usize, const H: usize> Writer<W, H> {
         if self.cursor_position > W * H {
             self.scroll_down(1);
         }
-        // ANCHOR_END: handle_char
 
-        // ANCHOR: change_position
         self.change_cursor_position_on_screen();
-        // ANCHOR_END: change_position
     }
 
-    // ANCHOR: scroll_down
     /// Scroll `lines` down.
     fn scroll_down(&mut self, lines: usize) {
         let lines_index = W * (H - lines) + 1;
@@ -83,22 +75,16 @@ impl<const W: usize, const H: usize> Writer<W, H> {
 
         self.cursor_position -= lines * W;
     }
-    // ANCHOR_END: scroll_down
 
-    // ANCHOR: new_line
     fn new_line(&mut self) {
         self.cursor_position += W - (self.cursor_position % W)
     }
-    // ANCHOR_END: new_line
 
-    // ANCHOR: backspace
     fn backspace(&mut self) {
         self.cursor_position -= 1;
         self.screen[self.cursor_position] = ScreenChar::default();
     }
-    // ANCHOR_END: backspace
 
-    // ANCHOR: change_position_on_screen
     fn change_cursor_position_on_screen(&self) {
         unsafe {
             Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
@@ -107,19 +93,15 @@ impl<const W: usize, const H: usize> Writer<W, H> {
             Port::VgaData.outb(((self.cursor_position >> 8) & 0xff) as u8);
         }
     }
-    // ANCHOR_END: change_position_on_screen
 
-    // ANCHOR: clear
     /// Clears the screen by setting all of the buffer bytes
     /// to zero
     fn clear(&mut self) {
         self.screen.fill(ScreenChar::default());
         self.cursor_position = 0;
     }
-    // ANCHOR_END: clear
 }
 
-// ANCHOR: format_impl
 impl<const W: usize, const H: usize> core::fmt::Write for Writer<W, H> {
     /// Print the given string to the string with the color
     /// in self
@@ -143,4 +125,3 @@ impl<const W: usize, const H: usize> core::fmt::Write for Writer<W, H> {
         Ok(())
     }
 }
-// ANCHOR_END: format_impl
