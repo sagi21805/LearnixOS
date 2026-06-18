@@ -135,7 +135,8 @@ impl PageSize {
     }
 }
 
-const impl From<PageSize> for Layout {
+#[rustfmt::skip]
+impl const From<PageSize> for Layout {
     fn from(val: PageSize) -> Self {
         unsafe {
             match val {
