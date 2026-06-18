@@ -11,5 +11,5 @@ num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features
     "complex-expressions",
 ] }
 quote = "1.0.45"
-syn = "2.0.117"
+syn = "2.0.118"
 thiserror = "2.0.18"
