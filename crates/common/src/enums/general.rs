@@ -1,7 +1,6 @@
 use crate::error::ConversionError;
 use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
 
-// ANCHOR: dpl
 #[repr(u8)]
 #[derive(
     Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
@@ -13,4 +12,3 @@ pub enum ProtectionLevel {
     Ring2 = 2,
     Ring3 = 3,
 }
-// ANCHOR_END: dpl

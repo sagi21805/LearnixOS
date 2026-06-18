@@ -10,12 +10,9 @@ use common::{constants::addresses::KERNEL_OFFSET, enums::Sections};
 use core::{arch::asm, panic::PanicInfo};
 use x86::structures::global_descriptor_table::GlobalDescriptorTableLong;
 
-// ANCHOR: gdt_long
 static GLOBAL_DESCRIPTOR_TABLE_LONG_MODE: GlobalDescriptorTableLong =
     GlobalDescriptorTableLong::default();
-// ANCHOR_END: gdt_long
 
-// ANCHOR: _start
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 #[allow(unsafe_op_in_unsafe_fn)]
@@ -41,7 +38,6 @@ pub unsafe extern "C" fn second_stage() -> ! {
     #[allow(clippy::all)]
     loop {}
 }
-// ANCHOR_END: _start
 
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {

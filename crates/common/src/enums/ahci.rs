@@ -5,7 +5,6 @@ use num_enum::{
     FromPrimitive, TryFromPrimitive, UnsafeFromPrimitive,
 };
 
-// ANCHOR: AHCIInterfaceSpeed
 #[repr(u8)]
 #[derive(
     PartialEq,
@@ -28,9 +27,7 @@ pub enum InterfaceSpeed {
     #[display("Gen1: 6.0Gb/s")]
     Gen3 = 3,
 }
-// ANCHOR_END: AHCIInterfaceSpeed
 
-// ANCHOR: InterfaceCommunicationControl
 #[repr(u8)]
 #[derive(
     Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
@@ -45,9 +42,7 @@ pub enum InterfaceCommunicationControl {
     #[num_enum(alternatives = [3..=5, 7, 9..=14])]
     Reserved = 0xf,
 }
-// ANCHOR_END: InterfaceCommunicationControl
 
-// ANCHOR: DeviceType
 #[repr(u32)]
 #[derive(
     Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
@@ -59,9 +54,7 @@ pub enum DeviceType {
     EnclosureManagementBridge = 0xc33c0101,
     PortMultiplier = 0x96690191,
 }
-// ANCHOR_END: DeviceType
 
-// ANCHOR: InterfacePowerManagement
 #[repr(u8)]
 #[derive(
     Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
@@ -74,9 +67,7 @@ pub enum InterfacePowerManagement {
     Slumber = 6,
     DevSleep = 8,
 }
-// ANCHOR_END: InterfacePowerManagement
 
-// ANCHOR: DeviceDetection
 #[repr(u8)]
 #[derive(
     Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
@@ -88,9 +79,7 @@ pub enum DeviceDetection {
     Detected = 3,
     Device = 4,
 }
-// ANCHOR_END: device Detection
 
-// ANCHOR: DeviceDetectionInitialization
 #[repr(u8)]
 #[derive(
     Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
@@ -101,9 +90,7 @@ pub enum InterfaceInitialization {
     CommunicationInitialization = 1,
     DisableInterface = 4,
 }
-// ANCHOR_END: DeviceDetectionInitialization
 
-// ANCHOR: FisTypes
 #[repr(u8)]
 #[derive(
     Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
