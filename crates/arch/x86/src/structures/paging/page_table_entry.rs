@@ -17,9 +17,7 @@ pub struct PageTableEntry {
     pub address: B51,
     pub(crate) not_executable: B1,
 }
-// ANCHOR_END: page_table_entry
 
-// ANCHOR: impl_page_table_entry
 impl PageTableEntry {
     /// Map new frame with the given with the given flags.
     ///
@@ -27,7 +25,6 @@ impl PageTableEntry {
     ///
     /// This function doesn't check if address is properly aligned, and if
     /// the entry was already mapped.
-    // ANCHOR: page_table_entry_map_unchecked
     #[inline]
     pub unsafe fn map_unchecked(
         &mut self,
@@ -37,7 +34,6 @@ impl PageTableEntry {
         self.set_flags(flags.present(true));
         self.set_address(frame);
     }
-    // ANCHOR_END: page_table_entry_map_unchecked
 
     /// Map a frame to the page table entry while checking
     /// flags and frame alignment but **not** the ownership
@@ -58,7 +54,6 @@ impl PageTableEntry {
     /// except the corresponding virtual address,
     /// and should be marked owned by it in a memory
     /// allocator
-    // ANCHOR: page_table_entry_map
     #[inline]
     pub unsafe fn map(
         &mut self,
@@ -71,11 +66,9 @@ impl PageTableEntry {
             unsafe { self.map_unchecked(frame, flags) };
         }
     }
-    // ANCHOR_END: page_table_entry_map
 
     /// Return the physical address that is mapped by this
     /// entry, if this entry is not mapped, return None.
-    // ANCHOR: page_table_entry_mapped
     #[inline]
     pub fn mapped(&self) -> Result<PhysicalAddress, EntryError> {
         if self.get_flags().is_present() {
@@ -84,14 +77,11 @@ impl PageTableEntry {
             Err(EntryError::NoMapping)
         }
     }
-    // ANCHOR_END: page_table_entry_mapped
-
     /// Return the physical address mapped by this table as
     /// a reference into a page table.
     ///
     /// This method assumes all page tables are identity
     /// mapped.
-    // ANCHOR: page_table_entry_mapped_table
     #[cfg(target_arch = "x86_64")]
     pub fn mapped_table(&self) -> Result<NonNull<PageTable>, EntryError> {
         // first check if the entry is mapped.
@@ -106,7 +96,6 @@ impl PageTableEntry {
             Err(EntryError::NotATable)
         }
     }
-    // ANCHOR_END: page_table_entry_mapped_table
 
     pub fn table_index(&self) -> usize {
         let table_offset = self as *const _ as usize & ((1 << 12) - 1);

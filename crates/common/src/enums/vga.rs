@@ -1,4 +1,3 @@
-// ANCHOR: color
 #[repr(u8)]
 /// All the colors coded per the VGA documentation
 pub enum Color {
@@ -19,12 +18,9 @@ pub enum Color {
     Yellow = 14,
     White = 15,
 }
-// ANCHOR_END: color
 
-// ANCHOR: vga_command
 #[repr(u8)]
 pub enum VgaCommand {
     CursorOffsetHigh = 0xE,
     CursorOffsetLow = 0xF,
 }
-// ANCHOR_END: vga_command

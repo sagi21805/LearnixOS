@@ -1,6 +1,5 @@
 use macros::bitfields;
 
-// ANCHOR: page_entry_flags
 /// A wrapper for `PageTableEntry` flags for easier use
 #[bitfields]
 pub struct PageEntryFlags {
@@ -19,7 +18,6 @@ pub struct PageEntryFlags {
     pub table: B1,
     pub root_entry: B1,
 }
-// ANCHOR_END: page_entry_flags
 
 impl PageEntryFlags {
     /// Default flags for entry that contains page table.
@@ -60,4 +58,3 @@ impl PageEntryFlags {
             .global(true)
     }
 }
-// ANCHOR_END: impl_page_entry_flags
