@@ -13,11 +13,15 @@ pub mod screen_char;
 pub mod writer;
 
 use color_code::ColorCode;
+use common::late_init::LateInit;
 
 use core::fmt::{self, Write};
 
-static mut WRITER: LateInit<Writer<80, 25>> =
-    LateInit::new(Writer::default());
+use crate::generic_writer::Writer;
+
+unsafe extern "Rust" {
+    static mut WRITER: LateInit<Writer<'static>>;
+}
 
 pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
     unsafe {
