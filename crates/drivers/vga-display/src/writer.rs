@@ -2,11 +2,12 @@ extern crate alloc;
 
 use core::{ascii::Char, cell::Cell};
 
+use common::constants::VGA_BUFFER_PTR;
+
 use crate::{
     color_code::ColorCode, generic_writer::GenericWriter,
     screen_char::ScreenChar,
 };
-use x86::instructions::port::PortExt;
 
 /// Writer implementation for the VGA driver.
 pub struct SimpleWriter<const W: usize, const H: usize> {
@@ -16,7 +17,7 @@ pub struct SimpleWriter<const W: usize, const H: usize> {
 }
 
 #[rustfmt::skip]
-impl<const W: usize, const H: usize> const Default for Writer<W, H> {
+impl<const W: usize, const H: usize> const Default for SimpleWriter<W, H> {
     fn default() -> Self {
         Self {
             cursor_position: Cell::new(0),
@@ -59,56 +60,43 @@ impl<const W: usize, const H: usize> GenericWriter for SimpleWriter<W, H> {
     fn screen_height(&self) -> usize {
         H
     }
-}
-
-impl<const W: usize, const H: usize> core::fmt::Write for Writer<W, H> {
-    /// Print the given string to the string with the color
-    /// in self
-    ///
-    /// # Parameters
-    ///
-    /// - `str`: The string that will be printed to the screen with the
-    ///   color in self
-    ///
-    /// # Safety
-    /// THIS FUNCTION IS NOT THREAD SAFE AND NOT MARKED
-    /// UNSAFE BECAUSE OF TRAIT IMPLEMENTATION!
-    /// THE FUNCTION WILL ADD LOCK AND WILL BE SAFE IN THE
-    /// FUTURE
-    ///
-    /// TODO: use lock in the future
-    fn write_str(&mut self, str: &str) -> core::fmt::Result {
-        for char in str.bytes() {
-            self.write_char(char);
-        }
-        Ok(())
+    fn screen_width(&self) -> usize {
+        W
     }
-
+    fn set_color(&mut self, color: Option<ColorCode>) {
+        self.color = color.unwrap_or_default();
+    }
+    fn update(&mut self) {}
+    fn set_cursor_position(&mut self, position: usize) {
+        self.cursor_position.set(position);
+    }
+    fn write_cursor_position(&self) -> usize {
+        self.cursor_position.get()
+    }
+    fn write_vga_char(&mut self, char: ScreenChar) {
+        self.screen[self.cursor_position.get()] = char;
+        self.cursor_position.set(self.cursor_position.get() + 1);
+    }
     fn write_char(&mut self, char: char) {
-        let c = char.as_ascii().expect("Entered invalid ascii character");
+        let ascii =
+            char.as_ascii().expect("Entered invalid ascii character");
 
-        match c {
+        match ascii {
             Char::LineFeed => {
                 self.new_line();
             }
-            Char::Backspace | Char::Delete => {
+            Char::Delete | Char::Backspace => {
                 self.backspace();
             }
             _ => {
-                if !c.is_control() {
-                    self.write_vga_char(ScreenChar::new(
-                        c,
-                        self.color().unwrap_or_default(),
-                    ));
+                if !ascii.is_control() {
+                    self.write_vga_char(ScreenChar {
+                        char: ascii,
+                        color_code: self.color,
+                    });
                 }
             }
         }
-        if self.write_cursor_position()
-            == (self.screen_width() * self.screen_height())
-        {
-            self.scroll_down(1);
-        }
-
         self.change_cursor_position_on_screen();
     }
 }
