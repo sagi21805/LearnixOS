@@ -1,3 +1,7 @@
+use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
+
+use crate::error::ConversionError;
+
 #[repr(u8)]
 #[derive(
     Clone, Copy, Debug, ConstTryFromPrimitive, ConstIntoPrimitive,

@@ -20,12 +20,11 @@ use common::{
     },
     enums::{PS2ScanCode, PageSize},
     late_init::LateInit,
-    ring_buffer::RingBuffer,
 };
 use keyboard::ps2_keyboard::Keyboard;
 use vga_display::{
     advanced_writer::AdvancedWriter, eprintln, generic_writer::Writer,
-    okprintln, screen_char::ScreenChar, writer::SimpleWriter,
+    okprintln, writer::SimpleWriter,
 };
 use x86::{
     instructions::interrupts::{self, hlt},
@@ -117,8 +116,8 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
-    ADVANCED_WRITER.write(AdvancedWriter::default());
-    WRITER.set_writer(ADVANCED_WRITER.assume_init_mut());
+    // ADVANCED_WRITER.write(AdvancedWriter::default());
+    // WRITER.set_writer(ADVANCED_WRITER.assume_init_mut());
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
     // ::core::arch::asm!("int 3");
@@ -193,7 +192,6 @@ pub unsafe extern "C" fn _start() -> ! {
     //         println!("Firmware: {:?}", &id.firmware_rev);
     //     }
     // }
-
     loop {
         let scancode = KEYBOARD.read_raw_scancode();
         if let Some(scancode) = scancode {
