@@ -24,7 +24,7 @@ use common::{
 use keyboard::ps2_keyboard::Keyboard;
 use vga_display::{
     advanced_writer::AdvancedWriter, eprintln, generic_writer::Writer,
-    okprintln, writer::SimpleWriter,
+    okprintln, vga_init, writer::SimpleWriter,
 };
 use x86::{
     instructions::interrupts::{self, hlt},
@@ -83,10 +83,10 @@ pub unsafe extern "C" fn _start() -> ! {
     };
 
     unsafe {
-        let _ = MMAP.write(MemoryMap::parse_map(raw, buf).unwrap());
+        let _ = MMAP.init(MemoryMap::parse_map(raw, buf).unwrap());
 
         let _ = BUMP_ALLOCATOR
-            .write(BumpAllocator::new(MMAP.assume_init_ref()));
+            .init(BumpAllocator::new(MMAP.assume_init_ref()));
 
         GLOBAL_ALLOCATOR.init(BUMP_ALLOCATOR.assume_init_ref());
         let v = VirtualAddress::new_unchecked(

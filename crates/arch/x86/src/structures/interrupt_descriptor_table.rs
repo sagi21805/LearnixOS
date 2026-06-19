@@ -99,7 +99,7 @@ impl InterruptDescriptorTable {
             );
         }
 
-        let init = unsafe { uninit.write(boxed.assume_init()) };
+        let init = unsafe { uninit.init(boxed.assume_init()) };
         init.as_ref().load();
     }
 

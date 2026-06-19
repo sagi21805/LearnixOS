@@ -14,8 +14,12 @@ impl<T> LateInit<T> {
         LateInit::<T>(MaybeUninit::new(val))
     }
 
-    pub const fn write(&mut self, val: T) -> &mut T {
-        self.0.write(val)
+    pub const fn init(&self, val: T) -> &mut T {
+        let ptr = self.0.as_ptr() as *mut T;
+        unsafe {
+            ptr.write(val);
+            &mut *ptr
+        }
     }
 
     pub const fn assume_init_ref(&self) -> &T {

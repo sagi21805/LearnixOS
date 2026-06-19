@@ -13,14 +13,28 @@ pub mod screen_char;
 pub mod writer;
 
 use color_code::ColorCode;
-use common::late_init::LateInit;
+use common::{constants::VGA_BUFFER_PTR, late_init::LateInit};
 
 use core::fmt::{self, Write};
 
-use crate::generic_writer::Writer;
+use crate::{generic_writer::Writer, screen_char::ScreenChar};
+
+use sync::rwlock::SpinRwLock;
+
+pub static SCREEN_LOCK: LateInit<SpinRwLock<&'static mut [ScreenChar]>> =
+    LateInit::uninit();
 
 unsafe extern "Rust" {
     static mut WRITER: LateInit<Writer<'static>>;
+}
+
+pub fn vga_init() {
+    SCREEN_LOCK.init(SpinRwLock::new(unsafe {
+        core::slice::from_raw_parts_mut(
+            VGA_BUFFER_PTR as *mut ScreenChar,
+            80 * 25,
+        )
+    }));
 }
 
 pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
