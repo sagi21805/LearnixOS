@@ -29,7 +29,7 @@ impl Keyboard {
             Box::<[u8; REGULAR_PAGE_SIZE]>::new_zeroed().assume_init()
         };
 
-        uninit.write(Keyboard {
+        uninit.init(Keyboard {
             buffer: RingBuffer::new(buffer),
             flags: KeyboardFlags::new(),
         });
