@@ -36,7 +36,7 @@ use libk::{
     print, println,
 };
 
-use sync::mutex::SpinMutex;
+use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
 
 use crate::interrupt_handlers::InterruptDescriptorTableExt;
 
@@ -53,11 +53,11 @@ static IDT: LateInit<SpinMutex<Box<InterruptDescriptorTable>>> =
     LateInit::uninit();
 
 #[unsafe(no_mangle)]
-static KEYBOARD: SpinMutex<OnceCell<Keyboard>> =
-    SpinMutex::new(OnceCell::new());
+static KEYBOARD: LateInit<Keyboard> = LateInit::uninit();
+
+static KEYBOARD_BUFFER: LateInit<SpscRingBuffer<u8>> = LateInit::uninit();
 
 #[unsafe(no_mangle)]
-
 static SIMPLE_WRITER: SpinMutex<SimpleWriter<80, 25>> =
     unsafe { SpinMutex::new_locked(SimpleWriter::default()) };
 
@@ -121,7 +121,9 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized interrupts handlers");
         PIC.lock().init();
         okprintln!("Initialized Programmable Interrupt Controller");
-        Keyboard::init(&KEYBOARD);
+        let buffer = Box::new([0u8; 1024]);
+        KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
+        KEYBOARD.init(Keyboard::new(&KEYBOARD_BUFFER));
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
@@ -202,17 +204,15 @@ pub unsafe extern "C" fn _start() -> ! {
     //     }
     // }
     loop {
-        let scancode = KEYBOARD
-            .lock()
-            .get_mut()
-            .and_then(|k| k.read_raw_scancode());
-        if let Some(scancode) = scancode {
-            match scancode {
-                PS2ScanCode::Keypad8 => WRITER.inner.lock().scroll_down(1),
-                PS2ScanCode::Keypad2 => WRITER.inner.lock().scroll_up(1),
-                _ => print!("{}", scancode),
-            }
-        }
+        let scancode = KEYBOARD.read_raw_scancode();
+        // if let Some(scancode) = scancode {
+        //     match scancode {
+        //         PS2ScanCode::Keypad8 =>
+        // WRITER.inner.lock().scroll_down(1),
+        //         PS2ScanCode::Keypad2 =>
+        // WRITER.inner.lock().scroll_up(1),         _ =>
+        // print!("{}", scancode),     }
+        // }
     }
 }
 
