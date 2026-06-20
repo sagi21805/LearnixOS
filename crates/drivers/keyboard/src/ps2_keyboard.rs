@@ -1,16 +1,9 @@
 extern crate alloc;
 
-use core::cell::OnceCell;
-
-use alloc::boxed::Box;
-
-use common::{
-    constants::REGULAR_PAGE_SIZE, enums::PS2ScanCode,
-    ring_buffer::RingBuffer,
-};
+use common::enums::PS2ScanCode;
 
 use macros::bitfields;
-use sync::mutex::SpinMutex;
+use sync::spsc::{Consumer, Producer, SpscRingBuffer};
 
 #[bitfields]
 pub struct KeyboardFlags {
@@ -22,24 +15,25 @@ pub struct KeyboardFlags {
 }
 
 pub struct Keyboard {
-    pub buffer: RingBuffer<u8>,
-    pub flags: KeyboardFlags,
+    pub(crate) producer: Producer<'static, u8>,
+    pub(crate) flags: KeyboardFlags,
+    consumer: Consumer<'static, u8>,
 }
 
 impl Keyboard {
-    pub fn init(uninit: &SpinMutex<OnceCell<Self>>) {
-        let buffer = unsafe {
-            Box::<[u8; REGULAR_PAGE_SIZE]>::new_zeroed().assume_init()
+    pub fn new(spsc: &'static SpscRingBuffer<u8>) -> Self {
+        let Some((producer, consumer)) = spsc.try_utilize() else {
+            todo!();
         };
-
-        let _ = uninit.lock().set(Keyboard {
-            buffer: RingBuffer::new(buffer),
+        Keyboard {
+            producer,
+            consumer,
             flags: KeyboardFlags::new(),
-        });
+        }
     }
 
-    pub fn read_raw_scancode(&mut self) -> Option<PS2ScanCode> {
-        PS2ScanCode::try_from(self.buffer.read()?).ok()
+    pub fn read_raw_scancode(&self) -> Option<PS2ScanCode> {
+        PS2ScanCode::try_from(self.consumer.pop()?).ok()
     }
 
     /// TODO change in the future to just return the
