@@ -10,43 +10,52 @@ use crate::{
     screen_char::ScreenChar,
 };
 
-#[derive(Debug)]
+use sync::mutex::SpinMutex;
+
 pub struct AdvancedWriter<const W: usize, const H: usize> {
     pub color: ColorCode,
     pub cursor: Cell<usize>,
     pub screen_position: Cell<usize>,
     pub read_position: Cell<usize>,
-    pub buffer: Box<[ScreenChar]>,
-    pub backing: &'static mut [ScreenChar],
-    pub row_table: Cell<[usize; H]>,
+    pub buffer: SpinMutex<Box<[ScreenChar]>>,
+    pub row_table: SpinMutex<Box<[u16]>>,
     pub line: Cell<usize>,
 }
 
 impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
     fn default() -> Self {
         const BUFFER_SIZE: usize =
-            (10 * REGULAR_PAGE_SIZE) / size_of::<ScreenChar>();
-
-        let vga = unsafe {
-            ::core::slice::from_raw_parts_mut(
-                VGA_BUFFER_PTR as *mut ScreenChar,
-                80 * 25,
-            )
-        };
+            (2 * REGULAR_PAGE_SIZE) / size_of::<ScreenChar>();
 
         Self {
             color: ColorCode::default(),
-            buffer: unsafe {
+            buffer: SpinMutex::new(unsafe {
                 Box::<[ScreenChar; BUFFER_SIZE]>::new_zeroed()
                     .assume_init()
-            },
+            }),
             screen_position: Cell::new(0),
             read_position: Cell::new(0),
             cursor: Cell::new(0),
-            backing: vga,
-            row_table: Cell::new([0; H]),
+            row_table: SpinMutex::new(unsafe {
+                Box::<[u16; H]>::new_zeroed().assume_init()
+            }),
             line: Cell::new(0),
         }
+    }
+}
+
+impl<const W: usize, const H: usize> AdvancedWriter<W, H> {
+    fn screen_line(&self) -> usize {
+        self.screen_position.get() / W
+    }
+    fn screen_line_offset(&self) -> usize {
+        self.screen_position.get() % W
+    }
+    fn cursor_line(&self) -> usize {
+        self.cursor.get() / W
+    }
+    fn cursor_line_offset(&self) -> usize {
+        self.cursor.get() % W
     }
 }
 
@@ -65,7 +74,7 @@ impl<const W: usize, const H: usize> GenericWriter
         W
     }
 
-    fn scroll_down(&self, lines: usize) {
+    fn scroll_down(&mut self, lines: usize) {
         if self.screen_position.get() < W * H {
             return;
         }
@@ -77,7 +86,7 @@ impl<const W: usize, const H: usize> GenericWriter
             .set(self.read_position.get().saturating_sub((H - lines) * W));
     }
 
-    fn scroll_up(&self, lines: usize) {
+    fn scroll_up(&mut self, lines: usize) {
         // if self.screen_start.get() > 0 {
         //     return;
         // }
@@ -86,49 +95,20 @@ impl<const W: usize, const H: usize> GenericWriter
         // self.screen_position.set(self.screen_start.get());
     }
 
-    fn update(&mut self) {
+    fn update(&self, screen: &mut [ScreenChar]) {
         if self.screen_position.get() >= W * H {
             self.scroll_down(1);
             return;
         }
-        for char in &self.buffer.as_ref()
+        for char in &self.buffer.lock().as_ref()
             [self.read_position.get()..self.cursor.get()]
         {
             match char.char {
                 Char::Backspace | Char::Delete => {
-                    self.screen_position
-                        .set(self.screen_position.get().saturating_sub(1));
-
-                    self.backing[self.screen_position.get()] =
-                        ScreenChar::default();
+                    self.backspace();
                 }
-                Char::LineFeed => {
-                    self.screen_position.set(
-                        self.screen_position.get()
-                            + (W - (self.screen_position.get() % W)),
-                    );
-                    self.line.set(self.line.get().saturating_add(1));
-
-                    if self.screen_position.get() >= W * H {
-                        self.scroll_down(1);
-                        self.read_position.set(
-                            self.read_position.get().saturating_add(1),
-                        );
-                        return;
-                    }
-                }
-                _ => {
-                    if self.screen_position.get() >= W * H {
-                        self.scroll_down(1);
-                        return;
-                    }
-                    self.backing[self.screen_position.get()] = *char;
-
-                    self.screen_position
-                        .set(self.screen_position.get().saturating_add(1));
-                    self.read_position
-                        .set(self.read_position.get().saturating_add(1));
-                }
+                Char::LineFeed => {}
+                _ => {}
             }
 
             self.change_cursor_position_on_screen();
@@ -139,7 +119,7 @@ impl<const W: usize, const H: usize> GenericWriter
         self.screen_position.get()
     }
 
-    fn set_cursor_position(&mut self, position: usize) {
+    fn set_cursor_position(&self, position: usize) {
         self.screen_position.set(position);
         self.cursor.set(position);
         // Copy to the buffer information from the backing.
@@ -153,12 +133,12 @@ impl<const W: usize, const H: usize> GenericWriter
         }
     }
 
-    fn write_vga_char(&mut self, char: ScreenChar) {
+    fn write_vga_char(&self, char: ScreenChar) {
         self.buffer.as_mut()[self.cursor.get()] = char;
         self.cursor.set(self.cursor.get() + 1);
     }
 
-    fn set_color(&mut self, color: Option<ColorCode>) {
+    fn set_color(&self, color: Option<ColorCode>) {
         self.color = color.unwrap_or_default();
     }
 
@@ -166,7 +146,7 @@ impl<const W: usize, const H: usize> GenericWriter
         Some(self.color)
     }
 
-    fn write_char(&mut self, char: char) {
+    fn write_char(&self, char: char) {
         let c = char.as_ascii().expect("Entered invalid ascii character");
         self.write_vga_char(ScreenChar::new(
             c,

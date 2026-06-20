@@ -70,43 +70,40 @@ impl CascadedPIC {
         }
     }
 
-    pub fn init(uninit: &'static mut Self) {
+    pub fn init(&mut self) {
         unsafe {
             // Send initialize command to master
-            uninit.master.command.outb(
+            self.master.command.outb(
                 PicCommandCode::Initialize as u8
                     | PicCommandCode::CascadeMode as u8,
             );
             Port::iowait();
             // Send initialize command to slave
-            uninit.slave.command.outb(
+            self.slave.command.outb(
                 PicCommandCode::Initialize as u8
                     | PicCommandCode::CascadeMode as u8,
             );
             Port::iowait();
             // Send IVT offset to master
-            uninit
-                .master
-                .data
-                .outb(uninit.master.interrupt_offset as u8);
+            self.master.data.outb(self.master.interrupt_offset as u8);
             Port::iowait();
             // Send IVT offset to slave
-            uninit.slave.data.outb(uninit.slave.interrupt_offset as u8);
+            self.slave.data.outb(self.slave.interrupt_offset as u8);
             Port::iowait();
             // Tell master how it is connected to slave
-            uninit.master.data.outb(PicInterruptLine::Irq2 as u8);
+            self.master.data.outb(PicInterruptLine::Irq2 as u8);
             Port::iowait();
             // Tell slave how it is connected to master
-            uninit.slave.data.outb(PicInterruptLine::Irq1 as u8);
+            self.slave.data.outb(PicInterruptLine::Irq1 as u8);
             Port::iowait();
             // Set PIC mode of master
-            uninit.master.data.outb(PicMode::Mode8086 as u8);
+            self.master.data.outb(PicMode::Mode8086 as u8);
             Port::iowait();
             // Set PIC mode of slave
-            uninit.slave.data.outb(PicMode::Mode8086 as u8);
+            self.slave.data.outb(PicMode::Mode8086 as u8);
             Port::iowait();
-            uninit.master.enable();
-            uninit.slave.enable();
+            self.master.enable();
+            self.slave.enable();
         }
     }
 

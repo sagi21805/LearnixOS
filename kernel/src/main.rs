@@ -2,13 +2,11 @@
 #![no_main]
 #![feature(ptr_alignment_type)]
 #![feature(abi_x86_interrupt)]
-#![feature(allocator_api)]
 #![feature(const_default)]
 #![feature(const_trait_impl)]
-#![allow(static_mut_refs)]
 extern crate alloc;
 
-use core::panic::PanicInfo;
+use core::{cell::OnceCell, panic::PanicInfo};
 
 use alloc::boxed::Box;
 use bump::BumpAllocator;
@@ -23,8 +21,8 @@ use common::{
 };
 use keyboard::ps2_keyboard::Keyboard;
 use vga_display::{
-    advanced_writer::AdvancedWriter, eprintln, generic_writer::Writer,
-    okprintln, vga_init, writer::SimpleWriter,
+    eprintln, generic_writer::Writer, okprintln, vga_init,
+    writer::SimpleWriter,
 };
 use x86::{
     instructions::interrupts::{self, hlt},
@@ -38,36 +36,47 @@ use libk::{
     print, println,
 };
 
+use sync::mutex::SpinMutex;
+
+use crate::interrupt_handlers::InterruptDescriptorTableExt;
+
 mod interrupt_handlers;
 mod timer;
 
-static mut MMAP: LateInit<MemoryMap> = LateInit::uninit();
+static MMAP: LateInit<MemoryMap> = LateInit::uninit();
+
 #[unsafe(no_mangle)]
-static mut PIC: CascadedPIC = CascadedPIC::default();
-static mut IDT: LateInit<Box<InterruptDescriptorTable>> =
+static PIC: SpinMutex<CascadedPIC> =
+    SpinMutex::new(CascadedPIC::default());
+
+static IDT: LateInit<SpinMutex<Box<InterruptDescriptorTable>>> =
     LateInit::uninit();
 
 #[unsafe(no_mangle)]
-static mut KEYBOARD: LateInit<Keyboard> = LateInit::uninit();
+static KEYBOARD: SpinMutex<OnceCell<Keyboard>> =
+    SpinMutex::new(OnceCell::new());
+
 #[unsafe(no_mangle)]
-static mut SIMPLE_WRITER: LateInit<SimpleWriter<80, 25>> =
-    LateInit::new(SimpleWriter::default());
+
+static SIMPLE_WRITER: SpinMutex<SimpleWriter<80, 25>> =
+    unsafe { SpinMutex::new_locked(SimpleWriter::default()) };
+
 #[unsafe(no_mangle)]
-static mut WRITER: Writer<'static> =
-    Writer::new(unsafe { SIMPLE_WRITER.assume_init_mut() });
+static WRITER: Writer<'static> =
+    Writer::new(unsafe { SIMPLE_WRITER.leak() });
+
 #[global_allocator]
 static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
-static mut ADVANCED_WRITER: LateInit<AdvancedWriter<80, 25>> =
-    LateInit::uninit();
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _start() -> ! {
+    vga_init();
+
     okprintln!("Entered Protected Mode");
     okprintln!("Enabled Paging");
     okprintln!("Entered Long Mode");
-
     let len = unsafe { *(MEMORY_MAP_LENGTH as *const u32) as usize };
     let raw = unsafe {
         core::slice::from_raw_parts_mut(
@@ -83,12 +92,12 @@ pub unsafe extern "C" fn _start() -> ! {
     };
 
     unsafe {
-        let _ = MMAP.init(MemoryMap::parse_map(raw, buf).unwrap());
+        MMAP.init(MemoryMap::parse_map(raw, buf).unwrap());
+        BUMP_ALLOCATOR.init(BumpAllocator::new(MMAP.assume_init_ref()));
 
-        let _ = BUMP_ALLOCATOR
-            .init(BumpAllocator::new(MMAP.assume_init_ref()));
-
+        #[allow(static_mut_refs)]
         GLOBAL_ALLOCATOR.init(BUMP_ALLOCATOR.assume_init_ref());
+
         let v = VirtualAddress::new_unchecked(
             PHYSICAL_MEMORY_OFFSET + 6 * MiB,
         );
@@ -106,13 +115,13 @@ pub unsafe extern "C" fn _start() -> ! {
 
     unsafe {
         interrupts::disable();
-        InterruptDescriptorTable::init(&mut IDT);
+        InterruptDescriptorTable::init(&IDT);
         okprintln!("Initialized interrupt descriptor table");
-        interrupt_handlers::init(IDT.as_mut());
+        IDT.lock().init_handlers();
         okprintln!("Initialized interrupts handlers");
-        CascadedPIC::init(&mut PIC);
+        PIC.lock().init();
         okprintln!("Initialized Programmable Interrupt Controller");
-        Keyboard::init(&mut KEYBOARD);
+        Keyboard::init(&KEYBOARD);
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
@@ -193,11 +202,14 @@ pub unsafe extern "C" fn _start() -> ! {
     //     }
     // }
     loop {
-        let scancode = KEYBOARD.read_raw_scancode();
+        let scancode = KEYBOARD
+            .lock()
+            .get_mut()
+            .and_then(|k| k.read_raw_scancode());
         if let Some(scancode) = scancode {
             match scancode {
-                PS2ScanCode::Keypad8 => WRITER.inner.scroll_down(1),
-                PS2ScanCode::Keypad2 => WRITER.inner.scroll_up(1),
+                PS2ScanCode::Keypad8 => WRITER.inner.lock().scroll_down(1),
+                PS2ScanCode::Keypad2 => WRITER.inner.lock().scroll_up(1),
                 _ => print!("{}", scancode),
             }
         }
