@@ -31,7 +31,7 @@ pub extern "x86-interrupt" fn keyboard_handler(
     };
     unsafe {
         let scan_code = Port::KeyboardData.inb();
-        keyboard.buffer.write(scan_code);
+        keyboard.producer.push(scan_code);
         match PS2ScanCode::from(scan_code) {
             PS2ScanCode::LeftShift => {
                 keyboard.flags.set_lshift_pressed(true)
