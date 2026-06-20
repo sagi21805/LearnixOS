@@ -31,6 +31,11 @@ impl<T> LateInit<T> {
     }
 }
 
+impl<T: Clone + Copy> LateInit<T> {
+    pub const fn assume_init(&self) -> T {
+        unsafe { self.0.assume_init() }
+    }
+}
 impl<T> Deref for LateInit<T> {
     type Target = T;
 

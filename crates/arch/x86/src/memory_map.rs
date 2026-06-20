@@ -7,6 +7,7 @@ use core::{
     ops::Deref,
     ptr::NonNull,
 };
+use sync::mutex::SpinMutex;
 
 #[repr(C)]
 #[derive(Clone, Debug, Copy)]
@@ -42,7 +43,7 @@ pub enum MemoryMapError {
 }
 
 pub struct MemoryMap {
-    pub regions: NonNull<[MemoryRegion]>,
+    pub regions: SpinMutex<&'static mut [MemoryRegion]>,
     pub capacity: usize,
 }
 
@@ -51,7 +52,8 @@ impl Display for MemoryMap {
         let mut usable = 0u64;
         let mut reserved = 0u64;
 
-        for entry in unsafe { self.regions.as_ref().iter() } {
+        let regions = self.regions.lock();
+        for entry in regions.iter() {
             let size_mib = entry.length / MiB as u64;
             let size_kib = (entry.length % MiB as u64) / KiB as u64;
 
@@ -154,13 +156,9 @@ impl MemoryMap {
         };
 
         Ok(MemoryMap {
-            regions: NonNull::from_mut(modified),
+            regions: SpinMutex::new(modified),
             capacity,
         })
-    }
-
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a MemoryRegion> {
-        unsafe { self.regions.as_ref().iter() }
     }
 }
 

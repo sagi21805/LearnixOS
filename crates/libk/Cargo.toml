@@ -7,4 +7,5 @@ edition = "2024"
 common = { path = "../common" }
 bump = { path = "../memory/bump" }
 x86 = { path = "../arch/x86" }
+sync = { path = "../sync" }
 extend = "1.2.0"

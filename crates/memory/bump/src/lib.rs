@@ -1,10 +1,9 @@
 #![no_std]
-#![feature(allocator_api)]
 #![feature(ptr_alignment_type)]
 
 use core::{
     alloc::{GlobalAlloc, Layout},
-    cell::Cell,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use common::{
@@ -12,19 +11,17 @@ use common::{
     enums::MemoryRegionType,
 };
 
-use x86::memory_map::MemoryMap;
+use x86::{instructions::interrupts::hlt, memory_map::MemoryMap};
 
 pub struct BumpAllocator<'a> {
-    curser: Cell<PhysicalAddress>,
+    curser: AtomicUsize,
     mmap: &'a MemoryMap,
 }
 
 impl<'a> BumpAllocator<'a> {
     pub fn new(mmap: &'a MemoryMap) -> BumpAllocator<'a> {
         BumpAllocator {
-            curser: Cell::new(unsafe {
-                PhysicalAddress::new_unchecked(0)
-            }),
+            curser: AtomicUsize::new(0),
             mmap,
         }
     }
@@ -32,11 +29,16 @@ impl<'a> BumpAllocator<'a> {
 
 unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let mut aligned_cursor =
-            self.curser.get().align_up(layout.alignment());
+        let mut aligned_cursor = unsafe {
+            PhysicalAddress::new_unchecked(
+                self.curser.load(Ordering::Relaxed),
+            )
+            .align_up(layout.alignment())
+        };
 
-        let memmap_block = self
-            .mmap
+        let regions = self.mmap.regions.lock();
+
+        let memmap_block = regions
             .iter()
             .filter(|b| matches!(b.region_type, MemoryRegionType::Usable))
             .find(|b| {
@@ -57,18 +59,17 @@ unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
             });
 
         if memmap_block.is_some() {
-            self.curser.set(unsafe {
-                PhysicalAddress::new_unchecked(
-                    aligned_cursor.as_usize() + layout.size(),
-                )
-            });
+            self.curser.store(
+                aligned_cursor.as_usize() + layout.size(),
+                Ordering::Relaxed,
+            );
             unsafe { aligned_cursor.as_non_null().as_mut() }
         } else {
             core::ptr::null_mut()
         }
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
         unimplemented!("Bump allocator does not support deallocation")
     }
 }
