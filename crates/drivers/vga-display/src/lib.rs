@@ -5,8 +5,7 @@
 #![feature(ascii_char_variants)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
-#![allow(static_mut_refs)]
-pub mod advanced_writer;
+// pub mod advanced_writer;
 pub mod color_code;
 pub mod generic_writer;
 pub mod screen_char;
@@ -19,17 +18,17 @@ use core::fmt::{self, Write};
 
 use crate::{generic_writer::Writer, screen_char::ScreenChar};
 
-use sync::rwlock::SpinRwLock;
+use sync::mutex::SpinMutex;
 
-pub static SCREEN_LOCK: LateInit<SpinRwLock<&'static mut [ScreenChar]>> =
+pub static SCREEN_LOCK: LateInit<SpinMutex<&'static mut [ScreenChar]>> =
     LateInit::uninit();
 
 unsafe extern "Rust" {
-    static mut WRITER: LateInit<Writer<'static>>;
+    static WRITER: LateInit<Writer<'static>>;
 }
 
 pub fn vga_init() {
-    SCREEN_LOCK.init(SpinRwLock::new(unsafe {
+    SCREEN_LOCK.init(SpinMutex::new(unsafe {
         core::slice::from_raw_parts_mut(
             VGA_BUFFER_PTR as *mut ScreenChar,
             80 * 25,
@@ -39,11 +38,11 @@ pub fn vga_init() {
 
 pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
     unsafe {
-        WRITER.inner.set_color(color);
+        WRITER.inner.lock().set_color(color.unwrap_or_default());
 
-        WRITER.write_fmt(args).unwrap();
+        WRITER.inner.lock().write_fmt(args).unwrap();
 
-        WRITER.inner.set_color(Some(ColorCode::default()));
+        WRITER.inner.lock().set_color(ColorCode::default());
     }
 }
 #[unsafe(no_mangle)]

@@ -14,12 +14,13 @@ use common::{
 use macros::bitfields;
 
 use alloc::boxed::Box;
+use sync::mutex::SpinMutex;
 
 /// Global TSS segment
 pub static TSS: TaskStateSegment = TaskStateSegment::default();
 
 use crate::{
-    instructions,
+    instructions::{self, interrupts::hlt},
     registers::rflags::Rflags,
     structures::{
         global_descriptor_table::{
@@ -57,7 +58,7 @@ impl InterruptDescriptorTable {
     ///
     /// - `uninit`: An uninitialized IDT.
     /// - `base_address`: A virtual address that the IDT will be placed on.
-    pub fn init(uninit: &mut LateInit<Box<Self>>) {
+    pub fn init(uninit: &LateInit<SpinMutex<Box<Self>>>) {
         let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
             MaybeUninit::uninit();
         let gdt = unsafe {
@@ -78,13 +79,11 @@ impl InterruptDescriptorTable {
                  larger then 0x68"
             )
         }
-
         let tss = SystemSegmentDescriptor64::new(
             &TSS as *const _ as u64,
             (size_of::<TaskStateSegment>() - 1) as u32,
             SystemSegmentType::TaskStateSegmentAvailable,
         );
-
         let mut boxed = Box::<InterruptDescriptorTable>::new_uninit();
 
         gdt.load_tss(tss);
@@ -99,8 +98,9 @@ impl InterruptDescriptorTable {
             );
         }
 
-        let init = unsafe { uninit.init(boxed.assume_init()) };
-        init.as_ref().load();
+        let init =
+            unsafe { uninit.init(SpinMutex::new(boxed.assume_init())) };
+        init.lock().as_ref().load();
     }
 
     /// Load the IDT with the `lidt` instruction

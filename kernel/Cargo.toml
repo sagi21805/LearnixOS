@@ -24,4 +24,5 @@ vga_display = { path = "../crates/drivers/vga-display" }
 bump = { path = "../crates/memory/bump"}
 libk = { path = "../crates/libk" }
 buddy = { path = "../crates/memory/buddy" }
+sync = { path = "../crates/sync" }
 # page = { path = "../crates/memory/page" }

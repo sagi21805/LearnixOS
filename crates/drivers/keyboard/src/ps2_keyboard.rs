@@ -1,13 +1,16 @@
 extern crate alloc;
 
+use core::cell::OnceCell;
+
 use alloc::boxed::Box;
 
 use common::{
-    constants::REGULAR_PAGE_SIZE, enums::PS2ScanCode, late_init::LateInit,
+    constants::REGULAR_PAGE_SIZE, enums::PS2ScanCode,
     ring_buffer::RingBuffer,
 };
 
 use macros::bitfields;
+use sync::mutex::SpinMutex;
 
 #[bitfields]
 pub struct KeyboardFlags {
@@ -24,12 +27,12 @@ pub struct Keyboard {
 }
 
 impl Keyboard {
-    pub fn init(uninit: &mut LateInit<Self>) {
+    pub fn init(uninit: &SpinMutex<OnceCell<Self>>) {
         let buffer = unsafe {
             Box::<[u8; REGULAR_PAGE_SIZE]>::new_zeroed().assume_init()
         };
 
-        uninit.init(Keyboard {
+        let _ = uninit.lock().set(Keyboard {
             buffer: RingBuffer::new(buffer),
             flags: KeyboardFlags::new(),
         });
