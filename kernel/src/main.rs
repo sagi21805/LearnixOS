@@ -123,7 +123,11 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized Programmable Interrupt Controller");
         let buffer = Box::new([0u8; 1024]);
         KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
+
+        println!("BUFFER: {:?}", KEYBOARD_BUFFER.buffer());
+
         KEYBOARD.init(Keyboard::new(&KEYBOARD_BUFFER));
+        println!("BUFFER: {:?}", KEYBOARD.consumer().inner().buffer());
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
@@ -204,6 +208,18 @@ pub unsafe extern "C" fn _start() -> ! {
     //     }
     // }
     loop {
+        hlt();
+        hlt();
+        hlt();
+        hlt();
+        hlt();
+        hlt();
+        hlt();
+        hlt();
+        hlt();
+        hlt();
+        hlt();
+        hlt();
         let scancode = KEYBOARD.read_raw_scancode();
         // if let Some(scancode) = scancode {
         //     match scancode {

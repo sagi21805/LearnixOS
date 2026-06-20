@@ -156,8 +156,8 @@ pub extern "x86-interrupt" fn general_protection_handler(
     error_code: u64,
 ) {
     println!("Interrupt: GeneralProtection");
-    println!("Stack frame: {:#?}", stack_frame);
-    println!("Error code: {:#x}", error_code);
+    // println!("Stack frame: {:#?}", stack_frame);
+    // println!("Error code: {:#x}", error_code);
 }
 
 pub extern "x86-interrupt" fn page_fault_handler(
