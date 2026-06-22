@@ -8,8 +8,8 @@ use common::constants::REGULAR_PAGE_SIZE;
 use sync::mutex::SpinMutex;
 
 use crate::{
-    SCREEN, Screen, color_code::ColorCode, generic_writer::GenericWriter,
-    kprint, screen_char::ScreenChar,
+    SCREEN, Screen, WriteInfo, color_code::ColorCode,
+    generic_writer::GenericWriter, kprint, screen_char::ScreenChar,
 };
 
 pub struct AdvancedWriter<const W: usize, const H: usize> {
@@ -87,26 +87,31 @@ impl<const W: usize, const H: usize> GenericWriter
 
     fn update(&mut self) {
         let mut screen = self.screen.lock();
-        screen.reset_cursor();
-        for i in self.screen_start..self.screen_end {
-            let mut char = ScreenChar::default();
-            if i <= self.cursor {
-                char = self.buffer.get(i).cloned().unwrap_or_default();
+        for i in self.screen_start..self.cursor {
+            let char = self.buffer.get(i).cloned().unwrap_or_default();
+            match screen.write_char(char) {
+                WriteInfo::SameLine => {
+                    self.row_table[self.cursor_line()] = self.cursor as u16
+                }
+                WriteInfo::ChangedLine(line) => {
+                    // TODO:
+                    // Maybe consider change to line increase and line
+                    // decrese.
+                }
+                WriteInfo::EndOfScreen => break,
             }
-            screen.write_char(char);
         }
-        // self.screen_start = end;
     }
 
     fn write_cursor_position(&self) -> usize { todo!() }
 
     fn set_cursor_position(&mut self, position: usize) {
-        let screen = self.screen.lock();
-        if self.screen_start == 0 {
-            for i in 0..position {
-                self.write_vga_char(screen.buffer[i]);
-            }
-        }
+        // let screen = self.screen.lock();
+        // if self.screen_start == 0 {
+        //     for i in 0..position {
+        //         self.write_vga_char(screen.buffer[i]);
+        //     }
+        // }
     }
 
     fn write_vga_char(&mut self, char: ScreenChar) {
