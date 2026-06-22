@@ -4,7 +4,6 @@ use common::enums::PS2ScanCode;
 
 use macros::bitfields;
 use sync::spsc::{Consumer, Producer, SpscRingBuffer};
-use x86::instructions::interrupts::hlt;
 
 #[bitfields]
 pub struct KeyboardFlags {
@@ -34,25 +33,25 @@ impl Keyboard {
     }
 
     pub fn read_raw_scancode(&self) -> Option<PS2ScanCode> {
-        // unsafe { hlt() };
         PS2ScanCode::try_from(self.consumer.pop()?).ok()
     }
 
     /// TODO change in the future to just return the
     /// relevant ascii code and not a long str
-    pub fn read_char(&mut self) -> &'static str {
+    pub fn read_char(&self) -> Result<&'static str, PS2ScanCode> {
         let key = match self.read_raw_scancode() {
-            Some(scancode) => PS2ScanCode::from(scancode),
-            None => return "",
+            Some(scancode) => scancode,
+            None => return Err(PS2ScanCode::None),
         };
-        if self.flags.is_lshift_pressed()
+        let str = if self.flags.is_lshift_pressed()
             || self.flags.is_rshift_pressed()
             || self.flags.is_capslock_pressed()
         {
             key.to_str_shifted()
         } else {
             key.to_str()
-        }
+        };
+        if str.is_empty() { Err(key) } else { Ok(str) }
     }
 
     pub unsafe fn consumer(&self) -> &Consumer<'static, u8> {

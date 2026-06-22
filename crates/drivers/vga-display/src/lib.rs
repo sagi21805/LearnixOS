@@ -5,50 +5,131 @@
 #![feature(ascii_char_variants)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
-// pub mod advanced_writer;
+pub mod advanced_writer;
 pub mod color_code;
 pub mod generic_writer;
 pub mod screen_char;
 pub mod writer;
 
 use color_code::ColorCode;
-use common::{constants::VGA_BUFFER_PTR, late_init::LateInit};
+use common::{
+    constants::VGA_BUFFER_PTR,
+    enums::{Color, Port, VgaCommand},
+    late_init::LateInit,
+};
+use x86::instructions::port::PortExt;
 
-use core::fmt::{self, Write};
+use core::{
+    ascii::Char,
+    fmt::{self, Write},
+};
 
 use crate::{generic_writer::Writer, screen_char::ScreenChar};
 
 use sync::mutex::SpinMutex;
 
-pub static SCREEN_LOCK: LateInit<SpinMutex<&'static mut [ScreenChar]>> =
-    LateInit::uninit();
+pub static SCREEN: LateInit<SpinMutex<Screen>> = LateInit::uninit();
+
+pub struct Screen {
+    buffer: &'static mut [ScreenChar],
+    screen_position: usize,
+    width: usize,
+    height: usize,
+}
+
+impl Screen {
+    pub fn write_char(&mut self, c: ScreenChar) {
+        match c.char {
+            Char::LineFeed => self.new_line(),
+            Char::Backspace | Char::Delete => self.backspace(),
+            _ => {
+                self.buffer[self.screen_position] = c;
+                self.screen_position += 1;
+            }
+        }
+        self.change_cursor_position_on_screen();
+    }
+
+    pub fn new_line(&mut self) {
+        self.screen_position = (self.screen_position
+            + (self.width - (self.screen_position % self.width)))
+            .min(self.buffer.len() - self.width);
+    }
+
+    pub fn backspace(&mut self) {
+        if self.screen_position > 0 {
+            self.screen_position -= 1;
+            self.buffer[self.screen_position] = ScreenChar::default();
+            self.change_cursor_position_on_screen();
+        }
+    }
+
+    pub fn cursor(&self) -> usize { self.screen_position }
+
+    /// Change cursor position on screen
+    fn change_cursor_position_on_screen(&self) {
+        unsafe {
+            Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
+            Port::VgaData.outb((self.screen_position & 0xff) as u8);
+            Port::VgaControl.outb(VgaCommand::CursorOffsetHigh as u8);
+            Port::VgaData.outb(((self.screen_position >> 8) & 0xff) as u8);
+        }
+    }
+
+    fn scroll_up(&mut self, lines: usize) {
+        // let anchor = lines * self.width;
+        // self.buffer.copy_within(anchor.., 0);
+        // let len = self.buffer.len();
+        // self.buffer[len - anchor..].fill(ScreenChar::default());
+        // self.screen_position =
+        // self.screen_position.saturating_sub(anchor);
+    }
+
+    fn scroll_down(&mut self, lines: usize) {
+        // let anchor = lines * self.width;
+        // self.buffer
+        //     .copy_within(..self.buffer.len() - anchor, anchor);
+        // self.buffer[0..anchor].fill(ScreenChar::default());
+        // self.screen_position =
+        // self.screen_position.saturating_add(anchor);
+    }
+
+    pub fn reset_cursor(&mut self) { self.screen_position = 0; }
+}
 
 unsafe extern "Rust" {
-    static WRITER: LateInit<Writer<'static>>;
+    static WRITER: SpinMutex<Writer<'static>>;
 }
 
 pub fn vga_init() {
-    SCREEN_LOCK.init(SpinMutex::new(unsafe {
+    let screen = unsafe {
         core::slice::from_raw_parts_mut(
             VGA_BUFFER_PTR as *mut ScreenChar,
             80 * 25,
         )
+    };
+
+    SCREEN.init(SpinMutex::new(Screen {
+        buffer: screen,
+        screen_position: 0,
+        width: 80,
+        height: 25,
     }));
 }
 
 pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
     unsafe {
-        WRITER.inner.lock().set_color(color.unwrap_or_default());
+        let writer = &mut WRITER.lock().inner;
 
-        WRITER.inner.lock().write_fmt(args).unwrap();
+        writer.set_color(color.unwrap_or_default());
 
-        WRITER.inner.lock().set_color(ColorCode::default());
+        writer.write_fmt(args).unwrap();
+
+        writer.set_color(ColorCode::default());
     }
 }
 #[unsafe(no_mangle)]
-pub fn kprint(args: fmt::Arguments<'_>) {
-    vga_print(args, None);
-}
+pub fn kprint(args: fmt::Arguments<'_>) { vga_print(args, None); }
 
 /// Prints formatted text to the VGA display without a
 /// newline.

@@ -14,7 +14,15 @@ impl<T> LateInit<T> {
         LateInit::<T>(MaybeUninit::new(val))
     }
 
-    pub const fn init(&self, val: T) -> &mut T {
+    pub fn init(&self, val: T) -> &mut T {
+        let ptr = self.0.as_ptr() as *mut T;
+        unsafe {
+            ptr.write_volatile(val);
+            &mut *ptr
+        }
+    }
+
+    pub const fn init_const(&self, val: T) -> &mut T {
         let ptr = self.0.as_ptr() as *mut T;
         unsafe {
             ptr.write(val);
@@ -36,7 +44,9 @@ impl<T: Clone + Copy> LateInit<T> {
         unsafe { self.0.assume_init() }
     }
 }
-impl<T> Deref for LateInit<T> {
+
+#[rustfmt::skip]
+impl<T> const Deref for LateInit<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -44,7 +54,8 @@ impl<T> Deref for LateInit<T> {
     }
 }
 
-impl<T> DerefMut for LateInit<T> {
+#[rustfmt::skip]
+impl<T> const DerefMut for LateInit<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { self.0.assume_init_mut() }
     }
