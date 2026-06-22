@@ -11,7 +11,11 @@ pub trait RelaxStrategy {
 pub struct Spin;
 
 impl RelaxStrategy for Spin {
-    fn relax(_tick: usize) {
+    #[track_caller]
+    fn relax(tick: usize) {
+        // if tick > 10000 {
         core::hint::spin_loop();
+        panic!("spin loop tick exceeded 10000");
+        // }
     }
 }
