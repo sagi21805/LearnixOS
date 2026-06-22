@@ -14,7 +14,7 @@ pub mod writer;
 use color_code::ColorCode;
 use common::{
     constants::VGA_BUFFER_PTR,
-    enums::{Color, Port, VgaCommand},
+    enums::{Port, VgaCommand},
     late_init::LateInit,
 };
 use x86::instructions::port::PortExt;
@@ -37,31 +37,61 @@ pub struct Screen {
     height: usize,
 }
 
+pub enum WriteInfo {
+    /// Reached the end of the screen.
+    EndOfScreen,
+    /// The cursor on the screen changed it's line.
+    ChangedLine(usize),
+    /// Write was on the same line.
+    SameLine,
+}
+
 impl Screen {
-    pub fn write_char(&mut self, c: ScreenChar) {
-        match c.char {
+    pub fn write_char(&mut self, c: ScreenChar) -> WriteInfo {
+        let info = match c.char {
             Char::LineFeed => self.new_line(),
             Char::Backspace | Char::Delete => self.backspace(),
             _ => {
-                self.buffer[self.screen_position] = c;
-                self.screen_position += 1;
+                if self.screen_position < self.buffer.len() {
+                    self.buffer[self.screen_position] = c;
+                    self.screen_position += 1;
+                    if self.screen_position % self.width == 0 {
+                        WriteInfo::ChangedLine(
+                            self.screen_position / self.width,
+                        )
+                    } else {
+                        WriteInfo::SameLine
+                    }
+                } else {
+                    WriteInfo::EndOfScreen
+                }
             }
-        }
+        };
         self.change_cursor_position_on_screen();
+
+        return info;
     }
 
-    pub fn new_line(&mut self) {
+    pub fn new_line(&mut self) -> WriteInfo {
         self.screen_position = (self.screen_position
             + (self.width - (self.screen_position % self.width)))
             .min(self.buffer.len() - self.width);
+
+        WriteInfo::ChangedLine(self.screen_position / self.width)
     }
 
-    pub fn backspace(&mut self) {
+    pub fn backspace(&mut self) -> WriteInfo {
         if self.screen_position > 0 {
             self.screen_position -= 1;
             self.buffer[self.screen_position] = ScreenChar::default();
-            self.change_cursor_position_on_screen();
+            // Backspace to the last
+            if self.screen_position % self.width == self.width - 1 {
+                return WriteInfo::ChangedLine(
+                    self.screen_position / self.width,
+                );
+            }
         }
+        WriteInfo::SameLine
     }
 
     pub fn cursor(&self) -> usize { self.screen_position }
@@ -77,21 +107,19 @@ impl Screen {
     }
 
     fn scroll_up(&mut self, lines: usize) {
-        // let anchor = lines * self.width;
-        // self.buffer.copy_within(anchor.., 0);
-        // let len = self.buffer.len();
-        // self.buffer[len - anchor..].fill(ScreenChar::default());
-        // self.screen_position =
-        // self.screen_position.saturating_sub(anchor);
+        let anchor = lines * self.width;
+        self.buffer.copy_within(anchor.., 0);
+        let len = self.buffer.len();
+        self.buffer[len - anchor..].fill(ScreenChar::default());
+        self.screen_position = self.screen_position.saturating_sub(anchor);
     }
 
     fn scroll_down(&mut self, lines: usize) {
-        // let anchor = lines * self.width;
-        // self.buffer
-        //     .copy_within(..self.buffer.len() - anchor, anchor);
-        // self.buffer[0..anchor].fill(ScreenChar::default());
-        // self.screen_position =
-        // self.screen_position.saturating_add(anchor);
+        let anchor = lines * self.width;
+        self.buffer
+            .copy_within(..self.buffer.len() - anchor, anchor);
+        self.buffer[0..anchor].fill(ScreenChar::default());
+        self.screen_position = self.screen_position.saturating_add(anchor);
     }
 
     pub fn reset_cursor(&mut self) { self.screen_position = 0; }
