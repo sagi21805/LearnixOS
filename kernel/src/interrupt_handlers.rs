@@ -6,7 +6,6 @@ use common::{
     },
 };
 use keyboard::keyboard_handler;
-use libk::println;
 use x86::{
     registers::cr2,
     structures::interrupt_descriptor_table::{
@@ -19,173 +18,173 @@ use crate::timer::timer_handler;
 pub extern "x86-interrupt" fn division_error_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: DivisionError");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: DivisionError");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn debug_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: Debug");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: Debug");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn non_maskable_interrupt_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: NonMaskableInterrupt");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: NonMaskableInterrupt");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn breakpoint_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: Breakpoint");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: Breakpoint");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn overflow_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: Overflow");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: Overflow");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn bound_range_exceeded_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: BoundRangeExceeded");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: BoundRangeExceeded");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn invalid_opcode_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: InvalidOpcode");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: InvalidOpcode");
+    panic!("Stack frame: {:#?}", stack_frame);
     panic!("");
 }
 
 pub extern "x86-interrupt" fn device_not_found_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: DeviceNotFound");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: DeviceNotFound");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn coprocessor_segment_overrun_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: CoprocessorSegmentOverrun");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: CoprocessorSegmentOverrun");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn intel_reserved_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: IntelReserved");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: IntelReserved");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn floating_point_error_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: FloatingPointError");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: FloatingPointError");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn machine_check_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: MachineCheck");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: MachineCheck");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn simd_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: SIMD");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: SIMD");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn virtualization_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: Virtualization");
-    println!("Stack frame: {:#?}", stack_frame);
+    panic!("Interrupt: Virtualization");
+    panic!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn double_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    println!("Interrupt: DoubleFault");
-    println!("Stack frame: {:#?}", stack_frame);
-    println!("Error code: {:#x}", error_code);
+    panic!("Interrupt: DoubleFault");
+    panic!("Stack frame: {:#?}", stack_frame);
+    panic!("Error code: {:#x}", error_code);
 }
 
 pub extern "x86-interrupt" fn invalid_tss_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    println!("Interrupt: Invalself.S");
-    println!("Stack frame: {:#?}", stack_frame);
-    println!("Error code: {:#x}", error_code);
+    panic!("Interrupt: Invalself.S");
+    panic!("Stack frame: {:#?}", stack_frame);
+    panic!("Error code: {:#x}", error_code);
 }
 
 pub extern "x86-interrupt" fn segment_not_present_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    println!("Interrupt: SegmentNotPresent");
-    println!("Stack frame: {:#?}", stack_frame);
-    println!("Error code: {:#x}", error_code);
+    panic!("Interrupt: SegmentNotPresent");
+    panic!("Stack frame: {:#?}", stack_frame);
+    panic!("Error code: {:#x}", error_code);
 }
 
 pub extern "x86-interrupt" fn stack_segment_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    println!("Interrupt: StackSegmentFault");
-    println!("Stack frame: {:#?}", stack_frame);
-    println!("Error code: {:#x}", error_code);
+    panic!("Interrupt: StackSegmentFault");
+    panic!("Stack frame: {:#?}", stack_frame);
+    panic!("Error code: {:#x}", error_code);
 }
 
 pub extern "x86-interrupt" fn general_protection_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    println!("Interrupt: GeneralProtection");
-    // println!("Stack frame: {:#?}", stack_frame);
-    // println!("Error code: {:#x}", error_code);
+    panic!("Interrupt: GeneralProtection");
+    // panic!("Stack frame: {:#?}", stack_frame);
+    // panic!("Error code: {:#x}", error_code);
 }
 
 pub extern "x86-interrupt" fn page_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    println!("Interrupt: PageFault");
-    // println!("Stack frame: {:#?}", stack_frame);
-    // println!("Error code: {:#x}", error_code);
-    println!("Faulting address: {:x}", cr2::read());
+    panic!("Interrupt: PageFault");
+    // panic!("Stack frame: {:#?}", stack_frame);
+    // panic!("Error code: {:#x}", error_code);
+    panic!("Faulting address: {:x}", cr2::read());
 }
 
 pub extern "x86-interrupt" fn alignment_check_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    println!("Interrupt: AlignmentCheck");
-    println!("Stack frame: {:#?}", stack_frame);
-    println!("Error code: {:#x}", error_code);
+    panic!("Interrupt: AlignmentCheck");
+    panic!("Stack frame: {:#?}", stack_frame);
+    panic!("Error code: {:#x}", error_code);
 }
 
 pub extern "x86-interrupt" fn control_protection_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    println!("Interrupt: ControlProtection");
-    println!("Stack frame: {:#?}", stack_frame);
-    println!("Error code: {:#x}", error_code);
+    panic!("Interrupt: ControlProtection");
+    panic!("Stack frame: {:#?}", stack_frame);
+    panic!("Error code: {:#x}", error_code);
 }
 
 #[extend::ext]

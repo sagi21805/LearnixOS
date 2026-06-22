@@ -9,7 +9,8 @@ use core::cell::OnceCell;
 use common::enums::{CascadedPicInterruptLine, PS2ScanCode, Port};
 use sync::mutex::SpinMutex;
 use x86::{
-    instructions::port::PortExt, pic8259::CascadedPIC,
+    instructions::{interrupts, port::PortExt},
+    pic8259::CascadedPIC,
     structures::interrupt_descriptor_table::InterruptStackFrame,
 };
 
@@ -25,6 +26,7 @@ unsafe extern "Rust" {
 pub extern "x86-interrupt" fn keyboard_handler(
     _stack_frame: InterruptStackFrame,
 ) {
+    unsafe { interrupts::disable() };
     let mut locked = unsafe { KEYBOARD.lock() };
     let Some(keyboard) = locked.get_mut() else {
         return;
@@ -34,7 +36,7 @@ pub extern "x86-interrupt" fn keyboard_handler(
         keyboard.producer.push(scan_code);
         match PS2ScanCode::from(scan_code) {
             PS2ScanCode::LeftShift => {
-                keyboard.flags.set_lshift_pressed(true)
+                keyboard.flags.set_lshift_pressed(true);
             }
             PS2ScanCode::ReleasedLeftShift => {
                 keyboard.flags.set_lshift_pressed(false)
@@ -66,5 +68,6 @@ pub extern "x86-interrupt" fn keyboard_handler(
         }
         PIC.lock()
             .end_of_interrupt(CascadedPicInterruptLine::Keyboard);
+        interrupts::enable();
     }
 }

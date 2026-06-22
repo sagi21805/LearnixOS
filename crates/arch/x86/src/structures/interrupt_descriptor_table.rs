@@ -98,8 +98,9 @@ impl InterruptDescriptorTable {
             );
         }
 
-        let init =
-            unsafe { uninit.init(SpinMutex::new(boxed.assume_init())) };
+        let init = unsafe {
+            uninit.init_const(SpinMutex::new(boxed.assume_init()))
+        };
         init.lock().as_ref().load();
     }
 
