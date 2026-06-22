@@ -1,26 +1,18 @@
-use common::enums::{Port, VgaCommand};
-
-use sync::mutex::SpinMutex;
-#[cfg(not(feature = "host"))]
-use x86::instructions::port::PortExt;
-
 use crate::{color_code::ColorCode, screen_char::ScreenChar};
 
 pub struct Writer<'a> {
-    pub inner: SpinMutex<&'a mut dyn GenericWriter>,
+    pub inner: &'a mut dyn GenericWriter,
 }
 
 impl<'a> Writer<'a> {
     pub const fn new(inner: &'a mut dyn GenericWriter) -> Self {
-        Self {
-            inner: SpinMutex::new(inner),
-        }
+        Self { inner: inner }
     }
 
     pub fn set_writer(&mut self, inner: &'a mut dyn GenericWriter) {
-        let cursor = self.inner.lock().write_cursor_position();
-        *self.inner.lock() = inner;
-        self.inner.lock().set_cursor_position(cursor);
+        let cursor = self.inner.write_cursor_position();
+        inner.set_cursor_position(cursor);
+        self.inner = inner;
     }
 }
 
@@ -53,23 +45,6 @@ pub trait GenericWriter: Send {
 
     /// Scroll up by `lines`
     fn scroll_up(&mut self, lines: usize);
-
-    /// Change cursor position on screen
-    fn change_cursor_position_on_screen(&self) {
-        #[cfg(feature = "host")]
-        // Disable this function when running tests on the host computer
-        return;
-
-        #[cfg(not(feature = "host"))]
-        unsafe {
-            Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
-            Port::VgaData
-                .outb((self.write_cursor_position() & 0xff) as u8);
-            Port::VgaControl.outb(VgaCommand::CursorOffsetHigh as u8);
-            Port::VgaData
-                .outb(((self.write_cursor_position() >> 8) & 0xff) as u8);
-        }
-    }
 
     // Return the color for the next printed character
     fn color(&self) -> ColorCode;

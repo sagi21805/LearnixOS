@@ -6,7 +6,7 @@
 #![feature(const_trait_impl)]
 extern crate alloc;
 
-use core::{cell::OnceCell, panic::PanicInfo};
+use core::{cell::OnceCell, hint::black_box, panic::PanicInfo};
 
 use alloc::boxed::Box;
 use bump::BumpAllocator;
@@ -21,7 +21,11 @@ use common::{
 };
 use keyboard::ps2_keyboard::Keyboard;
 use vga_display::{
-    eprintln, generic_writer::Writer, okprintln, vga_init,
+    SCREEN,
+    advanced_writer::AdvancedWriter,
+    eprintln,
+    generic_writer::{GenericWriter, Writer},
+    okprintln, vga_init,
     writer::SimpleWriter,
 };
 use x86::{
@@ -61,9 +65,12 @@ static KEYBOARD_BUFFER: LateInit<SpscRingBuffer<u8>> = LateInit::uninit();
 static SIMPLE_WRITER: SpinMutex<SimpleWriter<80, 25>> =
     unsafe { SpinMutex::new_locked(SimpleWriter::default()) };
 
+static ADVANCED_WRITER: SpinMutex<LateInit<AdvancedWriter<80, 25>>> =
+    unsafe { SpinMutex::new_locked(LateInit::uninit()) };
+
 #[unsafe(no_mangle)]
-static WRITER: Writer<'static> =
-    Writer::new(unsafe { SIMPLE_WRITER.leak() });
+static WRITER: SpinMutex<Writer<'static>> =
+    SpinMutex::new(Writer::new(unsafe { SIMPLE_WRITER.leak() }));
 
 #[global_allocator]
 static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
@@ -131,8 +138,17 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
-    // ADVANCED_WRITER.write(AdvancedWriter::default());
-    // WRITER.set_writer(ADVANCED_WRITER.assume_init_mut());
+
+    let cursor_position = WRITER.lock().inner.write_cursor_position();
+    println!("Position: {}", cursor_position);
+    let w = ADVANCED_WRITER.leak();
+    w.init(AdvancedWriter::default());
+    WRITER.lock().set_writer(w.assume_init_mut());
+    okprintln!("Set advanced writer");
+    // okprintln!("Set advanced writer");
+    // okprintln!("Set advanced writer");
+    // okprintln!("Set advanced writer");
+
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
     // ::core::arch::asm!("int 3");
@@ -188,7 +204,6 @@ pub unsafe extern "C" fn _start() -> ! {
     //             unsafe { alloc_pages!(1) as *mut IdentityPacketData };
 
     //         p.identity_packet(buf);
-
     //         let id = unsafe {
     //             core::ptr::read_volatile(
     //                 (buf as usize + PHYSICAL_MEMORY_OFFSET)
@@ -208,27 +223,15 @@ pub unsafe extern "C" fn _start() -> ! {
     //     }
     // }
     loop {
-        hlt();
-        hlt();
-        hlt();
-        hlt();
-        hlt();
-        hlt();
-        hlt();
-        hlt();
-        hlt();
-        hlt();
-        hlt();
-        hlt();
-        let scancode = KEYBOARD.read_raw_scancode();
-        // if let Some(scancode) = scancode {
-        //     match scancode {
-        //         PS2ScanCode::Keypad8 =>
-        // WRITER.inner.lock().scroll_down(1),
-        //         PS2ScanCode::Keypad2 =>
-        // WRITER.inner.lock().scroll_up(1),         _ =>
-        // print!("{}", scancode),     }
-        // }
+        let input = KEYBOARD.read_char();
+        match input {
+            Ok(str) => print!("{}", str),
+            Err(key) => match key {
+                PS2ScanCode::Keypad8 => WRITER.lock().inner.scroll_up(1),
+                PS2ScanCode::Keypad2 => WRITER.lock().inner.scroll_down(1),
+                _ => {}
+            },
+        }
     }
 }
 
@@ -238,6 +241,16 @@ unsafe fn panic(_info: &PanicInfo) -> ! {
     unsafe {
         interrupts::disable();
     }
-    eprintln!("{}", _info ; color = ColorCode::new().foreground(Color::Yellow).background(Color::Black));
+    SCREEN.force_unlock();
+    SCREEN.lock().reset_cursor();
+    SIMPLE_WRITER.force_unlock();
+    // eprintln!("{}", _info ; color =
+    // ColorCode::new().foreground(Color::Yellow).
+    // background(Color::Black));
+
+    SIMPLE_WRITER
+        .lock()
+        .panic_message(format_args!("{}", _info));
+
     loop {}
 }

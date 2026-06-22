@@ -98,7 +98,7 @@ impl<T: Clone + Copy> Producer<'_, T> {
     pub fn push(&self, item: T) -> Option<()> {
         if self.buf.head.load(Ordering::Relaxed)
             - self.buf.tail.load(Ordering::Relaxed)
-            < self.buf.capacity
+            >= self.buf.capacity
         {
             return None;
         }
