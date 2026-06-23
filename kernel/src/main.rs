@@ -128,7 +128,7 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized interrupts handlers");
         PIC.lock().init();
         okprintln!("Initialized Programmable Interrupt Controller");
-        let buffer = Box::new([0u8; 1024]);
+        let buffer = Box::new([0u8; 4096]);
         KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
 
         println!("BUFFER: {:?}", KEYBOARD_BUFFER.buffer());
@@ -142,12 +142,21 @@ pub unsafe extern "C" fn _start() -> ! {
     let cursor_position = WRITER.lock().inner.write_cursor_position();
     println!("Position: {}", cursor_position);
     let w = ADVANCED_WRITER.leak();
+    let x = unsafe { &mut *(w as *mut _ as *mut AdvancedWriter<80, 25>) };
+
     w.init(AdvancedWriter::default());
     WRITER.lock().set_writer(w.assume_init_mut());
+
+    println!(
+        "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}",
+        x.cursor,
+        x.line,
+        x.buffer.as_ptr(),
+        x.row_table.as_ptr()
+    );
     okprintln!("Set advanced writer");
-    // okprintln!("Set advanced writer");
-    // okprintln!("Set advanced writer");
-    // okprintln!("Set advanced writer");
+    okprintln!("Set advanced writer");
+    okprintln!("Set advanced writer");
 
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");

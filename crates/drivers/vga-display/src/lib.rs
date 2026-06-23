@@ -33,17 +33,19 @@ pub static SCREEN: LateInit<SpinMutex<Screen>> = LateInit::uninit();
 pub struct Screen {
     buffer: &'static mut [ScreenChar],
     screen_position: usize,
-    width: usize,
-    height: usize,
+    pub width: usize,
+    pub height: usize,
 }
 
 pub enum WriteInfo {
     /// Reached the end of the screen.
     EndOfScreen,
-    /// The cursor on the screen changed it's line.
-    ChangedLine(usize),
     /// Write was on the same line.
     SameLine,
+    /// Went one line up
+    LineUp,
+    /// Went one line down
+    LineDown,
 }
 
 impl Screen {
@@ -56,9 +58,7 @@ impl Screen {
                     self.buffer[self.screen_position] = c;
                     self.screen_position += 1;
                     if self.screen_position % self.width == 0 {
-                        WriteInfo::ChangedLine(
-                            self.screen_position / self.width,
-                        )
+                        WriteInfo::LineUp
                     } else {
                         WriteInfo::SameLine
                     }
@@ -77,7 +77,7 @@ impl Screen {
             + (self.width - (self.screen_position % self.width)))
             .min(self.buffer.len() - self.width);
 
-        WriteInfo::ChangedLine(self.screen_position / self.width)
+        WriteInfo::LineUp
     }
 
     pub fn backspace(&mut self) -> WriteInfo {
@@ -86,9 +86,7 @@ impl Screen {
             self.buffer[self.screen_position] = ScreenChar::default();
             // Backspace to the last
             if self.screen_position % self.width == self.width - 1 {
-                return WriteInfo::ChangedLine(
-                    self.screen_position / self.width,
-                );
+                return WriteInfo::LineDown;
             }
         }
         WriteInfo::SameLine

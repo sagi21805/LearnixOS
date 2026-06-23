@@ -9,7 +9,7 @@ use sync::mutex::SpinMutex;
 
 use crate::{
     SCREEN, Screen, WriteInfo, color_code::ColorCode,
-    generic_writer::GenericWriter, kprint, screen_char::ScreenChar,
+    generic_writer::GenericWriter, screen_char::ScreenChar,
 };
 
 pub struct AdvancedWriter<const W: usize, const H: usize> {
@@ -17,7 +17,7 @@ pub struct AdvancedWriter<const W: usize, const H: usize> {
     // Check if cursor, read position and buffer, can be a ring buffer
     pub cursor: usize,
     pub screen_start: usize,
-    pub screen_end: usize,
+    pub line: usize,
     pub buffer: Box<[ScreenChar]>,
     pub row_table: Box<[u16]>,
     pub screen: &'static SpinMutex<Screen>,
@@ -28,17 +28,20 @@ impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
         const BUFFER_SIZE: usize =
             (2 * REGULAR_PAGE_SIZE) / size_of::<ScreenChar>();
 
+        const ROW_TABLE_SIZE: usize =
+            (REGULAR_PAGE_SIZE) / size_of::<u16>();
+
         Self {
             color: ColorCode::default(),
             screen_start: 0,
             cursor: 0,
-            screen_end: W * H,
+            line: 0,
             buffer: unsafe {
                 Box::<[ScreenChar; BUFFER_SIZE]>::new_zeroed()
                     .assume_init()
             },
             row_table: unsafe {
-                Box::<[u16; H]>::new_zeroed().assume_init()
+                Box::<[u16; ROW_TABLE_SIZE]>::new_zeroed().assume_init()
             },
             screen: &SCREEN,
         }
@@ -47,10 +50,6 @@ impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
 
 impl<const W: usize, const H: usize> AdvancedWriter<W, H> {
     fn cursor_line(&self) -> usize { self.cursor / self.screen_width() }
-
-    fn screen_end_line(&self) -> usize {
-        self.screen_end / self.screen_width()
-    }
 }
 
 impl<const W: usize, const H: usize> GenericWriter
@@ -71,18 +70,21 @@ impl<const W: usize, const H: usize> GenericWriter
     fn screen_width(&self) -> usize { W }
 
     fn scroll_down(&mut self, lines: usize) {
-        // let line = self.cursor_line();
-        // self.screen_start =
-        //     self.row_table[line.saturating_sub(lines)] as usize;
+        let new_line = self.line.saturating_sub(lines);
+        if self.row_table[new_line] != 0 {
+            self.line = new_line;
+            self.screen_start = self.row_table[new_line] as usize;
+            self.screen.lock().scroll_down(lines);
+        }
     }
 
     fn scroll_up(&mut self, lines: usize) {
-        // let line = self.cursor_line();
-
-        // let cursor = self.row_table[line.saturating_sub(lines)] as
-        // usize; if cursor != 0 {
-        //     self.screen_start = cursor;
-        // }
+        let new_line = self.line.saturating_add(lines);
+        if self.row_table[new_line] != 0 {
+            self.line = new_line;
+            self.screen_start = self.row_table[new_line] as usize;
+            self.screen.lock().scroll_up(lines);
+        }
     }
 
     fn update(&mut self) {
@@ -91,27 +93,31 @@ impl<const W: usize, const H: usize> GenericWriter
             let char = self.buffer.get(i).cloned().unwrap_or_default();
             match screen.write_char(char) {
                 WriteInfo::SameLine => {
-                    self.row_table[self.cursor_line()] = self.cursor as u16
+                    // Change of current line offset is done at the end of
+                    // the function because it is also relevant for line up
+                    // and line down.
                 }
-                WriteInfo::ChangedLine(line) => {
-                    // TODO:
-                    // Maybe consider change to line increase and line
-                    // decrese.
-                }
+                WriteInfo::LineUp => self.line += 1,
+                WriteInfo::LineDown => self.line -= 1,
                 WriteInfo::EndOfScreen => break,
             }
+            self.row_table[self.line] = self.cursor as u16;
+            self.screen_start += 1;
         }
     }
 
     fn write_cursor_position(&self) -> usize { todo!() }
 
     fn set_cursor_position(&mut self, position: usize) {
-        // let screen = self.screen.lock();
-        // if self.screen_start == 0 {
-        //     for i in 0..position {
-        //         self.write_vga_char(screen.buffer[i]);
-        //     }
-        // }
+        let mut screen = self.screen.lock();
+        if self.screen_start == 0 {
+            for i in 0..position {
+                self.write_vga_char(screen.buffer[i]);
+            }
+            screen.reset_cursor();
+            // self.screen_start = self.cursor;
+            // self.line = self.cursor / screen.width;
+        }
     }
 
     fn write_vga_char(&mut self, char: ScreenChar) {
