@@ -1,4 +1,4 @@
-use crate::{color_code::ColorCode, screen_char::ScreenChar};
+use crate::{color_code::ColorCode, println, screen_char::ScreenChar};
 
 pub struct Writer<'a> {
     pub inner: &'a mut dyn GenericWriter,
