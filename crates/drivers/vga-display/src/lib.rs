@@ -55,7 +55,10 @@ impl Screen {
             Char::Backspace | Char::Delete => self.backspace(),
             _ => {
                 if self.screen_position < self.buffer.len() {
-                    self.buffer[self.screen_position] = c;
+                    let position = &mut self.buffer[self.screen_position];
+                    unsafe {
+                        ::core::ptr::write_volatile(position as *mut _, c);
+                    }
                     self.screen_position += 1;
                     if self.screen_position % self.width == 0 {
                         WriteInfo::LineUp
@@ -110,6 +113,7 @@ impl Screen {
         let len = self.buffer.len();
         self.buffer[len - anchor..].fill(ScreenChar::default());
         self.screen_position = self.screen_position.saturating_sub(anchor);
+        self.change_cursor_position_on_screen();
     }
 
     fn scroll_down(&mut self, lines: usize) {
@@ -118,6 +122,7 @@ impl Screen {
             .copy_within(..self.buffer.len() - anchor, anchor);
         self.buffer[0..anchor].fill(ScreenChar::default());
         self.screen_position = self.screen_position.saturating_add(anchor);
+        self.change_cursor_position_on_screen();
     }
 
     pub fn reset_cursor(&mut self) { self.screen_position = 0; }
