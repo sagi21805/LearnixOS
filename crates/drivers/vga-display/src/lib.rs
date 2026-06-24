@@ -76,11 +76,16 @@ impl Screen {
     }
 
     pub fn new_line(&mut self) -> WriteInfo {
-        self.screen_position = (self.screen_position
-            + (self.width - (self.screen_position % self.width)))
-            .min(self.buffer.len() - self.width);
+        let new_position = self.screen_position
+            + (self.width - (self.screen_position % self.width));
 
-        WriteInfo::LineUp
+        if new_position >= self.buffer.len() {
+            self.screen_position = self.buffer.len() - self.width;
+            WriteInfo::EndOfScreen
+        } else {
+            self.screen_position = new_position;
+            WriteInfo::LineUp
+        }
     }
 
     pub fn backspace(&mut self) -> WriteInfo {
@@ -112,6 +117,7 @@ impl Screen {
         self.buffer.copy_within(anchor.., 0);
         let len = self.buffer.len();
         self.buffer[len - anchor..].fill(ScreenChar::default());
+        // self.new_line();
         self.screen_position = self.screen_position.saturating_sub(anchor);
         self.change_cursor_position_on_screen();
     }
@@ -121,6 +127,7 @@ impl Screen {
         self.buffer
             .copy_within(..self.buffer.len() - anchor, anchor);
         self.buffer[0..anchor].fill(ScreenChar::default());
+        // self.new_line();
         self.screen_position = self.screen_position.saturating_add(anchor);
         self.change_cursor_position_on_screen();
     }
