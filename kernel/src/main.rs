@@ -146,7 +146,10 @@ pub unsafe extern "C" fn _start() -> ! {
 
     w.init(AdvancedWriter::default());
     WRITER.lock().set_writer(w.assume_init_mut());
-
+    okprintln!("Set advanced writer");
+    okprintln!("Set advanced writer");
+    okprintln!("Set advanced writer");
+    hlt();
     println!(
         "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}",
         x.cursor,
@@ -154,10 +157,6 @@ pub unsafe extern "C" fn _start() -> ! {
         x.buffer.as_ptr(),
         x.row_table.as_ptr()
     );
-    okprintln!("Set advanced writer");
-    okprintln!("Set advanced writer");
-    okprintln!("Set advanced writer");
-
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
     // ::core::arch::asm!("int 3");

@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use core::ascii::Char;
+use core::{ascii::Char, ops::AddAssign};
 
 use alloc::boxed::Box;
 
@@ -18,7 +18,9 @@ pub struct AdvancedWriter<const W: usize, const H: usize> {
     pub cursor: usize,
     pub screen_start: usize,
     pub line: usize,
+    pub line_offset: usize,
     pub buffer: Box<[ScreenChar]>,
+    pub display_line: usize,
     pub row_table: Box<[u16]>,
     pub screen: &'static SpinMutex<Screen>,
 }
@@ -35,7 +37,9 @@ impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
             color: ColorCode::default(),
             screen_start: 0,
             cursor: 0,
-            line: 0,
+            line: 1,
+            line_offset: 0,
+            display_line: 0,
             buffer: unsafe {
                 Box::<[ScreenChar; BUFFER_SIZE]>::new_zeroed()
                     .assume_init()
@@ -48,21 +52,24 @@ impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
     }
 }
 
-impl<const W: usize, const H: usize> AdvancedWriter<W, H> {
-    fn cursor_line(&self) -> usize { self.cursor / self.screen_width() }
-}
-
 impl<const W: usize, const H: usize> GenericWriter
     for AdvancedWriter<W, H>
 {
-    // TODO: IMPLEMENT THE LOGIC IF THE BACKSPACE GOES TO THE PREVIOUS LINE
     fn backspace(&mut self) {
         self.write_vga_char(ScreenChar::new(Char::Backspace, self.color));
+        if self.line_offset > 0 {
+            self.line_offset -= 1;
+        } else {
+            self.line -= 1;
+            self.line_offset = self.screen_width();
+        }
     }
 
     fn new_line(&mut self) {
         self.write_vga_char(ScreenChar::new(Char::LineFeed, self.color));
-        self.row_table[self.cursor_line() + 1] = self.cursor as u16;
+        self.line += 1;
+        self.row_table[self.line] = self.row_table[self.line - 1];
+        self.line_offset = 0;
     }
 
     fn screen_height(&self) -> usize { H }
@@ -70,38 +77,33 @@ impl<const W: usize, const H: usize> GenericWriter
     fn screen_width(&self) -> usize { W }
 
     fn scroll_down(&mut self, lines: usize) {
-        let new_line = self.line.saturating_sub(lines);
+        let new_line = self.display_line.saturating_add(lines);
         if self.row_table[new_line] != 0 {
-            self.line = new_line;
-            self.screen_start = self.row_table[new_line] as usize;
             self.screen.lock().scroll_down(lines);
+            self.display_line = new_line;
+            self.screen_start = self.row_table[new_line] as usize;
         }
     }
 
     fn scroll_up(&mut self, lines: usize) {
-        let new_line = self.line.saturating_add(lines);
-        if self.row_table[new_line] != 0 {
-            self.line = new_line;
-            self.screen_start = self.row_table[new_line] as usize;
+        let new_line = self.display_line.saturating_sub(lines);
+        if self.row_table[new_line] != 0 && new_line != 0 {
             self.screen.lock().scroll_up(lines);
+            self.display_line = new_line;
+            self.screen_start = self.row_table[new_line] as usize;
         }
     }
 
     fn update(&mut self) {
-        let mut screen = self.screen.lock();
         for i in self.screen_start..self.cursor {
+            let mut screen = self.screen.lock();
             let char = self.buffer.get(i).cloned().unwrap_or_default();
             match screen.write_char(char) {
-                WriteInfo::SameLine => {
-                    // Change of current line offset is done at the end of
-                    // the function because it is also relevant for line up
-                    // and line down.
-                }
-                WriteInfo::LineUp => self.line += 1,
-                WriteInfo::LineDown => self.line -= 1,
+                WriteInfo::LineDown
+                | WriteInfo::LineUp
+                | WriteInfo::SameLine => {}
                 WriteInfo::EndOfScreen => break,
             }
-            self.row_table[self.line] = self.cursor as u16;
             self.screen_start += 1;
         }
     }
@@ -124,6 +126,13 @@ impl<const W: usize, const H: usize> GenericWriter
         let position = &mut self.buffer.as_mut()[self.cursor];
         unsafe { ::core::ptr::write_volatile(position as *mut _, char) };
         self.cursor += 1;
+        self.line_offset += 1;
+        self.row_table[self.line] += 1;
+        if self.line_offset >= self.screen_width() {
+            self.line += 1;
+            self.line_offset = 0;
+            self.row_table[self.line] = self.row_table[self.line - 1];
+        }
     }
 
     fn set_color(&mut self, color: ColorCode) { self.color = color; }
