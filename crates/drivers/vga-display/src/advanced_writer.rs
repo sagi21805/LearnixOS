@@ -121,7 +121,8 @@ impl<const W: usize, const H: usize> GenericWriter
     }
 
     fn write_vga_char(&mut self, char: ScreenChar) {
-        self.buffer.as_mut()[self.cursor] = char;
+        let position = &mut self.buffer.as_mut()[self.cursor];
+        unsafe { ::core::ptr::write_volatile(position as *mut _, char) };
         self.cursor += 1;
     }
 
