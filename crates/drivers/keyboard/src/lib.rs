@@ -4,11 +4,14 @@
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
 
-use common::{
-    enums::{CascadedPicInterruptLine, PS2ScanCode, Port}, late_init::LateInit,
-};
+use core::cell::OnceCell;
+
+use common::enums::{CascadedPicInterruptLine, PS2ScanCode, Port};
+use sync::mutex::SpinMutex;
 use x86::{
-    instructions::port::PortExt, pic8259::CascadedPIC, structures::interrupt_descriptor_table::InterruptStackFrame
+    instructions::{interrupts, port::PortExt},
+    pic8259::CascadedPIC,
+    structures::interrupt_descriptor_table::InterruptStackFrame,
 };
 
 use crate::ps2_keyboard::Keyboard;
@@ -16,49 +19,55 @@ use crate::ps2_keyboard::Keyboard;
 pub mod ps2_keyboard;
 
 unsafe extern "Rust" {
-    static mut KEYBOARD: LateInit<Keyboard>;
-    static mut PIC: CascadedPIC;
+    unsafe static KEYBOARD: SpinMutex<OnceCell<Keyboard>>;
+    unsafe static PIC: SpinMutex<CascadedPIC>;
 }
 
-#[allow(static_mut_refs)]
 pub extern "x86-interrupt" fn keyboard_handler(
     _stack_frame: InterruptStackFrame,
 ) {
+    unsafe { interrupts::disable() };
+    let mut locked = unsafe { KEYBOARD.lock() };
+    let Some(keyboard) = locked.get_mut() else {
+        return;
+    };
     unsafe {
         let scan_code = Port::KeyboardData.inb();
-        KEYBOARD.buffer.write(scan_code);
-        match PS2ScanCode::from_scancode(scan_code) {
+        keyboard.producer.push(scan_code);
+        match PS2ScanCode::from(scan_code) {
             PS2ScanCode::LeftShift => {
-                KEYBOARD.flags.set_lshift_pressed(true)
+                keyboard.flags.set_lshift_pressed(true);
             }
             PS2ScanCode::ReleasedLeftShift => {
-                KEYBOARD.flags.set_lshift_pressed(false)
+                keyboard.flags.set_lshift_pressed(false)
             }
             PS2ScanCode::RightShift => {
-                KEYBOARD.flags.set_rshift_pressed(true)
+                keyboard.flags.set_rshift_pressed(true)
             }
             PS2ScanCode::ReleasedRightShift => {
-                KEYBOARD.flags.set_rshift_pressed(false)
+                keyboard.flags.set_rshift_pressed(false)
             }
             PS2ScanCode::LeftCtrl => {
-                KEYBOARD.flags.set_lctrl_pressed(true)
+                keyboard.flags.set_lctrl_pressed(true)
             }
             PS2ScanCode::ReleasedLeftCtrl => {
-                KEYBOARD.flags.set_lctrl_pressed(false)
+                keyboard.flags.set_lctrl_pressed(false)
             }
             PS2ScanCode::SuperKey => {
-                KEYBOARD.flags.set_superkey_pressed(true)
+                keyboard.flags.set_superkey_pressed(true)
             }
             PS2ScanCode::ReleasedSuperKey => {
-                KEYBOARD.flags.set_superkey_pressed(false)
+                keyboard.flags.set_superkey_pressed(false)
             }
             PS2ScanCode::CapsLock => {
-                KEYBOARD.flags.set_capslock_pressed(
-                    KEYBOARD.flags.is_capslock_pressed() ^ true,
+                keyboard.flags.set_capslock_pressed(
+                    keyboard.flags.is_capslock_pressed() ^ true,
                 );
             }
             _ => {}
         }
-        PIC.end_of_interrupt(CascadedPicInterruptLine::Keyboard);
+        PIC.lock()
+            .end_of_interrupt(CascadedPicInterruptLine::Keyboard);
+        interrupts::enable();
     }
 }

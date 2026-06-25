@@ -26,6 +26,16 @@ impl<T, R: RelaxStrategy> Mutex<T, R> {
         }
     }
 
+    // TODO: Make safe with compile time state of locked.
+    pub const unsafe fn new_locked(data: T) -> Self {
+        Self {
+            strategy: PhantomData,
+            locked: AtomicBool::new(true),
+            data: UnsafeCell::new(data),
+        }
+    }
+
+    #[track_caller]
     pub fn lock(&self) -> MutexGuard<'_, T, R> {
         // While the lock is `true`, a swap to `true` returns the previous
         // value which is `true` which keeps the mutex locked.
@@ -46,6 +56,16 @@ impl<T, R: RelaxStrategy> Mutex<T, R> {
         }
         Some(MutexGuard { mutex: self })
     }
+
+    // TODO: Make safe with so can only be called when in locked state.
+    pub const unsafe fn leak(&self) -> &mut T {
+        unsafe { &mut *self.data.get() }
+    }
+
+    // Release the lock
+    pub unsafe fn force_unlock(&self) {
+        self.locked.store(false, Ordering::Release);
+    }
 }
 
 pub struct MutexGuard<'a, T, R: RelaxStrategy> {
@@ -64,9 +84,7 @@ unsafe impl<T: Sized, R: RelaxStrategy> Send for MutexGuard<'_, T, R> where
 impl<T, R: RelaxStrategy> Deref for MutexGuard<'_, T, R> {
     type Target = T;
 
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.mutex.data.get() }
-    }
+    fn deref(&self) -> &Self::Target { unsafe { &*self.mutex.data.get() } }
 }
 
 impl<T, R: RelaxStrategy> DerefMut for MutexGuard<'_, T, R> {
@@ -77,6 +95,8 @@ impl<T, R: RelaxStrategy> DerefMut for MutexGuard<'_, T, R> {
 
 impl<T, R: RelaxStrategy> Drop for MutexGuard<'_, T, R> {
     fn drop(&mut self) {
-        self.mutex.locked.store(false, Ordering::Release);
+        unsafe {
+            self.mutex.force_unlock();
+        }
     }
 }
