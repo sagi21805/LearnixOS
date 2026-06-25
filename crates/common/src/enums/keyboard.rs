@@ -2,7 +2,7 @@ use core::fmt;
 
 #[repr(u8)]
 #[non_exhaustive]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PS2ScanCode {
     None,
 
@@ -159,8 +159,8 @@ pub enum PS2ScanCode {
     // Keypad
     Keypad7,
     ReleasedKeypad7,
-    Keypad8,
-    ReleasedKeypad8,
+    UpArrow,
+    ReleasedUpArrow,
     Keypad9,
     ReleasedKeypad9,
     KeypadMinus,
@@ -175,8 +175,8 @@ pub enum PS2ScanCode {
     ReleasedKeypadPlus,
     Keypad1,
     ReleasedKeypad1,
-    Keypad2,
-    ReleasedKeypad2,
+    DownArrow,
+    ReleasedDownArrow,
     Keypad3,
     ReleasedKeypad3,
     Keypad0,
@@ -193,9 +193,10 @@ pub enum PS2ScanCode {
     ReleasedSuperKey,
 }
 
-impl PS2ScanCode {
-    pub fn from_scancode(scancode: u8) -> Self {
-        match scancode {
+#[rustfmt::skip]
+impl const From<u8> for PS2ScanCode {
+    fn from(value: u8) -> Self {
+        match value {
             // Number row
             0x01 => PS2ScanCode::Esc,
             0x81 => PS2ScanCode::ReleasedEsc,
@@ -349,8 +350,8 @@ impl PS2ScanCode {
             // Keypad
             0x47 => PS2ScanCode::Keypad7,
             0xC7 => PS2ScanCode::ReleasedKeypad7,
-            0x48 => PS2ScanCode::Keypad8,
-            0xC8 => PS2ScanCode::ReleasedKeypad8,
+            0x48 => PS2ScanCode::UpArrow,
+            0xC8 => PS2ScanCode::ReleasedUpArrow,
             0x49 => PS2ScanCode::Keypad9,
             0xC9 => PS2ScanCode::ReleasedKeypad9,
             0x4A => PS2ScanCode::KeypadMinus,
@@ -365,8 +366,8 @@ impl PS2ScanCode {
             0xCE => PS2ScanCode::ReleasedKeypadPlus,
             0x4F => PS2ScanCode::Keypad1,
             0xCF => PS2ScanCode::ReleasedKeypad1,
-            0x50 => PS2ScanCode::Keypad2,
-            0xD0 => PS2ScanCode::ReleasedKeypad2,
+            0x50 => PS2ScanCode::DownArrow,
+            0xD0 => PS2ScanCode::ReleasedDownArrow,
             0x51 => PS2ScanCode::Keypad3,
             0xD1 => PS2ScanCode::ReleasedKeypad3,
             0x52 => PS2ScanCode::Keypad0,
@@ -466,18 +467,8 @@ impl PS2ScanCode {
             PS2ScanCode::ScrollLock => "Scroll Lock",
             PS2ScanCode::CapsLock => "CapsLock",
             // Keypad
-            PS2ScanCode::Keypad7 => "Keypad 7",
-            PS2ScanCode::Keypad8 => "Keypad 8",
-            PS2ScanCode::Keypad9 => "Keypad 9",
-            PS2ScanCode::KeypadMinus => "Keypad -",
-            PS2ScanCode::Keypad4 => "Keypad 4",
-            PS2ScanCode::Keypad5 => "Keypad 5",
-            PS2ScanCode::Keypad6 => "Keypad 6",
-            PS2ScanCode::KeypadPlus => "Keypad +",
-            PS2ScanCode::Keypad1 => "Keypad 1",
-            PS2ScanCode::Keypad2 => "Keypad 2",
-            PS2ScanCode::Keypad3 => "Keypad 3",
-            PS2ScanCode::Keypad0 => "Keypad 0",
+            PS2ScanCode::KeypadMinus => "-",
+            PS2ScanCode::KeypadPlus => "+",
             PS2ScanCode::KeypadDot => "Keypad .",
             PS2ScanCode::F11 => "F11",
             PS2ScanCode::F12 => "F12",
@@ -568,7 +559,7 @@ impl PS2ScanCode {
 
             // Keypad
             PS2ScanCode::Keypad7 => "Keypad 7",
-            PS2ScanCode::Keypad8 => "Keypad 8",
+            PS2ScanCode::UpArrow => "Keypad 8",
             PS2ScanCode::Keypad9 => "Keypad 9",
             PS2ScanCode::KeypadMinus => "Keypad -",
             PS2ScanCode::Keypad4 => "Keypad 4",
@@ -576,7 +567,7 @@ impl PS2ScanCode {
             PS2ScanCode::Keypad6 => "Keypad 6",
             PS2ScanCode::KeypadPlus => "Keypad +",
             PS2ScanCode::Keypad1 => "Keypad 1",
-            PS2ScanCode::Keypad2 => "Keypad 2",
+            PS2ScanCode::DownArrow => "Keypad 2",
             PS2ScanCode::Keypad3 => "Keypad 3",
             PS2ScanCode::Keypad0 => "Keypad 0",
             PS2ScanCode::KeypadDot => "Keypad .",

@@ -1,4 +1,12 @@
+use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
+
+use crate::error::ConversionError;
+
 #[repr(u8)]
+#[derive(
+    Clone, Copy, Debug, ConstTryFromPrimitive, ConstIntoPrimitive,
+)]
+#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 /// All the colors coded per the VGA documentation
 pub enum Color {
     Black = 0,

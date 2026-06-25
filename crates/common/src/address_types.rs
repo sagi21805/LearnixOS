@@ -93,16 +93,18 @@ impl const Address for PhysicalAddress {
     }
 
     fn new(address: usize) -> Option<Self> {
-        #[cfg(target_arch = "x86_64")]
-        if address < (1 << 48) {
-            unsafe { Some(Self::new_unchecked(address)) }
-        } else {
-            None
+        #[cfg(not(target_arch = "x86"))]
+        {
+            if address < (1 << 48) {
+                unsafe { Some(Self::new_unchecked(address)) }
+            } else {
+                None
+            }
         }
 
         #[cfg(target_arch = "x86")]
-        unsafe {
-            Some(Self::new_unchecked(address))
+        {
+            unsafe { Some(Self::new_unchecked(address)) }
         }
     }
 
@@ -162,20 +164,22 @@ impl const Address for VirtualAddress {
     }
 
     fn new(address: usize) -> Option<Self> {
-        #[cfg(target_arch = "x86_64")]
-        if address < (1usize << 48) {
-            return Some(unsafe {
-                Self::new_unchecked(
-                    (((address << 16) as isize) >> 16) as usize,
-                )
-            });
-        } else {
-            None
+        #[cfg(not(target_arch = "x86"))]
+        {
+            if address < (1usize << 48) {
+                return Some(unsafe {
+                    Self::new_unchecked(
+                        (((address << 16) as isize) >> 16) as usize,
+                    )
+                });
+            } else {
+                None
+            }
         }
 
         #[cfg(target_arch = "x86")]
-        unsafe {
-            Some(Self::new_unchecked(address))
+        {
+            unsafe { Some(Self::new_unchecked(address)) }
         }
     }
 

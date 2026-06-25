@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use core::{alloc::Layout, ptr::NonNull};
+use core::{alloc::Layout, cell::Cell, ptr::NonNull};
 
 use alloc::alloc::{AllocError, GlobalAlloc, alloc};
 
@@ -11,17 +11,23 @@ use common::{
     error::{EntryError, MappingError},
     late_init::LateInit,
 };
-use x86::structures::paging::{PageEntryFlags, PageTable, PageTableEntry};
+use x86::{
+    instructions::interrupts::hlt,
+    structures::paging::{PageEntryFlags, PageTable, PageTableEntry},
+};
 
-pub static mut BUMP_ALLOCATOR: LateInit<BumpAllocator> =
-    LateInit::uninit();
+use crate::println;
+
+pub static BUMP_ALLOCATOR: LateInit<BumpAllocator> = LateInit::uninit();
+
+pub type Allocator = dyn GlobalAlloc + Send + Sync;
 
 pub struct GlobalAllocator<'a> {
-    allocator: LateInit<&'a dyn GlobalAlloc>,
+    allocator: LateInit<&'a Allocator>,
 }
 
 impl<'a> GlobalAllocator<'a> {
-    pub fn init(&mut self, allocator: &'a dyn GlobalAlloc) {
+    pub fn init(&mut self, allocator: &'a Allocator) {
         self.allocator = LateInit::new(allocator);
     }
 
@@ -113,6 +119,7 @@ pub impl VirtualAddress {
                 {
                     Ok(t) => t,
                     Err(EntryError::NoMapping) => {
+                        println!("ALLOCATED NEW TABLE");
                         alloc_table(unsafe { prev_entry.as_mut() })
                             .expect("Cannot allocate table")
                     }

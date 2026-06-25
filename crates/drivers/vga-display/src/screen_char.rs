@@ -1,16 +1,18 @@
+use ::core::ascii::Char;
+
 use super::ColorCode;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct ScreenChar {
-    char: u8,
-    color_code: ColorCode,
+    pub char: Char,
+    pub color_code: ColorCode,
 }
 
 impl ScreenChar {
     /// Create a new instance with the given char and
     /// [`ColorCode`]
-    pub const fn new(char: u8, color: ColorCode) -> Self {
+    pub const fn new(char: Char, color: ColorCode) -> Self {
         Self {
             char,
             color_code: color,
@@ -24,7 +26,7 @@ impl const Default for ScreenChar {
     /// value, and with the default [`ColorCode`]
     fn default() -> Self {
         Self {
-            char: b' ',
+            char: Char::Space,
             color_code: ColorCode::default(),
         }
     }

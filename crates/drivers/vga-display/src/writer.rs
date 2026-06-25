@@ -1,126 +1,109 @@
-use core::ascii::Char;
+extern crate alloc;
 
-use super::color_code::ColorCode;
-use super::screen_char::ScreenChar;
-use common::constants::addresses::VGA_BUFFER_PTR;
-use common::enums::{Port, VgaCommand};
-use x86::instructions::port::PortExt;
+use core::{
+    ascii::Char,
+    fmt::{Arguments, Write},
+};
+
+use common::enums::Color;
+use sync::mutex::SpinMutex;
+
+use crate::{
+    SCREEN, Screen, color_code::ColorCode, generic_writer::GenericWriter,
+    screen_char::ScreenChar,
+};
 
 /// Writer implementation for the VGA driver.
-pub struct Writer<const W: usize, const H: usize> {
-    pub cursor_position: usize,
+pub struct SimpleWriter<const W: usize, const H: usize> {
     pub color: ColorCode,
-    pub screen: &'static mut [ScreenChar],
+    screen: &'static SpinMutex<Screen>,
+}
+
+impl<const W: usize, const H: usize> SimpleWriter<W, H> {
+    pub fn panic_message(&mut self, message: Arguments<'_>) {
+        let red = ColorCode::new()
+            .foreground(Color::Red)
+            .background(Color::Black);
+
+        let yellow = ColorCode::new()
+            .foreground(Color::Yellow)
+            .background(Color::Black);
+        self.color = yellow;
+        GenericWriter::write_char(self, '\n');
+        GenericWriter::write_char(self, '[');
+        self.color = red;
+        self.write_str(" FAIL ").unwrap();
+        self.color = yellow;
+        self.write_str("]: ").unwrap();
+        self.write_fmt(message).unwrap();
+    }
 }
 
 #[rustfmt::skip]
-impl<const W: usize, const H: usize> const Default for Writer<W, H> {
+impl<const W: usize, const H: usize> const Default for SimpleWriter<W, H> {
     fn default() -> Self {
         Self {
-            cursor_position: 0,
             color: ColorCode::default(),
-            screen: unsafe {
-                core::slice::from_raw_parts_mut(
-                    VGA_BUFFER_PTR as *mut ScreenChar,
-                    W * H + 1,
-                )
-            },
+            screen: &SCREEN,
         }
     }
 }
 
-impl<const W: usize, const H: usize> Writer<W, H> {
-    /// Writes the given `char` to the screen with the color
-    /// stored in self
-    ///
-    /// # Parameters
-    ///
-    /// - `char`: The char that will be printed to the screen
-    fn write_char(&mut self, char: u8) {
-        let c =
-            Char::from_u8(char).expect("Entered invalid ascii character");
-        match c {
-            Char::LineFeed => {
-                self.new_line();
-            }
-            Char::Backspace | Char::Delete => {
+impl<const W: usize, const H: usize> GenericWriter for SimpleWriter<W, H> {
+    fn scroll_down(&mut self, _lines: usize) { unimplemented!() }
+
+    fn set_cursor_position(&mut self, _p: usize) {}
+
+    fn write_cursor_position(&self) -> usize {
+        self.screen.lock().screen_position
+    }
+
+    fn scroll_up(&mut self, _lines: usize) { unimplemented!() }
+
+    fn new_line(&mut self) { self.screen.lock().new_line(); }
+
+    fn backspace(&mut self) { self.screen.lock().backspace(); }
+
+    fn color(&self) -> ColorCode { self.color }
+
+    fn set_color(&mut self, color: ColorCode) { self.color = color; }
+
+    fn screen_height(&self) -> usize { H }
+
+    fn screen_width(&self) -> usize { W }
+
+    fn update(&mut self) {}
+
+    fn write_vga_char(&mut self, char: ScreenChar) {
+        self.screen.lock().write_char(char);
+    }
+
+    fn write_char(&mut self, char: char) {
+        let ascii =
+            char.as_ascii().expect("Entered invalid ascii character");
+
+        match ascii {
+            Char::Delete | Char::Backspace => {
                 self.backspace();
             }
             _ => {
-                if !c.is_control() {
-                    self.screen[self.cursor_position] =
-                        ScreenChar::new(char, self.color);
-                    self.cursor_position += 1;
+                if !ascii.is_control() || ascii == Char::LineFeed {
+                    self.write_vga_char(ScreenChar {
+                        char: ascii,
+                        color_code: self.color,
+                    });
                 }
             }
         }
-        if self.cursor_position > W * H {
-            self.scroll_down(1);
-        }
-
-        self.change_cursor_position_on_screen();
-    }
-
-    /// Scroll `lines` down.
-    fn scroll_down(&mut self, lines: usize) {
-        let lines_index = W * (H - lines) + 1;
-
-        // Copy the buffer to the left
-        self.screen.copy_within(lines * W.., 0);
-
-        // Fill remaining place with empty characters
-        for x in &mut self.screen[lines_index..] {
-            *x = ScreenChar::default()
-        }
-
-        self.cursor_position -= lines * W;
-    }
-
-    fn new_line(&mut self) {
-        self.cursor_position += W - (self.cursor_position % W)
-    }
-
-    fn backspace(&mut self) {
-        self.cursor_position -= 1;
-        self.screen[self.cursor_position] = ScreenChar::default();
-    }
-
-    fn change_cursor_position_on_screen(&self) {
-        unsafe {
-            Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
-            Port::VgaData.outb((self.cursor_position & 0xff) as u8);
-            Port::VgaControl.outb(VgaCommand::CursorOffsetHigh as u8);
-            Port::VgaData.outb(((self.cursor_position >> 8) & 0xff) as u8);
-        }
-    }
-
-    /// Clears the screen by setting all of the buffer bytes
-    /// to zero
-    fn clear(&mut self) {
-        self.screen.fill(ScreenChar::default());
-        self.cursor_position = 0;
     }
 }
 
-impl<const W: usize, const H: usize> core::fmt::Write for Writer<W, H> {
-    /// Print the given string to the string with the color
-    /// in self
-    ///
-    /// # Parameters
-    ///
-    /// - `str`: The string that will be printed to the screen with the
-    ///   color in self
-    ///
-    /// # Safety
-    /// THIS FUNCTION IS NOT THREAD SAFE AND NOT MARKED
-    /// UNSAFE BECAUSE OF TRAIT IMPLEMENTATION!
-    /// THE FUNCTION WILL ADD LOCK AND WILL BE SAFE IN THE
-    /// FUTURE
-    ///
-    /// TODO: use lock in the future
-    fn write_str(&mut self, str: &str) -> core::fmt::Result {
-        for char in str.bytes() {
-            self.write_char(char);
+impl<const W: usize, const H: usize> ::core::fmt::Write
+    for SimpleWriter<W, H>
+{
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        for c in s.chars() {
+            GenericWriter::write_char(self, c);
         }
         Ok(())
     }

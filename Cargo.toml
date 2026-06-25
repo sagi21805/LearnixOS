@@ -19,7 +19,13 @@ members = [
     "kernel",
     "tests",
     "xtask",
-    "snippets",
+    # "snippets",
 ]
 
 resolver = "2"
+
+[profile.release]
+opt-level = 's'
+# overflow-checks = true
+codegen-units = 1
+panic = "abort"

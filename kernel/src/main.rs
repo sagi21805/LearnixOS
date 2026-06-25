@@ -2,14 +2,11 @@
 #![no_main]
 #![feature(ptr_alignment_type)]
 #![feature(abi_x86_interrupt)]
-#![feature(allocator_api)]
-#![allow(static_mut_refs)]
+#![feature(const_default)]
+#![feature(const_trait_impl)]
 extern crate alloc;
 
-use core::{
-    alloc::{Allocator, Layout},
-    panic::PanicInfo,
-};
+use core::{cell::OnceCell, hint::black_box, panic::PanicInfo};
 
 use alloc::boxed::Box;
 use bump::BumpAllocator;
@@ -17,35 +14,63 @@ use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
     constants::{
         MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, MiB, PARSED_MEMORY_MAP,
-        PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
+        PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_SIZE,
     },
-    enums::PageSize,
-    late_init::{ LateInit},
+    enums::{PS2ScanCode, PageSize},
+    late_init::LateInit,
 };
 use keyboard::ps2_keyboard::Keyboard;
-use vga_display::{eprintln, okprintln};
+use vga_display::{
+    SCREEN,
+    advanced_writer::AdvancedWriter,
+    eprintln,
+    generic_writer::{GenericWriter, Writer},
+    okprintln, vga_init,
+    writer::SimpleWriter,
+};
 use x86::{
-    instructions::interrupts,
+    instructions::interrupts::{self, hlt},
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
     pic8259::CascadedPIC,
     structures::interrupt_descriptor_table::InterruptDescriptorTable,
 };
 
 use libk::{
-    alloc::{BUMP_ALLOCATOR, GlobalAllocator, VirtualAddressExt}, print, println
+    alloc::{BUMP_ALLOCATOR, GlobalAllocator, VirtualAddressExt},
+    print, println,
 };
+
+use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
+
+use crate::interrupt_handlers::InterruptDescriptorTableExt;
 
 mod interrupt_handlers;
 mod timer;
 
-static mut MMAP: LateInit<MemoryMap> = LateInit::uninit();
+static MMAP: LateInit<MemoryMap> = LateInit::uninit();
+
 #[unsafe(no_mangle)]
-static mut PIC: CascadedPIC = CascadedPIC::default();
-static mut IDT: LateInit<Box<InterruptDescriptorTable>> =
+static PIC: SpinMutex<CascadedPIC> =
+    SpinMutex::new(CascadedPIC::default());
+
+static IDT: LateInit<SpinMutex<Box<InterruptDescriptorTable>>> =
     LateInit::uninit();
 
 #[unsafe(no_mangle)]
-static mut KEYBOARD: LateInit<Keyboard> = LateInit::uninit();
+static KEYBOARD: LateInit<Keyboard> = LateInit::uninit();
+
+static KEYBOARD_BUFFER: LateInit<SpscRingBuffer<u8>> = LateInit::uninit();
+
+#[unsafe(no_mangle)]
+static SIMPLE_WRITER: SpinMutex<SimpleWriter<80, 25>> =
+    unsafe { SpinMutex::new_locked(SimpleWriter::default()) };
+
+static ADVANCED_WRITER: SpinMutex<LateInit<AdvancedWriter<80, 25>>> =
+    unsafe { SpinMutex::new_locked(LateInit::uninit()) };
+
+#[unsafe(no_mangle)]
+static WRITER: SpinMutex<Writer<'static>> =
+    SpinMutex::new(Writer::new(unsafe { SIMPLE_WRITER.leak() }));
 
 #[global_allocator]
 static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
@@ -54,10 +79,11 @@ static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
 #[unsafe(link_section = ".start")]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _start() -> ! {
+    vga_init();
+
     okprintln!("Entered Protected Mode");
     okprintln!("Enabled Paging");
     okprintln!("Entered Long Mode");
-
     let len = unsafe { *(MEMORY_MAP_LENGTH as *const u32) as usize };
     let raw = unsafe {
         core::slice::from_raw_parts_mut(
@@ -73,12 +99,12 @@ pub unsafe extern "C" fn _start() -> ! {
     };
 
     unsafe {
-        let _ = MMAP.write(MemoryMap::parse_map(raw, buf).unwrap());
+        MMAP.init(MemoryMap::parse_map(raw, buf).unwrap());
+        BUMP_ALLOCATOR.init(BumpAllocator::new(MMAP.assume_init_ref()));
 
-        let _ = BUMP_ALLOCATOR
-            .write(BumpAllocator::new(MMAP.assume_init_ref()));
-
+        #[allow(static_mut_refs)]
         GLOBAL_ALLOCATOR.init(BUMP_ALLOCATOR.assume_init_ref());
+
         let v = VirtualAddress::new_unchecked(
             PHYSICAL_MEMORY_OFFSET + 6 * MiB,
         );
@@ -96,20 +122,45 @@ pub unsafe extern "C" fn _start() -> ! {
 
     unsafe {
         interrupts::disable();
-        InterruptDescriptorTable::init(&mut IDT);
+        InterruptDescriptorTable::init(&IDT);
         okprintln!("Initialized interrupt descriptor table");
-        interrupt_handlers::init(IDT.as_mut());
+        IDT.lock().init_handlers();
         okprintln!("Initialized interrupts handlers");
-        CascadedPIC::init(&mut PIC);
+        PIC.lock().init();
         okprintln!("Initialized Programmable Interrupt Controller");
-        Keyboard::init(&mut KEYBOARD);
+        let buffer = Box::new([0u8; 4096]);
+        KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
+
+        println!("BUFFER: {:?}", KEYBOARD_BUFFER.buffer());
+
+        KEYBOARD.init(Keyboard::new(&KEYBOARD_BUFFER));
+        println!("BUFFER: {:?}", KEYBOARD.consumer().inner().buffer());
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
+    let cursor_position = WRITER.lock().inner.write_cursor_position();
+    println!("Position: {}", cursor_position);
+    let w = ADVANCED_WRITER.leak();
+    let x = unsafe { &mut *(w as *mut _ as *mut AdvancedWriter<80, 25>) };
+    w.init(AdvancedWriter::default());
+    WRITER.lock().set_writer(w.assume_init_mut());
+    okprintln!("Set advanced writer");
+    // Wait for the next update.
+    unsafe {
+        hlt();
+    }
+    println!(
+        "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}, Display \
+         Line: {}",
+        x.cursor,
+        x.line,
+        x.buffer.as_ptr(),
+        x.row_table.as_ptr(),
+        x.display_line
+    );
 
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
-
     // panic!("")
     // let mut pci_devices = pci::scan_pci();
     // println!("Press ENTER to enumerate PCI devices!");
@@ -162,7 +213,6 @@ pub unsafe extern "C" fn _start() -> ! {
     //             unsafe { alloc_pages!(1) as *mut IdentityPacketData };
 
     //         p.identity_packet(buf);
-
     //         let id = unsafe {
     //             core::ptr::read_volatile(
     //                 (buf as usize + PHYSICAL_MEMORY_OFFSET)
@@ -181,9 +231,19 @@ pub unsafe extern "C" fn _start() -> ! {
     //         println!("Firmware: {:?}", &id.firmware_rev);
     //     }
     // }
-
     loop {
-            print!("{}", KEYBOARD.read_char())
+        let input = KEYBOARD.read_char();
+        match input {
+            Ok(str) => print!("{}", str),
+            Err(key) => match key {
+                PS2ScanCode::UpArrow => WRITER.lock().inner.scroll_up(1),
+                PS2ScanCode::DownArrow => {
+                    WRITER.lock().inner.scroll_down(1)
+                }
+                // WRITER.lock().inner.scroll_down(1),
+                _ => {}
+            },
+        }
     }
 }
 
@@ -193,6 +253,16 @@ unsafe fn panic(_info: &PanicInfo) -> ! {
     unsafe {
         interrupts::disable();
     }
-    eprintln!("{}", _info ; color = ColorCode::new(Color::Yellow, Color::Black));
+    SCREEN.force_unlock();
+    SCREEN.lock().reset_cursor();
+    SIMPLE_WRITER.force_unlock();
+    // eprintln!("{}", _info ; color =
+    // ColorCode::new().foreground(Color::Yellow).
+    // background(Color::Black));
+
+    SIMPLE_WRITER
+        .lock()
+        .panic_message(format_args!("{}", _info));
+
     loop {}
 }
