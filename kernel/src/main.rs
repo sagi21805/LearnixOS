@@ -143,7 +143,6 @@ pub unsafe extern "C" fn _start() -> ! {
     println!("Position: {}", cursor_position);
     let w = ADVANCED_WRITER.leak();
     let x = unsafe { &mut *(w as *mut _ as *mut AdvancedWriter<80, 25>) };
-
     w.init(AdvancedWriter::default());
     WRITER.lock().set_writer(w.assume_init_mut());
     okprintln!("Set advanced writer");
@@ -151,11 +150,33 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Set advanced writer");
     hlt();
     println!(
-        "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}",
+        "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}, Display \
+         Line: {}",
         x.cursor,
         x.line,
         x.buffer.as_ptr(),
-        x.row_table.as_ptr()
+        x.row_table.as_ptr(),
+        x.display_line
+    );
+    WRITER.lock().inner.scroll_down(1);
+    println!(
+        "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}, Display \
+         Line: {}",
+        x.cursor,
+        x.line,
+        x.buffer.as_ptr(),
+        x.row_table.as_ptr(),
+        x.display_line
+    );
+    WRITER.lock().inner.scroll_down(1);
+    println!(
+        "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}, Display \
+         Line: {}",
+        x.cursor,
+        x.line,
+        x.buffer.as_ptr(),
+        x.row_table.as_ptr(),
+        x.display_line
     );
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
@@ -235,8 +256,11 @@ pub unsafe extern "C" fn _start() -> ! {
         match input {
             Ok(str) => print!("{}", str),
             Err(key) => match key {
-                PS2ScanCode::Keypad8 => WRITER.lock().inner.scroll_up(1),
-                PS2ScanCode::Keypad2 => WRITER.lock().inner.scroll_down(1),
+                PS2ScanCode::UpArrow => WRITER.lock().inner.scroll_up(1),
+                PS2ScanCode::DownArrow => {
+                    WRITER.lock().inner.scroll_down(1)
+                }
+                // WRITER.lock().inner.scroll_down(1),
                 _ => {}
             },
         }
