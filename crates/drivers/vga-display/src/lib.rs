@@ -133,6 +133,8 @@ impl Screen {
     }
 
     pub fn reset_cursor(&mut self) { self.screen_position = 0; }
+
+    pub fn clear(&mut self) { self.buffer.fill(ScreenChar::default()); }
 }
 
 unsafe extern "Rust" {
