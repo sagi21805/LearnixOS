@@ -25,7 +25,7 @@ cargo xtask run
 ```
 
 <h1 align="center">
-<img src="https://raw.githubusercontent.com/sagi21805/LearnixOS/refs/heads/master/assets/showing_features.gif" width="300">
+<img src="https://raw.githubusercontent.com/sagi21805/LearnixOS/refs/heads/master/assets/showing_features.gif">
 </h1>
 
 ## License
