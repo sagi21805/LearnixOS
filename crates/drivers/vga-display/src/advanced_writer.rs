@@ -1,12 +1,11 @@
 extern crate alloc;
 
-use core::{ascii::Char, ops::AddAssign};
+use core::ascii::Char;
 
 use alloc::boxed::Box;
 
 use common::constants::REGULAR_PAGE_SIZE;
 use sync::mutex::SpinMutex;
-use x86::instructions::interrupts;
 
 use crate::{
     SCREEN, Screen, WriteInfo, color_code::ColorCode,
@@ -78,34 +77,22 @@ impl<const W: usize, const H: usize> GenericWriter
     fn screen_width(&self) -> usize { W }
 
     fn scroll_down(&mut self, lines: usize) {
-        unsafe {
-            interrupts::disable();
-        }
         let new_line = self.display_line.saturating_add(lines);
-        if self.row_table[new_line] != 0 {
-            self.screen.lock().clear();
+        if self.row_table[new_line + self.screen_height()] != 0 {
+            self.screen.lock().scroll_up(lines);
             self.screen.lock().reset_cursor();
             self.display_line = new_line;
             self.screen_start = self.row_table[new_line] as usize;
-        }
-        unsafe {
-            interrupts::enable();
         }
     }
 
     fn scroll_up(&mut self, lines: usize) {
-        unsafe {
-            interrupts::disable();
-        }
         let new_line = self.display_line.saturating_sub(lines);
         if self.row_table[new_line] != 0 || new_line == 0 {
-            self.screen.lock().clear();
+            self.screen.lock().scroll_down(lines);
             self.screen.lock().reset_cursor();
             self.display_line = new_line;
             self.screen_start = self.row_table[new_line] as usize;
-        }
-        unsafe {
-            interrupts::enable();
         }
     }
 
