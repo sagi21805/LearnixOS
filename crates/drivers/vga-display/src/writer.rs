@@ -50,9 +50,7 @@ impl<const W: usize, const H: usize> const Default for SimpleWriter<W, H> {
 }
 
 impl<const W: usize, const H: usize> GenericWriter for SimpleWriter<W, H> {
-    fn scroll_down(&mut self, lines: usize) {
-        self.screen.lock().scroll_down(lines);
-    }
+    fn scroll_down(&mut self, _lines: usize) { unimplemented!() }
 
     fn set_cursor_position(&mut self, _p: usize) {}
 
@@ -60,9 +58,7 @@ impl<const W: usize, const H: usize> GenericWriter for SimpleWriter<W, H> {
         self.screen.lock().screen_position
     }
 
-    fn scroll_up(&mut self, lines: usize) {
-        self.screen.lock().scroll_up(lines);
-    }
+    fn scroll_up(&mut self, _lines: usize) { unimplemented!() }
 
     fn new_line(&mut self) { self.screen.lock().new_line(); }
 

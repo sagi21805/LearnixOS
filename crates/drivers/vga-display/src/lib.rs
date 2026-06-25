@@ -76,11 +76,15 @@ impl Screen {
     }
 
     pub fn new_line(&mut self) -> WriteInfo {
-        let new_position = self.screen_position
-            + (self.width - (self.screen_position % self.width));
+        let offset = self.screen_position % self.width;
+        for i in 0..self.width - offset {
+            self.buffer[self.screen_position + i] = ScreenChar::default()
+        }
+
+        let new_position = self.screen_position + (self.width - offset);
 
         if new_position >= self.buffer.len() {
-            self.screen_position = self.buffer.len() - self.width;
+            self.screen_position = self.buffer.len() - 1;
             WriteInfo::EndOfScreen
         } else {
             self.screen_position = new_position;
@@ -92,7 +96,7 @@ impl Screen {
         if self.screen_position > 0 {
             self.screen_position -= 1;
             self.buffer[self.screen_position] = ScreenChar::default();
-            // Backspace to the last
+            // Backspace to the first character of the line
             if self.screen_position % self.width == self.width - 1 {
                 return WriteInfo::LineDown;
             }
@@ -114,22 +118,13 @@ impl Screen {
 
     fn scroll_up(&mut self, lines: usize) {
         let anchor = lines * self.width;
-        self.buffer.copy_within(anchor.., 0);
         let len = self.buffer.len();
         self.buffer[len - anchor..].fill(ScreenChar::default());
-        // self.new_line();
-        self.screen_position = self.screen_position.saturating_sub(anchor);
-        self.change_cursor_position_on_screen();
     }
 
     fn scroll_down(&mut self, lines: usize) {
         let anchor = lines * self.width;
-        self.buffer
-            .copy_within(..self.buffer.len() - anchor, anchor);
         self.buffer[0..anchor].fill(ScreenChar::default());
-        // self.new_line();
-        self.screen_position = self.screen_position.saturating_add(anchor);
-        self.change_cursor_position_on_screen();
     }
 
     pub fn reset_cursor(&mut self) { self.screen_position = 0; }

@@ -138,7 +138,6 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
-
     let cursor_position = WRITER.lock().inner.write_cursor_position();
     println!("Position: {}", cursor_position);
     let w = ADVANCED_WRITER.leak();
@@ -146,9 +145,10 @@ pub unsafe extern "C" fn _start() -> ! {
     w.init(AdvancedWriter::default());
     WRITER.lock().set_writer(w.assume_init_mut());
     okprintln!("Set advanced writer");
-    okprintln!("Set advanced writer");
-    okprintln!("Set advanced writer");
-    hlt();
+    // Wait for the next update.
+    unsafe {
+        hlt();
+    }
     println!(
         "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}, Display \
          Line: {}",
@@ -158,29 +158,9 @@ pub unsafe extern "C" fn _start() -> ! {
         x.row_table.as_ptr(),
         x.display_line
     );
-    WRITER.lock().inner.scroll_down(1);
-    println!(
-        "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}, Display \
-         Line: {}",
-        x.cursor,
-        x.line,
-        x.buffer.as_ptr(),
-        x.row_table.as_ptr(),
-        x.display_line
-    );
-    WRITER.lock().inner.scroll_down(1);
-    println!(
-        "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}, Display \
-         Line: {}",
-        x.cursor,
-        x.line,
-        x.buffer.as_ptr(),
-        x.row_table.as_ptr(),
-        x.display_line
-    );
+
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
-    // ::core::arch::asm!("int 3");
     // panic!("")
     // let mut pci_devices = pci::scan_pci();
     // println!("Press ENTER to enumerate PCI devices!");
