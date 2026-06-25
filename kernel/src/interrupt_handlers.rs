@@ -6,6 +6,7 @@ use common::{
     },
 };
 use keyboard::keyboard_handler;
+use vga_display::println;
 use x86::{
     registers::cr2,
     structures::interrupt_descriptor_table::{
@@ -39,8 +40,8 @@ pub extern "x86-interrupt" fn non_maskable_interrupt_handler(
 pub extern "x86-interrupt" fn breakpoint_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    panic!("Interrupt: Breakpoint");
-    panic!("Stack frame: {:#?}", stack_frame);
+    println!("Interrupt: Breakpoint");
+    println!("Stack frame: {:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn overflow_handler(

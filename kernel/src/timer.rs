@@ -12,7 +12,9 @@ pub extern "x86-interrupt" fn timer_handler(
     unsafe {
         interrupts::disable();
     }
-    WRITER.lock().inner.update();
+    if let Some(mut writer) = WRITER.try_lock() {
+        writer.inner.update();
+    }
     PIC.lock().end_of_interrupt(CascadedPicInterruptLine::Timer);
     unsafe {
         interrupts::enable();
