@@ -1,9 +1,18 @@
+extern crate alloc;
+
+use core::{
+    ops::{Deref, DerefMut},
+    ptr::NonNull,
+};
+
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     constants::{PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_SIZE},
     enums::{BUDDY_MAX_ORDER, BuddyOrder, MemoryRegionType},
     late_init::LateInit,
 };
+
+use alloc::boxed::Box;
 
 use x86::memory_map::MemoryMap;
 
@@ -13,21 +22,16 @@ use buddy::meta::{
 
 use crate::{Page, meta::PageMeta};
 
-#[derive(Debug)]
-pub struct PageMap(NonNull<[Page]>);
+pub struct PageMap(Box<[Page]>);
 
 impl Deref for PageMap {
     type Target = [Page];
 
-    fn deref(&self) -> &Self::Target {
-        unsafe { self.0.as_ref() }
-    }
+    fn deref(&self) -> &Self::Target { self.0.as_ref() }
 }
 
 impl DerefMut for PageMap {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { self.0.as_mut() }
-    }
+    fn deref_mut(&mut self) -> &mut Self::Target { self.0.as_mut() }
 }
 // pub fn init(&'static mut self, arena: NonNull<Arena>) {
 //     for block in unsafe { arena.as_ref().iter() } {
@@ -48,6 +52,7 @@ impl BuddyArena<Page> for PageMap {
     fn init(uninit: &'static mut LateInit<PageMap>, mmap: MemoryMap) {
         let last = unsafe {
             mmap.regions
+                .lock()
                 .as_ref()
                 .iter()
                 .filter(|r| r.region_type == MemoryRegionType::Usable)
@@ -63,7 +68,7 @@ impl BuddyArena<Page> for PageMap {
                 total_pages,
             );
 
-            let init = uninit.write(PageMap(page_map));
+            let init = uninit.init(PageMap(page_map));
 
             for p in init.iter_mut() {
                 core::ptr::write_volatile(

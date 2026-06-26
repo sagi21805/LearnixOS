@@ -1,8 +1,8 @@
 #![no_std]
-#![feature(const_default)]
 #![feature(const_trait_impl)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
+#![allow(incomplete_features)]
 #![feature(explicit_tail_calls)]
 
 pub mod meta;
@@ -20,9 +20,7 @@ use common::{
     iter,
 };
 
-use crate::meta::{
-    BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head, Regular,
-};
+use crate::meta::{BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head};
 
 pub struct BuddyAllocator<Arena, Block>
 where
@@ -133,11 +131,10 @@ where
             }
         };
 
-        if unsafe { buddy.as_ref().meta::<Regular>().flags.is_allocated() }
-        {
+        if unsafe { buddy.as_ref().meta().flags.is_allocated() } {
             // Attach block, cannot be merged anymore.
             self.freelist[unsafe {
-                page.as_ref().meta::<Regular>().flags.get_order() as usize
+                page.as_ref().meta().flags.get_order() as usize
             }]
             .attach_block(page);
             return;

@@ -1,9 +1,9 @@
 use core::{mem::ManuallyDrop, ptr::NonNull};
 
-use buddy::meta::{BuddyBlock, BuddyMeta, BuddyMetaType};
+use buddy::meta::{BuddyBlock, BuddyMeta, BuddyMetaType, Regular};
 
 pub union PageMeta {
-    pub buddy: BuddyMetaType,
+    pub buddy: BuddyMeta<Regular>,
 }
 
 // #[derive(Debug)]
