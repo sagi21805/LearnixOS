@@ -18,10 +18,13 @@ mod private {
     pub trait Seald {}
 }
 
+/// The first node on the list.
 #[derive(Copy, Clone)]
 pub struct Head;
 #[derive(Copy, Clone)]
+/// A node on the list, that is not the first.
 pub struct Regular;
+/// A node that was on the list, but is no longer.
 #[derive(Copy, Clone)]
 pub struct Detached;
 
@@ -29,6 +32,13 @@ pub struct Detached;
 /// known to be a head or a regular node.
 #[derive(Copy, Clone)]
 pub struct Intermidiate;
+
+impl private::Seald for Intermidiate {}
+impl MetaState for Intermidiate {
+    type Next = Option<NonNull<BuddyMeta<Regular>>>;
+    type Prev = ();
+    type Flags = ();
+}
 
 pub trait MetaState: private::Seald {
     type Next: Sized;
@@ -55,19 +65,17 @@ impl MetaState for Detached {
     type Flags = BuddyFlags;
 }
 pub trait BuddyBlock: Sized {
-    fn meta<S: MetaState>(&self) -> &BuddyMeta<S>;
+    fn meta(&self) -> &BuddyMeta<Regular>;
 
-    fn meta_mut<S: MetaState>(&mut self) -> &mut BuddyMeta<S>;
+    fn meta_mut(&mut self) -> &mut BuddyMeta<Regular>;
 
-    fn from_meta<S: MetaState>(
-        meta: NonNull<BuddyMeta<S>>,
-    ) -> NonNull<Self>;
+    fn from_meta(meta: NonNull<BuddyMeta<Regular>>) -> NonNull<Self>;
 }
 
 #[bitfields]
 pub struct BuddyFlags {
     #[flag(flag_type = BuddyOrder)]
-    pub order: B8,
+    pub order: B7,
     pub allocated: B1,
 }
 
@@ -82,72 +90,37 @@ pub struct BuddyMeta<State: MetaState> {
 #[derive(Copy, Clone)]
 pub union BuddyMetaType {
     pub regular: BuddyMeta<Regular>,
+    pub intermediate: BuddyMeta<Intermidiate>,
     pub detached: BuddyMeta<Detached>,
     pub head: BuddyMeta<Head>,
 }
 
-impl From<BuddyMeta<Regular>> for BuddyMetaType {
-    fn from(value: BuddyMeta<Regular>) -> Self {
-        Self { regular: value }
+impl<S> BuddyMeta<S>
+where
+    S: MetaState<Next = Option<NonNull<BuddyMeta<Regular>>>>,
+{
+    #[inline]
+    pub fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
+        unsafe { p.as_mut().next = self.next };
+        if let Some(mut next) = self.next {
+            unsafe { next.as_mut().prev = p.cast() };
+        }
+        self.next = Some(p.cast())
     }
-}
-impl From<BuddyMetaType> for BuddyMeta<Regular> {
-    fn from(value: BuddyMetaType) -> Self {
-        unsafe { value.regular }
+
+    #[inline]
+    pub fn attach_block<Block: BuddyBlock>(&mut self, p: NonNull<Block>) {
+        self.attach(NonNull::from_ref(unsafe { p.as_ref().meta() }));
     }
 }
 
-impl From<BuddyMeta<Detached>> for BuddyMetaType {
-    fn from(value: BuddyMeta<Detached>) -> Self {
-        Self { detached: value }
-    }
-}
-impl From<BuddyMetaType> for BuddyMeta<Detached> {
-    fn from(value: BuddyMetaType) -> Self {
-        unsafe { value.detached }
-    }
-}
-
-impl From<BuddyMeta<Head>> for BuddyMetaType {
+impl From<BuddyMeta<Head>> for BuddyMeta<Intermidiate> {
     fn from(value: BuddyMeta<Head>) -> Self {
-        Self { head: value }
-    }
-}
-impl From<BuddyMetaType> for BuddyMeta<Head> {
-    fn from(value: BuddyMetaType) -> Self {
-        unsafe { value.head }
-    }
-}
-
-impl BuddyMeta<Regular> {
-    #[inline]
-    pub fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
-        unsafe { p.as_mut().next = self.next };
-        if let Some(mut next) = self.next {
-            unsafe { next.as_mut().prev = p.cast() };
+        Self {
+            next: value.next,
+            prev: (),
+            flags: (),
         }
-        self.next = Some(p.cast())
-    }
-
-    #[inline]
-    pub fn attach_block<Block: BuddyBlock>(&mut self, p: NonNull<Block>) {
-        self.attach(NonNull::from_ref(unsafe { p.as_ref().meta() }));
-    }
-}
-
-impl BuddyMeta<Head> {
-    #[inline]
-    pub fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
-        unsafe { p.as_mut().next = self.next };
-        if let Some(mut next) = self.next {
-            unsafe { next.as_mut().prev = p.cast() };
-        }
-        self.next = Some(p.cast())
-    }
-
-    #[inline]
-    pub fn attach_block<Block: BuddyBlock>(&mut self, p: NonNull<Block>) {
-        self.attach(NonNull::from_ref(unsafe { p.as_ref().meta() }));
     }
 }
 
