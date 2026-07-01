@@ -35,4 +35,12 @@ pub enum BuddyOrder {
 impl BuddyOrder {
     pub const MIN: BuddyOrder = BuddyOrder::Order0;
     pub const MAX: BuddyOrder = BuddyOrder::Order10;
+
+    pub fn next(self) -> Option<BuddyOrder> {
+        match self {
+            BuddyOrder::None => Some(BuddyOrder::None),
+            BuddyOrder::Order10 => None,
+            _ => BuddyOrder::try_from(self as u8 + 1).ok(),
+        }
+    }
 }
