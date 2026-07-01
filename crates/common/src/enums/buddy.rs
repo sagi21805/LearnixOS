@@ -2,7 +2,8 @@ use num_enum::{ConstFromPrimitive, ConstIntoPrimitive};
 use strum::VariantArray;
 use strum_macros::VariantArray;
 
-pub const BUDDY_MAX_ORDER: usize = BuddyOrder::VARIANTS.len();
+// -1 becuase removing the None variant
+pub const BUDDY_MAX_ORDER: usize = BuddyOrder::VARIANTS.len() - 1;
 
 #[repr(u8)]
 #[derive(
@@ -32,6 +33,6 @@ pub enum BuddyOrder {
 }
 
 impl BuddyOrder {
-    pub const MIN: BuddyOrder = *BuddyOrder::VARIANTS.first().unwrap();
-    pub const MAX: BuddyOrder = *BuddyOrder::VARIANTS.last().unwrap();
+    pub const MIN: BuddyOrder = BuddyOrder::Order0;
+    pub const MAX: BuddyOrder = BuddyOrder::Order10;
 }

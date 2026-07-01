@@ -1,15 +1,11 @@
 extern crate alloc;
 
-use core::{
-    ops::{Deref, DerefMut},
-    ptr::NonNull,
-};
+use core::ptr::NonNull;
 
 use common::{
-    address_types::{Address, PhysicalAddress, VirtualAddress},
-    constants::{PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_SIZE},
-    enums::{BUDDY_MAX_ORDER, BuddyOrder, MemoryRegionType},
-    late_init::LateInit,
+    address_types::{Address, PhysicalAddress},
+    constants::REGULAR_PAGE_SIZE,
+    enums::{BuddyOrder, MemoryRegionType},
 };
 
 use alloc::boxed::Box;
@@ -17,23 +13,16 @@ use alloc::boxed::Box;
 use x86::memory_map::MemoryMap;
 
 use buddy::meta::{
-    BuddyArena, BuddyBlock, BuddyError, BuddyFlags, BuddyMeta,
-    BuddyMetaType, Detached, Head, Regular,
+    BuddyArena, BuddyBlock, BuddyError, BuddyFlags, BuddyMeta, Head,
+    Regular,
 };
 
 use crate::{Page, meta::PageMeta};
 
-pub struct PageMap(Box<[Page]>);
-
-impl Deref for PageMap {
-    type Target = [Page];
-
-    fn deref(&self) -> &Self::Target { self.0.as_ref() }
+pub struct PageMap {
+    inner: Box<[Page]>,
 }
 
-impl DerefMut for PageMap {
-    fn deref_mut(&mut self) -> &mut Self::Target { self.0.as_mut() }
-}
 // pub fn init(&'static mut self, arena: NonNull<Arena>) {
 //     for block in unsafe { arena.as_ref().iter() } {
 //         let order =
@@ -48,13 +37,7 @@ impl DerefMut for PageMap {
 // }
 
 impl BuddyArena<Page> for PageMap {
-    /// Initializes all pages on the constant address
-    /// ([`PAGE_ALLOCATOR_OFFSET`]) and returns the end address.
-    fn init(
-        uninit: &'static mut LateInit<PageMap>,
-        mmap: MemoryMap,
-        heads: &[BuddyMeta<Head>],
-    ) {
+    fn new(mmap: &MemoryMap, heads: &[BuddyMeta<Head>]) -> Self {
         let regions = mmap.regions.lock();
 
         let last = regions
@@ -66,11 +49,10 @@ impl BuddyArena<Page> for PageMap {
         let total_pages = last_address / REGULAR_PAGE_SIZE;
 
         unsafe {
-            let page_map = Box::new_uninit_slice(total_pages);
+            let mut page_map =
+                Box::new_uninit_slice(total_pages).assume_init();
 
-            let init = uninit.init(PageMap(page_map.assume_init()));
-
-            let mut prev = &mut init.0[0];
+            let mut prev = &mut page_map[0];
 
             *prev = Page {
                 meta: PageMeta {
@@ -83,8 +65,8 @@ impl BuddyArena<Page> for PageMap {
                 },
             };
 
-            for i in 0..init.len().saturating_sub(1) {
-                let (left, right) = init.split_at_mut(i + 1);
+            for i in 0..page_map.len().saturating_sub(1) {
+                let (left, right) = page_map.split_at_mut(i + 1);
                 prev = left.last_mut().unwrap();
                 let next = right.first_mut().unwrap();
                 *next = Page {
@@ -99,28 +81,49 @@ impl BuddyArena<Page> for PageMap {
                 };
                 prev.meta.buddy.attach_block(NonNull::from_mut(next));
             }
+
+            PageMap { inner: page_map }
         }
     }
 
     fn address_of(&self, block: NonNull<Page>) -> PhysicalAddress {
         unsafe {
             let offset =
-                block.as_ptr().offset_from_unsigned(self.as_ptr());
+                block.as_ptr().offset_from_unsigned(self.inner.as_ptr());
 
             PhysicalAddress::new_unchecked(offset * REGULAR_PAGE_SIZE)
         }
     }
 
+    /// Because this is an array, the
     fn buddy_of(
         &self,
         block: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
-        todo!()
+        let order = unsafe { block.as_ref().meta.buddy.flags.get_order() };
+
+        let offset = unsafe {
+            block.as_ptr().offset_from_unsigned(self.inner.as_ptr())
+                / size_of::<Page>()
+        };
+        let section_offset = offset % (1 << BuddyOrder::MAX as usize);
+        let section_idx = offset / (1 << BuddyOrder::MAX as usize);
+
+        let buddy_idx = match order {
+            BuddyOrder::None => return Err(BuddyError::PageInLargerOrder),
+            BuddyOrder::MAX => return Err(BuddyError::MaxOrder),
+            _ => {
+                (section_offset ^ (1 << order as usize))
+                    + section_idx * (1 << BuddyOrder::MAX as usize)
+            }
+        };
+
+        Ok(NonNull::from_ref(&self.inner[buddy_idx]))
     }
 
     #[inline]
     fn iter(&self) -> impl ExactSizeIterator<Item = NonNull<Page>> {
-        self.as_ref().iter().map(NonNull::from_ref)
+        self.inner.as_ref().iter().map(NonNull::from_ref)
     }
 
     fn merge(

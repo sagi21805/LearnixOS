@@ -1,8 +1,6 @@
 use core::ptr::NonNull;
 
-use common::{
-    address_types::PhysicalAddress, enums::BuddyOrder, late_init::LateInit,
-};
+use common::{address_types::PhysicalAddress, enums::BuddyOrder};
 
 use macros::bitfields;
 use thiserror::Error;
@@ -12,6 +10,8 @@ use x86::memory_map::MemoryMap;
 pub enum BuddyError {
     #[error("Cannot find a buddy for a block that is MAX_ORDER")]
     MaxOrder,
+    #[error("Page is part of a larger order")]
+    PageInLargerOrder,
 }
 
 mod private {
@@ -84,7 +84,7 @@ pub struct BuddyFlags {
 pub struct BuddyMeta<State: MetaState> {
     pub(crate) next: State::Next,
     pub(crate) prev: State::Prev,
-    pub(crate) flags: State::Flags,
+    pub flags: State::Flags,
 }
 
 #[derive(Copy, Clone)]
@@ -171,12 +171,7 @@ impl BuddyMeta<Regular> {
 }
 
 pub trait BuddyArena<Block: BuddyBlock>: Sized {
-    // GENERATE ARUGMENTS
-    fn init(
-        uninit: &'static mut LateInit<Self>,
-        mmap: MemoryMap,
-        heads: &[BuddyMeta<Head>],
-    );
+    fn new(mmap: &MemoryMap, heads: &[BuddyMeta<Head>]) -> Self;
 
     /// Returns an iterator over all blocks in this arena.
     fn iter(&self) -> impl ExactSizeIterator<Item = NonNull<Block>>;
