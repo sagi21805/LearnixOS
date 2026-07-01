@@ -6,7 +6,7 @@ use core::{
 };
 
 use common::{
-    address_types::{PhysicalAddress, VirtualAddress},
+    address_types::{Address, PhysicalAddress, VirtualAddress},
     constants::{PAGE_ALLOCATOR_OFFSET, REGULAR_PAGE_SIZE},
     enums::{BUDDY_MAX_ORDER, BuddyOrder, MemoryRegionType},
     late_init::LateInit,
@@ -17,7 +17,8 @@ use alloc::boxed::Box;
 use x86::memory_map::MemoryMap;
 
 use buddy::meta::{
-    BuddyArena, BuddyError, BuddyMeta, BuddyMetaType, Detached,
+    BuddyArena, BuddyBlock, BuddyError, BuddyFlags, BuddyMeta,
+    BuddyMetaType, Detached, Head, Regular,
 };
 
 use crate::{Page, meta::PageMeta};
@@ -49,46 +50,65 @@ impl DerefMut for PageMap {
 impl BuddyArena<Page> for PageMap {
     /// Initializes all pages on the constant address
     /// ([`PAGE_ALLOCATOR_OFFSET`]) and returns the end address.
-    fn init(uninit: &'static mut LateInit<PageMap>, mmap: MemoryMap) {
-        let last = unsafe {
-            mmap.regions
-                .lock()
-                .as_ref()
-                .iter()
-                .filter(|r| r.region_type == MemoryRegionType::Usable)
-                .last()
-                .expect("Memory map is empty, no useble region found")
-        };
+    fn init(
+        uninit: &'static mut LateInit<PageMap>,
+        mmap: MemoryMap,
+        heads: &[BuddyMeta<Head>],
+    ) {
+        let regions = mmap.regions.lock();
+
+        let last = regions
+            .iter()
+            .filter(|r| r.region_type == MemoryRegionType::Usable)
+            .last()
+            .expect("Memory map is empty, no useble region found");
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
 
         unsafe {
-            let page_map = NonNull::slice_from_raw_parts(
-                NonNull::new_unchecked(PAGE_ALLOCATOR_OFFSET as *mut Page),
-                total_pages,
-            );
+            let page_map = Box::new_uninit_slice(total_pages);
 
-            let init = uninit.init(PageMap(page_map));
+            let init = uninit.init(PageMap(page_map.assume_init()));
 
-            for p in init.iter_mut() {
-                core::ptr::write_volatile(
-                    p as *mut Page,
-                    Page {
-                        meta: PageMeta {
-                            buddy: BuddyMetaType {
-                                detached: BuddyMeta::<Detached>::new(
-                                    BuddyOrder::Order0,
-                                ),
-                            },
-                        },
+            let mut prev = &mut init.0[0];
+
+            *prev = Page {
+                meta: PageMeta {
+                    buddy: BuddyMeta::<Regular>::new(
+                        NonNull::from_ref(&heads[0]),
+                        BuddyFlags::new()
+                            .order(BuddyOrder::Order0)
+                            .allocated(false),
+                    ),
+                },
+            };
+
+            for i in 0..init.len().saturating_sub(1) {
+                let (left, right) = init.split_at_mut(i + 1);
+                prev = left.last_mut().unwrap();
+                let next = right.first_mut().unwrap();
+                *next = Page {
+                    meta: PageMeta {
+                        buddy: BuddyMeta::<Regular>::new(
+                            NonNull::from_ref(prev.meta()),
+                            BuddyFlags::new()
+                                .order(BuddyOrder::Order0)
+                                .allocated(false),
+                        ),
                     },
-                )
+                };
+                prev.meta.buddy.attach_block(NonNull::from_mut(next));
             }
         }
     }
 
     fn address_of(&self, block: NonNull<Page>) -> PhysicalAddress {
-        todo!()
+        unsafe {
+            let offset =
+                block.as_ptr().offset_from_unsigned(self.as_ptr());
+
+            PhysicalAddress::new_unchecked(offset * REGULAR_PAGE_SIZE)
+        }
     }
 
     fn buddy_of(
@@ -107,14 +127,14 @@ impl BuddyArena<Page> for PageMap {
         &self,
         block: NonNull<Page>,
         buddy: NonNull<Page>,
-    ) -> NonNull<Page> {
+    ) -> Result<NonNull<Page>, BuddyError> {
         todo!()
     }
 
     fn split(
         &self,
         block: NonNull<Page>,
-    ) -> (NonNull<Page>, NonNull<Page>) {
+    ) -> Result<(NonNull<Page>, NonNull<Page>), BuddyError> {
         todo!()
     }
 }

@@ -2,11 +2,7 @@ use common::{
     constants::{INIT_AREA_SIZE_BYTES, KiB, MiB},
     enums::MemoryRegionType,
 };
-use core::{
-    fmt::{self, Display, Formatter},
-    ops::Deref,
-    ptr::NonNull,
-};
+use core::fmt::{self, Display, Formatter};
 use sync::mutex::SpinMutex;
 
 #[repr(C)]
@@ -43,6 +39,7 @@ pub enum MemoryMapError {
 }
 
 pub struct MemoryMap {
+    // TODO: CHANGE INTO AN RWLOCK.
     pub regions: SpinMutex<&'static mut [MemoryRegion]>,
     pub capacity: usize,
 }

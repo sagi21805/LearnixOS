@@ -111,7 +111,10 @@ where
             return page;
         }
 
-        let (lhs, rhs) = unsafe { self.arena.as_ref().split(page) };
+        let (lhs, rhs) = match unsafe { self.arena.as_ref().split(page) } {
+            Ok((lhs, rhs)) => (lhs, rhs),
+            Err(e) => todo!("Handle Error"),
+        };
 
         let next_order = current_order - 1;
 
@@ -149,7 +152,11 @@ where
             }
         }
 
-        let merged = unsafe { self.arena.as_mut().merge(left, right) };
+        let merged =
+            match unsafe { self.arena.as_mut().merge(left, right) } {
+                Ok(merged) => merged,
+                Err(e) => todo!("Handle Error"),
+            };
 
         become BuddyAllocator::merge_recursive(self, merged);
     }
