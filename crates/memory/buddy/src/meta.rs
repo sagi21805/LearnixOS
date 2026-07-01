@@ -145,8 +145,10 @@ impl BuddyMeta<Detached> {
 }
 
 impl BuddyMeta<Regular> {
-    pub fn new(
-        prev: NonNull<BuddyMeta<Regular>>,
+    pub fn new<
+        S: MetaState<Next = Option<NonNull<BuddyMeta<Regular>>>>,
+    >(
+        prev: NonNull<BuddyMeta<S>>,
         flags: BuddyFlags,
     ) -> BuddyMeta<Regular> {
         BuddyMeta {
@@ -170,25 +172,38 @@ impl BuddyMeta<Regular> {
 
 pub trait BuddyArena<Block: BuddyBlock>: Sized {
     // GENERATE ARUGMENTS
-    fn init(uninit: &'static mut LateInit<Self>, mmap: MemoryMap);
+    fn init(
+        uninit: &'static mut LateInit<Self>,
+        mmap: MemoryMap,
+        heads: &[BuddyMeta<Head>],
+    );
 
+    /// Returns an iterator over all blocks in this arena.
     fn iter(&self) -> impl ExactSizeIterator<Item = NonNull<Block>>;
 
+    /// Returns the buddy of a block.
     fn buddy_of(
         &self,
         block: NonNull<Block>,
     ) -> Result<NonNull<Block>, BuddyError>;
 
+    /// Returns the physical allocated address by this block.
+    ///
+    /// The first block of Order1 for example allocates 0..4096
     fn address_of(&self, block: NonNull<Block>) -> PhysicalAddress;
 
+    /// Split a block into two smaller blocks of previous order.
     fn split(
         &self,
         block: NonNull<Block>,
-    ) -> (NonNull<Block>, NonNull<Block>);
+    ) -> Result<(NonNull<Block>, NonNull<Block>), BuddyError>;
 
+    /// Merge two blocks with the same order to a next order block.
+    ///
+    /// The two blocks must be buddies, have the same order, and be free.
     fn merge(
         &self,
         block: NonNull<Block>,
         buddy: NonNull<Block>,
-    ) -> NonNull<Block>;
+    ) -> Result<NonNull<Block>, BuddyError>;
 }
