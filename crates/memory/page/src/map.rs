@@ -131,7 +131,52 @@ impl BuddyArena<Page> for PageMap {
         block: NonNull<Page>,
         buddy: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
-        todo!()
+        debug_assert_eq!(self.buddy_of(block)?, buddy);
+        debug_assert!(unsafe {
+            block.as_ref().meta.buddy.flags.get_order()
+                == buddy.as_ref().meta.buddy.flags.get_order()
+        });
+        debug_assert!(
+            unsafe { block.as_ref().meta.buddy.flags.get_order() }
+                != BuddyOrder::None
+        );
+        debug_assert!(unsafe {
+            !block.as_ref().meta.buddy.flags.is_allocated()
+        });
+        debug_assert!(unsafe {
+            !buddy.as_ref().meta.buddy.flags.is_allocated()
+        });
+
+        let next_order = unsafe {
+            block
+                .as_ref()
+                .meta
+                .buddy
+                .flags
+                .get_order()
+                .next()
+                .ok_or(BuddyError::MaxOrder)?
+        };
+
+        let mut detached_block = self.detach_mid(block);
+        let mut detached_buddy = self.detach_mid(buddy);
+        unsafe {
+            detached_block
+                .as_mut()
+                .meta
+                .buddy
+                .flags
+                .set_order(next_order);
+
+            detached_buddy
+                .as_mut()
+                .meta
+                .buddy
+                .flags
+                .set_order(next_order);
+        }
+
+        Ok(detached_block.min(detached_buddy))
     }
 
     fn split(
@@ -140,6 +185,6 @@ impl BuddyArena<Page> for PageMap {
     ) -> Result<(NonNull<Page>, NonNull<Page>), BuddyError> {
         todo!()
     }
-}
 
-unsafe impl Sync for PageMap {}
+    fn detach_mid(&self, block: NonNull<Page>) -> NonNull<Page> { todo!() }
+}
