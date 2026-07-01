@@ -113,7 +113,7 @@ where
 
         let (lhs, rhs) = match unsafe { self.arena.as_ref().split(page) } {
             Ok((lhs, rhs)) => (lhs, rhs),
-            Err(e) => todo!("Handle Error"),
+            Err(_e) => todo!("Handle Error"),
         };
 
         let next_order = current_order - 1;
@@ -132,6 +132,9 @@ where
                 self.freelist[BUDDY_MAX_ORDER - 1].attach_block(page);
                 return;
             }
+            Err(BuddyError::PageInLargerOrder) => unreachable!(
+                "Problem in algorithm, the error should not happen"
+            ),
         };
 
         if unsafe { buddy.as_ref().meta().flags.is_allocated() } {
@@ -155,7 +158,7 @@ where
         let merged =
             match unsafe { self.arena.as_mut().merge(left, right) } {
                 Ok(merged) => merged,
-                Err(e) => todo!("Handle Error"),
+                Err(_e) => todo!("Handle Error"),
             };
 
         become BuddyAllocator::merge_recursive(self, merged);
