@@ -201,4 +201,8 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
         block: NonNull<Block>,
         buddy: NonNull<Block>,
     ) -> Result<NonNull<Block>, BuddyError>;
+
+    /// Detach a block from the middle of the arena, returning the detached
+    /// block.
+    fn detach_mid(&self, block: NonNull<Block>) -> NonNull<Block>;
 }
