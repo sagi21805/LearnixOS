@@ -8,10 +8,12 @@ use x86::memory_map::MemoryMap;
 
 #[derive(Debug, Error)]
 pub enum BuddyError {
-    #[error("Cannot find a buddy for a block that is MAX_ORDER")]
+    #[error("Cannot find a buddy for a block that is BuddyOrder::MAX")]
     MaxOrder,
     #[error("Page is part of a larger order")]
     PageInLargerOrder,
+    #[error("Cannot split a block that is BuddyOrder::MIN")]
+    Unsplitable,
 }
 
 mod private {
@@ -82,8 +84,8 @@ pub struct BuddyFlags {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BuddyMeta<State: MetaState> {
-    pub(crate) next: State::Next,
-    pub(crate) prev: State::Prev,
+    pub next: State::Next,
+    pub prev: State::Prev,
     pub flags: State::Flags,
 }
 

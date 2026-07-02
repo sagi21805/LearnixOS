@@ -132,7 +132,9 @@ where
                 self.freelist[BUDDY_MAX_ORDER - 1].attach_block(page);
                 return;
             }
-            Err(BuddyError::PageInLargerOrder) => unreachable!(
+            Err(
+                BuddyError::PageInLargerOrder | BuddyError::Unsplitable,
+            ) => unreachable!(
                 "Problem in algorithm, the error should not happen"
             ),
         };
