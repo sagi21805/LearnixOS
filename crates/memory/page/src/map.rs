@@ -23,19 +23,6 @@ pub struct PageMap {
     inner: Box<[Page]>,
 }
 
-// pub fn init(&'static mut self, arena: NonNull<Arena>) {
-//     for block in unsafe { arena.as_ref().iter() } {
-//         let order =
-//             match unsafe { block.as_ref().meta().flags.get_order() } {
-//                 BuddyOrder::None => continue,
-//                 o => o as usize,
-//             };
-
-//         self.freelist[order]
-//             .attach(NonNull::from_ref(unsafe { block.as_ref().meta()
-// }));     }
-// }
-
 impl BuddyArena<Page> for PageMap {
     fn new(mmap: &MemoryMap, heads: &[BuddyMeta<Head>]) -> Self {
         let regions = mmap.regions.lock();
@@ -183,8 +170,45 @@ impl BuddyArena<Page> for PageMap {
         &self,
         block: NonNull<Page>,
     ) -> Result<(NonNull<Page>, NonNull<Page>), BuddyError> {
-        todo!()
+        let mut detached = self.detach_mid(block);
+
+        let mut buddy = self.buddy_of(detached)?;
+
+        let prev_order = unsafe {
+            detached
+                .as_ref()
+                .meta
+                .buddy
+                .flags
+                .get_order()
+                .prev()
+                .ok_or(BuddyError::Unsplitable)?
+        };
+
+        unsafe {
+            detached.as_mut().meta.buddy.flags.set_order(prev_order);
+
+            buddy.as_mut().meta.buddy.flags.set_order(prev_order);
+        }
+
+        Ok((detached, buddy))
     }
 
-    fn detach_mid(&self, block: NonNull<Page>) -> NonNull<Page> { todo!() }
+    /// Detaches the given block from the buddy chain, returning the block
+    /// itself.
+    fn detach_mid(&self, block: NonNull<Page>) -> NonNull<Page> {
+        unsafe {
+            let mut prev = block.as_ref().meta.buddy.prev;
+
+            let next = block.as_ref().meta.buddy.next;
+
+            prev.as_mut().next = next;
+
+            if let Some(mut next) = next {
+                next.as_mut().prev = prev;
+            }
+        }
+
+        block
+    }
 }

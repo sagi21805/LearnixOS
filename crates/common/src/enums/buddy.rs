@@ -38,9 +38,17 @@ impl BuddyOrder {
 
     pub fn next(self) -> Option<BuddyOrder> {
         match self {
-            BuddyOrder::None => Some(BuddyOrder::None),
-            BuddyOrder::Order10 => None,
+            BuddyOrder::None => unreachable!(),
+            BuddyOrder::MAX => None,
             _ => BuddyOrder::try_from(self as u8 + 1).ok(),
+        }
+    }
+
+    pub fn prev(self) -> Option<BuddyOrder> {
+        match self {
+            BuddyOrder::None => unreachable!(),
+            BuddyOrder::MIN => None,
+            _ => BuddyOrder::try_from(self as u8 - 1).ok(),
         }
     }
 }
