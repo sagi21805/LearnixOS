@@ -21,17 +21,17 @@ pub struct AdvancedWriter<const W: usize, const H: usize> {
     pub line_offset: usize,
     pub buffer: Box<[ScreenChar]>,
     pub display_line: usize,
-    pub row_table: Box<[u16]>,
+    pub row_table: Box<[usize]>,
     pub screen: &'static SpinMutex<Screen>,
 }
 
 impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
     fn default() -> Self {
         const BUFFER_SIZE: usize =
-            (2 * REGULAR_PAGE_SIZE) / size_of::<ScreenChar>();
+            (10 * REGULAR_PAGE_SIZE) / size_of::<ScreenChar>();
 
         const ROW_TABLE_SIZE: usize =
-            (REGULAR_PAGE_SIZE) / size_of::<u16>();
+            (4 * REGULAR_PAGE_SIZE) / size_of::<usize>();
 
         Self {
             color: ColorCode::default(),
@@ -45,7 +45,7 @@ impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
                     .assume_init()
             },
             row_table: unsafe {
-                Box::<[u16; ROW_TABLE_SIZE]>::new_zeroed().assume_init()
+                Box::<[usize; ROW_TABLE_SIZE]>::new_zeroed().assume_init()
             },
             screen: &SCREEN,
         }
@@ -70,6 +70,7 @@ impl<const W: usize, const H: usize> GenericWriter
         self.line += 1;
         self.row_table[self.line] = self.row_table[self.line - 1];
         self.line_offset = 0;
+        self.scroll_down(1);
     }
 
     fn screen_height(&self) -> usize { H }
