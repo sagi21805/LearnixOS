@@ -1,4 +1,5 @@
 #![no_std]
+#![feature(const_trait_impl)]
 
 // pub mod arena;
 pub mod map;
@@ -13,7 +14,8 @@ pub struct Page {
     pub meta: PageMeta,
 }
 
-impl BuddyBlock for Page {
+#[rustfmt::skip]
+impl const BuddyBlock for Page {
     fn from_meta(meta: NonNull<BuddyMeta<Regular>>) -> NonNull<Self> {
         let offset = core::mem::offset_of!(Page, meta.buddy);
         unsafe {
