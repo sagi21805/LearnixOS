@@ -3,7 +3,7 @@ use common::{
     enums::MemoryRegionType,
 };
 use core::fmt::{self, Display, Formatter};
-use sync::mutex::SpinMutex;
+use sync::rwlock::{RwLock, SpinRwLock};
 
 #[repr(C)]
 #[derive(Clone, Debug, Copy)]
@@ -50,8 +50,7 @@ pub enum MemoryMapError {
 }
 
 pub struct MemoryMap {
-    // TODO: CHANGE INTO AN RWLOCK.
-    pub regions: SpinMutex<&'static mut [MemoryRegion]>,
+    pub regions: SpinRwLock<&'static mut [MemoryRegion]>,
     pub capacity: usize,
 }
 
@@ -60,7 +59,7 @@ impl Display for MemoryMap {
         let mut usable = 0u64;
         let mut reserved = 0u64;
 
-        let regions = self.regions.lock();
+        let regions = self.regions.read();
         for entry in regions.iter() {
             let size_mib = entry.length / MiB as u64;
             let size_kib = (entry.length % MiB as u64) / KiB as u64;
@@ -164,7 +163,7 @@ impl MemoryMap {
         };
 
         Ok(MemoryMap {
-            regions: SpinMutex::new(modified),
+            regions: RwLock::new(modified),
             capacity,
         })
     }
