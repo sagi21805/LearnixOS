@@ -6,9 +6,10 @@
 #![feature(const_trait_impl)]
 extern crate alloc;
 
-use core::{cell::OnceCell, hint::black_box, panic::PanicInfo};
+use core::panic::PanicInfo;
 
 use alloc::boxed::Box;
+use buddy::BuddyAllocator;
 use bump::BumpAllocator;
 use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
@@ -20,6 +21,7 @@ use common::{
     late_init::LateInit,
 };
 use keyboard::ps2_keyboard::Keyboard;
+use page::{Page, map::PageMap};
 use vga_display::{
     SCREEN,
     advanced_writer::AdvancedWriter,
@@ -100,6 +102,7 @@ pub unsafe extern "C" fn _start() -> ! {
 
     unsafe {
         MMAP.init(MemoryMap::parse_map(raw, buf).unwrap());
+
         BUMP_ALLOCATOR.init(BumpAllocator::new(MMAP.assume_init_ref()));
 
         #[allow(static_mut_refs)]
@@ -159,6 +162,10 @@ pub unsafe extern "C" fn _start() -> ! {
         x.display_line
     );
 
+    println!("{}", MMAP.assume_init_ref());
+
+    let buddy =
+        BuddyAllocator::<PageMap, Page>::new(MMAP.assume_init_ref());
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
     // panic!("")
