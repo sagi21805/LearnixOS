@@ -121,6 +121,7 @@ impl<T, R: RelaxStrategy> RwLock<T, R> {
     pub fn read(&self) -> RwLockReadGuard<'_, T, R> {
         let mut tick = 0;
         loop {
+            core::hint::spin_loop();
             match self.try_read() {
                 Some(guard) => return guard,
                 None => R::relax(tick),
@@ -173,9 +174,7 @@ unsafe impl<T: Sized, R: RelaxStrategy> Send for RwLockReadGuard<'_, T, R> where
 impl<T, R: RelaxStrategy> Deref for RwLockReadGuard<'_, T, R> {
     type Target = T;
 
-    fn deref(&self) -> &T {
-        unsafe { &*self.inner.data.get() }
-    }
+    fn deref(&self) -> &T { unsafe { &*self.inner.data.get() } }
 }
 
 impl<T, R: RelaxStrategy> Drop for RwLockReadGuard<'_, T, R> {
@@ -204,9 +203,7 @@ unsafe impl<T: Sized, R: RelaxStrategy> Send for RwLockWriteGuard<'_, T, R> wher
 impl<T, R: RelaxStrategy> Deref for RwLockWriteGuard<'_, T, R> {
     type Target = T;
 
-    fn deref(&self) -> &T {
-        unsafe { &*self.inner.data.get() }
-    }
+    fn deref(&self) -> &T { unsafe { &*self.inner.data.get() } }
 }
 
 impl<T, R: RelaxStrategy> DerefMut for RwLockWriteGuard<'_, T, R> {
