@@ -66,7 +66,8 @@ impl MetaState for Detached {
     type Prev = Option<NonNull<()>>;
     type Flags = BuddyFlags;
 }
-pub trait BuddyBlock: Sized {
+
+pub const trait BuddyBlock: Sized {
     fn meta(&self) -> &BuddyMeta<Regular>;
 
     fn meta_mut(&mut self) -> &mut BuddyMeta<Regular>;
@@ -102,7 +103,7 @@ where
     S: MetaState<Next = Option<NonNull<BuddyMeta<Regular>>>>,
 {
     #[inline]
-    pub fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
+    pub const fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
         unsafe { p.as_mut().next = self.next };
         if let Some(mut next) = self.next {
             unsafe { next.as_mut().prev = p.cast() };
@@ -111,7 +112,10 @@ where
     }
 
     #[inline]
-    pub fn attach_block<Block: BuddyBlock>(&mut self, p: NonNull<Block>) {
+    pub const fn attach_block<Block: const BuddyBlock>(
+        &mut self,
+        p: NonNull<Block>,
+    ) {
         self.attach(NonNull::from_ref(unsafe { p.as_ref().meta() }));
     }
 }
