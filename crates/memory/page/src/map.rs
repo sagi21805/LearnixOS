@@ -27,14 +27,16 @@ pub struct PageMap {
 }
 
 impl BuddyArena<Page> for PageMap {
+    // TODO: head at 0 was never connected to the start of the map.
     fn new(mmap: &MemoryMap, heads: &[BuddyMeta<Head>]) -> Self {
-        let regions = mmap.regions.lock();
+        let regions = mmap.regions.read();
 
         let last = regions
             .iter()
             .filter(|r| r.region_type == MemoryRegionType::Usable)
             .last()
             .expect("Memory map is empty, no useble region found");
+
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
 
