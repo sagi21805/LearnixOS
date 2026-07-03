@@ -10,6 +10,7 @@ use core::ptr::NonNull;
 use crate::meta::PageMeta;
 use buddy::meta::{BuddyBlock, BuddyMeta, Regular};
 
+#[derive(Debug)]
 pub struct Page {
     pub meta: PageMeta,
 }
