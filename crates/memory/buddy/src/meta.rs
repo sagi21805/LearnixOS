@@ -1,4 +1,4 @@
-use core::ptr::NonNull;
+use core::{fmt::Debug, ptr::NonNull};
 
 use common::{address_types::PhysicalAddress, enums::BuddyOrder};
 
@@ -176,6 +176,19 @@ impl BuddyMeta<Regular> {
     }
 }
 
+impl<S> ::core::fmt::Debug for BuddyMeta<S>
+where
+    S: MetaState<Next: Debug, Prev: Debug, Flags: Debug>,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BuddyMeta")
+            .field("next", &self.next)
+            .field("prev", &self.prev)
+            .field("flags", &self.flags)
+            .finish()
+    }
+}
+
 pub trait BuddyArena<Block: BuddyBlock>: Sized {
     fn new(mmap: &MemoryMap, heads: &[BuddyMeta<Head>]) -> Self;
 
@@ -211,4 +224,7 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
     /// Detach a block from the middle of the arena, returning the detached
     /// block.
     fn detach_mid(&self, block: NonNull<Block>) -> NonNull<Block>;
+
+    /// Returns the block nth block of the arena, if one exists.
+    fn at(&self, n: usize) -> Option<NonNull<Block>>;
 }

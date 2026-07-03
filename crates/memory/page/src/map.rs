@@ -1,3 +1,6 @@
+#[cfg(feature = "host")]
+extern crate std;
+
 extern crate alloc;
 
 use core::ptr::NonNull;
@@ -118,6 +121,18 @@ impl BuddyArena<Page> for PageMap {
         block: NonNull<Page>,
         buddy: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
+        #[cfg(feature = "host")]
+        {
+            use std::println;
+            unsafe {
+                println!(
+                    "Merging: {:#?} with {:#?}",
+                    block.as_ref(),
+                    buddy.as_ref()
+                );
+            }
+        }
+
         debug_assert_eq!(self.buddy_of(block)?, buddy);
         debug_assert!(unsafe {
             block.as_ref().meta.buddy.flags.get_order()
@@ -210,5 +225,13 @@ impl BuddyArena<Page> for PageMap {
         }
 
         block
+    }
+
+    /// Returns the page at the given index, if one exists.
+    fn at(&self, n: usize) -> Option<NonNull<Page>> {
+        if n >= self.inner.len() {
+            return None;
+        }
+        Some(unsafe { NonNull::from_ref(self.inner.get_unchecked(n)) })
     }
 }

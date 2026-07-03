@@ -5,6 +5,7 @@
 
 use macros::bitfields;
 
+mod buddy;
 mod test;
 use test::{Nested, Test};
 
