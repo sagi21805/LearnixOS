@@ -5,6 +5,9 @@
 #![allow(incomplete_features)]
 #![feature(explicit_tail_calls)]
 
+#[cfg(feature = "host")]
+extern crate std;
+
 pub mod meta;
 
 use core::{
@@ -12,11 +15,11 @@ use core::{
     ptr::{self, NonNull},
 };
 
-use x86::structures::paging::PageTable;
+use x86::{memory_map::MemoryMap, structures::paging::PageTable};
 
 use common::{
     address_types::{Address, PhysicalAddress},
-    enums::{BUDDY_MAX_ORDER, BuddyOrder},
+    enums::BuddyOrder,
     iter,
 };
 
@@ -27,28 +30,37 @@ where
     Block: BuddyBlock,
     Arena: BuddyArena<Block>,
 {
-    arena: NonNull<Arena>,
-    freelist: [BuddyMeta<Head>; BUDDY_MAX_ORDER],
+    arena: Arena,
+    freelist: [BuddyMeta<Head>; BuddyOrder::MAX as usize + 1],
     _block: PhantomData<Block>,
 }
 
 impl<Arena, Block> BuddyAllocator<Arena, Block>
 where
     Arena: BuddyArena<Block>,
-    Block: BuddyBlock,
+    Block: const BuddyBlock,
 {
-    pub fn init(uninit: &'static mut Self, arena: NonNull<Arena>) {
-        let mut freelist = [BuddyMeta::<Head>::default(); BUDDY_MAX_ORDER];
+    pub fn new(memory_map: &MemoryMap) -> BuddyAllocator<Arena, Block> {
+        let freelist =
+            [BuddyMeta::<Head>::default(); BuddyOrder::MAX as usize + 1];
 
-        for (block, order) in iter::power_chunk_firsts(
-            unsafe { arena.as_ref().iter() },
-            BUDDY_MAX_ORDER,
-        ) {
-            freelist[order].attach_block(block);
+        let arena = Arena::new(memory_map, &freelist);
+
+        let mut allocator = BuddyAllocator {
+            arena,
+            freelist,
+            _block: PhantomData,
+        };
+
+        let len = allocator.arena.iter().len();
+
+        for (n, _power) in
+            iter::power_chunk_firsts(0..len, BuddyOrder::MAX as usize)
+        {
+            allocator.merge_recursive(allocator.arena.at(n).unwrap());
         }
 
-        uninit.freelist = freelist;
-        uninit.arena = arena;
+        allocator
     }
 
     pub fn alloc_pages(&mut self, num_pages: usize) -> PhysicalAddress {
@@ -71,7 +83,7 @@ where
             })
         });
 
-        unsafe { self.arena.as_ref().address_of(Block::from_meta(page)) }
+        self.arena.address_of(Block::from_meta(page))
     }
 
     // pub fn free_pages(&self, address: usize) {
@@ -85,9 +97,9 @@ where
         wanted_order: usize,
     ) -> Option<NonNull<Block>> {
         let (closet_order, initial_page) =
-            ((wanted_order + 1)..BUDDY_MAX_ORDER).find_map(|i| {
-                Some((i, Block::from_meta(self.freelist[i].next?)))
-            })?;
+            ((wanted_order + 1)..=BuddyOrder::MAX as usize).find_map(
+                |i| Some((i, Block::from_meta(self.freelist[i].next?))),
+            )?;
 
         Some(self.split_recursive(
             initial_page,
@@ -111,7 +123,7 @@ where
             return page;
         }
 
-        let (lhs, rhs) = match unsafe { self.arena.as_ref().split(page) } {
+        let (lhs, rhs) = match self.arena.split(page) {
             Ok((lhs, rhs)) => (lhs, rhs),
             Err(_e) => todo!("Handle Error"),
         };
@@ -126,10 +138,10 @@ where
     /// This function will try to merge a page with it's buddy, until it
     /// cannot be merged anymore.
     pub fn merge_recursive(&mut self, page: NonNull<Block>) {
-        let buddy = match unsafe { self.arena.as_ref().buddy_of(page) } {
+        let buddy = match self.arena.buddy_of(page) {
             Ok(buddy) => buddy,
             Err(BuddyError::MaxOrder) => {
-                self.freelist[BUDDY_MAX_ORDER - 1].attach_block(page);
+                self.freelist[BuddyOrder::MAX as usize].attach_block(page);
                 return;
             }
             Err(
@@ -149,19 +161,14 @@ where
         }
 
         let (mut left, mut right) = (page, buddy);
-        unsafe {
-            if self.arena.as_ref().address_of(left)
-                > self.arena.as_ref().address_of(right)
-            {
-                core::mem::swap(&mut left, &mut right);
-            }
+        if self.arena.address_of(left) > self.arena.address_of(right) {
+            core::mem::swap(&mut left, &mut right);
         }
 
-        let merged =
-            match unsafe { self.arena.as_mut().merge(left, right) } {
-                Ok(merged) => merged,
-                Err(_e) => todo!("Handle Error"),
-            };
+        let merged = match self.arena.merge(left, right) {
+            Ok(merged) => merged,
+            Err(_e) => todo!("Handle Error"),
+        };
 
         become BuddyAllocator::merge_recursive(self, merged);
     }
