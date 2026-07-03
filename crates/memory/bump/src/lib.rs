@@ -11,7 +11,7 @@ use common::{
     enums::MemoryRegionType,
 };
 
-use x86::{instructions::interrupts::hlt, memory_map::MemoryMap};
+use x86::memory_map::MemoryMap;
 
 pub struct BumpAllocator<'a> {
     curser: AtomicUsize,
@@ -36,7 +36,7 @@ unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
             .align_up(layout.alignment())
         };
 
-        let regions = self.mmap.regions.lock();
+        let regions = self.mmap.regions.read();
 
         let memmap_block = regions
             .iter()
@@ -54,7 +54,8 @@ unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
 
                 // Check that the allocation fits the block.
                 aligned_cursor.as_usize() >= b.base_address as usize
-                    && (b.base_address + b.length) as usize - layout.size()
+                    && ((b.base_address + b.length) as usize)
+                        .saturating_sub(layout.size())
                         >= aligned_cursor.as_usize()
             });
 
