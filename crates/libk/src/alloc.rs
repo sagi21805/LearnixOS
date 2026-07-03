@@ -1,24 +1,18 @@
 extern crate alloc;
 
-use core::{alloc::Layout, cell::Cell, ptr::NonNull};
+use core::{alloc::Layout, ptr::NonNull};
 
 use alloc::alloc::{AllocError, GlobalAlloc, alloc};
 
-use bump::BumpAllocator;
 use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
     enums::{PageSize, PageTableLevel},
     error::{EntryError, MappingError},
     late_init::LateInit,
 };
-use x86::{
-    instructions::interrupts::hlt,
-    structures::paging::{PageEntryFlags, PageTable, PageTableEntry},
-};
+use x86::structures::paging::{PageEntryFlags, PageTable, PageTableEntry};
 
 use crate::println;
-
-pub static BUMP_ALLOCATOR: LateInit<BumpAllocator> = LateInit::uninit();
 
 pub type Allocator = dyn GlobalAlloc + Send + Sync;
 
