@@ -1,9 +1,5 @@
 use num_enum::{ConstFromPrimitive, ConstIntoPrimitive};
-use strum::VariantArray;
 use strum_macros::VariantArray;
-
-// -1 becuase removing the None variant
-pub const BUDDY_MAX_ORDER: usize = BuddyOrder::VARIANTS.len() - 1;
 
 #[repr(u8)]
 #[derive(
