@@ -38,7 +38,7 @@ use x86::{
 };
 
 use libk::{
-    alloc::{BUMP_ALLOCATOR, GlobalAllocator, VirtualAddressExt},
+    alloc::{GlobalAllocator, VirtualAddressExt},
     print, println,
 };
 
@@ -73,6 +73,8 @@ static ADVANCED_WRITER: SpinMutex<LateInit<AdvancedWriter<80, 25>>> =
 #[unsafe(no_mangle)]
 static WRITER: SpinMutex<Writer<'static>> =
     SpinMutex::new(Writer::new(unsafe { SIMPLE_WRITER.leak() }));
+
+pub static BUMP_ALLOCATOR: LateInit<BumpAllocator> = LateInit::uninit();
 
 #[global_allocator]
 static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
@@ -134,10 +136,7 @@ pub unsafe extern "C" fn _start() -> ! {
         let buffer = Box::new([0u8; 4096]);
         KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
 
-        println!("BUFFER: {:?}", KEYBOARD_BUFFER.buffer());
-
         KEYBOARD.init(Keyboard::new(&KEYBOARD_BUFFER));
-        println!("BUFFER: {:?}", KEYBOARD.consumer().inner().buffer());
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
@@ -152,20 +151,11 @@ pub unsafe extern "C" fn _start() -> ! {
     unsafe {
         hlt();
     }
-    println!(
-        "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}, Display \
-         Line: {}",
-        x.cursor,
-        x.line,
-        x.buffer.as_ptr(),
-        x.row_table.as_ptr(),
-        x.display_line
-    );
 
     println!("{}", MMAP.assume_init_ref());
 
-    let buddy =
-        BuddyAllocator::<PageMap, Page>::new(MMAP.assume_init_ref());
+    // let buddy =
+    //     BuddyAllocator::<PageMap, Page>::new(MMAP.assume_init_ref());
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
     // panic!("")
@@ -258,18 +248,26 @@ pub unsafe extern "C" fn _start() -> ! {
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {
     unsafe {
-        interrupts::disable();
+        SCREEN.force_unlock();
+        SIMPLE_WRITER.force_unlock();
+        ADVANCED_WRITER.force_unlock();
+        WRITER.force_unlock();
+    };
+    eprintln!("{}", _info ; color =
+    ColorCode::new().foreground(Color::Yellow).
+    background(Color::Black));
+
+    loop {
+        let input = KEYBOARD.read_char();
+        match input {
+            Err(key) => match key {
+                PS2ScanCode::UpArrow => WRITER.lock().inner.scroll_up(1),
+                PS2ScanCode::DownArrow => {
+                    WRITER.lock().inner.scroll_down(1)
+                }
+                _ => {}
+            },
+            Ok(_) => {}
+        }
     }
-    SCREEN.force_unlock();
-    SCREEN.lock().reset_cursor();
-    SIMPLE_WRITER.force_unlock();
-    // eprintln!("{}", _info ; color =
-    // ColorCode::new().foreground(Color::Yellow).
-    // background(Color::Black));
-
-    SIMPLE_WRITER
-        .lock()
-        .panic_message(format_args!("{}", _info));
-
-    loop {}
 }
