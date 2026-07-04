@@ -144,6 +144,13 @@ where
                 self.freelist[BuddyOrder::MAX as usize].attach_block(page);
                 return;
             }
+            Err(BuddyError::BuddyOutOfRange) => {
+                self.freelist[unsafe {
+                    page.as_ref().meta().flags.get_order() as usize
+                }]
+                .attach_block(page);
+                return;
+            }
             Err(
                 BuddyError::PageInLargerOrder | BuddyError::Unsplitable,
             ) => unreachable!(
@@ -160,14 +167,9 @@ where
             return;
         }
 
-        let (mut left, mut right) = (page, buddy);
-        if self.arena.address_of(left) > self.arena.address_of(right) {
-            core::mem::swap(&mut left, &mut right);
-        }
-
-        let merged = match self.arena.merge(left, right) {
+        let merged = match self.arena.merge(page, buddy) {
             Ok(merged) => merged,
-            Err(_e) => todo!("Handle Error"),
+            Err(_e) => todo!("Handle Error: {:?}", _e),
         };
 
         become BuddyAllocator::merge_recursive(self, merged);

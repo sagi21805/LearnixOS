@@ -1,8 +1,7 @@
 #![no_std]
 #![feature(const_trait_impl)]
 
-// pub mod arena;
-pub mod map;
+pub mod arena;
 pub mod meta;
 
 use core::ptr::NonNull;

@@ -39,7 +39,7 @@ impl BuddyArena<Page> for PageMap {
 
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
-
+        libk::println!("Total pages: {}", total_pages);
         unsafe {
             let mut page_map =
                 Box::new_uninit_slice(total_pages).assume_init();
@@ -96,7 +96,6 @@ impl BuddyArena<Page> for PageMap {
 
         let offset = unsafe {
             block.as_ptr().offset_from_unsigned(self.inner.as_ptr())
-                / size_of::<Page>()
         };
         let section_offset = offset % (1 << BuddyOrder::MAX as usize);
         let section_idx = offset / (1 << BuddyOrder::MAX as usize);
@@ -110,7 +109,7 @@ impl BuddyArena<Page> for PageMap {
             }
         };
 
-        Ok(NonNull::from_ref(&self.inner[buddy_idx]))
+        Ok(self.at(buddy_idx).ok_or(BuddyError::BuddyOutOfRange)?)
     }
 
     #[inline]
@@ -123,18 +122,6 @@ impl BuddyArena<Page> for PageMap {
         block: NonNull<Page>,
         buddy: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
-        #[cfg(feature = "host")]
-        {
-            use std::println;
-            unsafe {
-                println!(
-                    "Merging: {:#?} with {:#?}",
-                    block.as_ref(),
-                    buddy.as_ref()
-                );
-            }
-        }
-
         debug_assert_eq!(self.buddy_of(block)?, buddy);
         debug_assert!(unsafe {
             block.as_ref().meta.buddy.flags.get_order()
