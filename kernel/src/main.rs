@@ -21,7 +21,7 @@ use common::{
     late_init::LateInit,
 };
 use keyboard::ps2_keyboard::Keyboard;
-use page::{Page, map::PageMap};
+use page::{Page, arena::PageMap};
 use vga_display::{
     SCREEN,
     advanced_writer::AdvancedWriter,
@@ -154,8 +154,8 @@ pub unsafe extern "C" fn _start() -> ! {
 
     println!("{}", MMAP.assume_init_ref());
 
-    // let buddy =
-    //     BuddyAllocator::<PageMap, Page>::new(MMAP.assume_init_ref());
+    let buddy =
+        BuddyAllocator::<PageMap, Page>::new(MMAP.assume_init_ref());
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
     // panic!("")

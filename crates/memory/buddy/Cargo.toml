@@ -13,6 +13,7 @@ macros = { path = "../../macros" }
 strum_macros = { version = "0.27", default-features = false }
 strum = { version = "0.27", default-features = false }
 thiserror = { version = "2.0.12", default-features = false }
+libk = { path = "../../libk" }
 
 [features]
 host = []

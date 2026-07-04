@@ -14,6 +14,8 @@ pub enum BuddyError {
     PageInLargerOrder,
     #[error("Cannot split a block that is BuddyOrder::MIN")]
     Unsplitable,
+    #[error("The buddy of this block is outside of memory range")]
+    BuddyOutOfRange,
 }
 
 mod private {
