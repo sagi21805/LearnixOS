@@ -3,9 +3,12 @@
 use buddy::{BuddyAllocator, meta::BuddyArena};
 use common::enums::MemoryRegionType;
 use page::Page;
-use page::map::PageMap;
+use page::arena::PageMap;
 use sync::mutex::SpinMutex;
-use x86::memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended};
+use x86::{
+    memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
+    registers::al,
+};
 
 pub static mut MOCK_UNPARSED_MEMORY_MAP: [MemoryRegionExtended; 7] = [
     MemoryRegionExtended {
@@ -66,5 +69,8 @@ fn test_buddy_allocator() {
     };
 
     println!("{}", mmap);
-    let allocator = BuddyAllocator::<PageMap, Page>::new(&mmap);
+    let mut allocator = BuddyAllocator::<PageMap, Page>::new(&mmap);
+
+    let p = allocator.alloc_pages(2);
+    println!("{:?}", p);
 }

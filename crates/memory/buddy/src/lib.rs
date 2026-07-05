@@ -8,6 +8,11 @@
 #[cfg(feature = "host")]
 extern crate std;
 
+#[cfg(not(feature = "host"))]
+use libk::println;
+#[cfg(feature = "host")]
+use std::println;
+
 pub mod meta;
 
 use core::{
@@ -101,6 +106,11 @@ where
                 |i| Some((i, Block::from_meta(self.freelist[i].next?))),
             )?;
 
+        println!(
+            "Initial Page: {:?}, Closet Order: {}, Wanted Order: {}",
+            initial_page, closet_order, wanted_order
+        );
+
         Some(self.split_recursive(
             initial_page,
             closet_order,
@@ -119,13 +129,18 @@ where
             "Target order cannot be greater then current order"
         );
 
+        println!(
+            "Target Order: {}, Current Order: {}",
+            target_order, current_order
+        );
+
         if current_order == target_order {
             return page;
         }
 
         let (lhs, rhs) = match self.arena.split(page) {
             Ok((lhs, rhs)) => (lhs, rhs),
-            Err(_e) => todo!("Handle Error"),
+            Err(e) => todo!("Handle Error, {:?}", e),
         };
 
         let next_order = current_order - 1;
