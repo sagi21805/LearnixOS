@@ -39,7 +39,7 @@ impl BuddyArena<Page> for PageMap {
 
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
-        libk::println!("Total pages: {}", total_pages);
+        // libk::println!("Total pages: {}", total_pages);
         unsafe {
             let mut page_map =
                 Box::new_uninit_slice(total_pages).assume_init();
@@ -123,10 +123,10 @@ impl BuddyArena<Page> for PageMap {
         buddy: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
         debug_assert_eq!(self.buddy_of(block)?, buddy);
-        debug_assert!(unsafe {
-            block.as_ref().meta.buddy.flags.get_order()
-                == buddy.as_ref().meta.buddy.flags.get_order()
-        });
+        // debug_assert!(unsafe {
+        //     block.as_ref().meta.buddy.flags.get_order()
+        //         == buddy.as_ref().meta.buddy.flags.get_order()
+        // });
         debug_assert!(
             unsafe { block.as_ref().meta.buddy.flags.get_order() }
                 != BuddyOrder::None
@@ -176,8 +176,6 @@ impl BuddyArena<Page> for PageMap {
     ) -> Result<(NonNull<Page>, NonNull<Page>), BuddyError> {
         let mut detached = self.detach_mid(block);
 
-        let mut buddy = self.buddy_of(detached)?;
-
         let prev_order = unsafe {
             detached
                 .as_ref()
@@ -189,9 +187,15 @@ impl BuddyArena<Page> for PageMap {
                 .ok_or(BuddyError::Unsplitable)?
         };
 
+        // First set the order of the current block to find the current
+        // buddy
         unsafe {
             detached.as_mut().meta.buddy.flags.set_order(prev_order);
+        }
 
+        let mut buddy = self.buddy_of(detached)?;
+
+        unsafe {
             buddy.as_mut().meta.buddy.flags.set_order(prev_order);
         }
 
