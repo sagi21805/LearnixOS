@@ -34,3 +34,8 @@ panic = "abort"
 inherits = "release"
 debug = true
 debug-assertions = true
+
+[profile.release.package.page]
+inherits = "release"
+debug = true
+debug-assertions = true

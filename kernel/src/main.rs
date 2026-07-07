@@ -156,6 +156,8 @@ pub unsafe extern "C" fn _start() -> ! {
 
     let buddy =
         BuddyAllocator::<PageMap, Page>::new(MMAP.assume_init_ref());
+
+    println!("{:#?}", buddy);
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
     // panic!("")
