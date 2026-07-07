@@ -10,7 +10,6 @@ use common::{
 
 use alloc::boxed::Box;
 
-use libk::{print, println};
 use x86::memory_map::MemoryMap;
 
 use buddy::meta::{
@@ -123,10 +122,10 @@ impl BuddyArena<Page> for PageMap {
         buddy: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
         debug_assert_eq!(self.buddy_of(block)?, buddy);
-        // debug_assert!(unsafe {
-        //     block.as_ref().meta.buddy.flags.get_order()
-        //         == buddy.as_ref().meta.buddy.flags.get_order()
-        // });
+        debug_assert!(unsafe {
+            block.as_ref().meta.buddy.flags.get_order()
+                == buddy.as_ref().meta.buddy.flags.get_order()
+        });
         debug_assert!(
             unsafe { block.as_ref().meta.buddy.flags.get_order() }
                 != BuddyOrder::None
@@ -152,9 +151,6 @@ impl BuddyArena<Page> for PageMap {
         let mut detached_block = self.detach_mid(block);
         let mut detached_buddy = self.detach_mid(buddy);
 
-        let (l, r) = if detached_block < detached_buddy {
-            
-        }
         unsafe {
             detached_block
                 .as_mut()

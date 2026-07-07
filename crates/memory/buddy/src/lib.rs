@@ -18,7 +18,7 @@ use x86::{memory_map::MemoryMap, structures::paging::PageTable};
 
 use common::{
     address_types::{Address, PhysicalAddress},
-    enums::BuddyOrder,
+    enums::{BuddyOrder, buddy},
     iter,
 };
 
@@ -150,40 +150,55 @@ where
 
     /// This function will try to merge a page with it's buddy, until it
     /// cannot be merged anymore.
-    pub fn merge_recursive(&mut self, page: NonNull<Block>) -> BuddyOrder {
-        let buddy = match self.arena.buddy_of(page) {
-            Ok(buddy) => buddy,
-            Err(BuddyError::MaxOrder) => {
-                self.freelist[BuddyOrder::MAX as usize].attach_block(page);
-                return BuddyOrder::MAX;
-            }
-            Err(BuddyError::BuddyOutOfRange) => {
+    pub fn merge_recursive(
+        &mut self,
+        mut page: NonNull<Block>,
+    ) -> BuddyOrder {
+        loop {
+            let buddy = match self.arena.buddy_of(page) {
+                Ok(buddy) => buddy,
+                Err(
+                    BuddyError::BuddyOutOfRange | BuddyError::MaxOrder,
+                ) => {
+                    let order =
+                        unsafe { page.as_ref().meta().flags.get_order() };
+                    self.freelist[order as usize].attach_block(page);
+                    return order;
+                }
+                Err(
+                    BuddyError::PageInLargerOrder
+                    | BuddyError::Unsplitable,
+                ) => {
+                    unreachable!(
+                        "Problem in algorithm, the error should not \
+                         happen"
+                    )
+                }
+            };
+
+            if unsafe { buddy.as_ref().meta().flags.is_allocated() } {
                 let order =
                     unsafe { page.as_ref().meta().flags.get_order() };
                 self.freelist[order as usize].attach_block(page);
                 return order;
             }
-            Err(
-                BuddyError::PageInLargerOrder | BuddyError::Unsplitable,
-            ) => unreachable!(
-                "Problem in algorithm, the error should not happen"
-            ),
-        };
 
-        if unsafe { buddy.as_ref().meta().flags.is_allocated() } {
-            let order = unsafe { page.as_ref().meta().flags.get_order() };
+            let buddy_order =
+                unsafe { buddy.as_ref().meta().flags.get_order() };
+            let page_order =
+                unsafe { page.as_ref().meta().flags.get_order() };
 
-            // Attach block, cannot be merged anymore.
-            self.freelist[order as usize].attach_block(page);
-            return order;
+            if buddy_order > page_order {
+                self.merge_recursive(page);
+            } else if buddy_order < page_order {
+                self.merge_recursive(buddy);
+            }
+
+            page = match self.arena.merge(page, buddy) {
+                Ok(merged) => merged,
+                Err(_e) => todo!("Handle Error: {:?}", _e),
+            };
         }
-
-        let merged = match self.arena.merge(page, buddy) {
-            Ok(merged) => merged,
-            Err(_e) => todo!("Handle Error: {:?}", _e),
-        };
-
-        become BuddyAllocator::merge_recursive(self, merged);
     }
 
     pub fn alloc_table(&mut self) -> NonNull<PageTable> {

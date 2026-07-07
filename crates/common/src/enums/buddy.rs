@@ -9,6 +9,8 @@ use strum_macros::VariantArray;
     PartialEq,
     Debug,
     Eq,
+    PartialOrd,
+    Ord,
     ConstIntoPrimitive,
     ConstFromPrimitive,
 )]
