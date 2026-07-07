@@ -1,6 +1,3 @@
-#[cfg(feature = "host")]
-extern crate std;
-
 extern crate alloc;
 
 use core::ptr::NonNull;
@@ -13,6 +10,7 @@ use common::{
 
 use alloc::boxed::Box;
 
+use libk::{print, println};
 use x86::memory_map::MemoryMap;
 
 use buddy::meta::{
@@ -28,7 +26,7 @@ pub struct PageMap {
 
 impl BuddyArena<Page> for PageMap {
     // TODO: head at 0 was never connected to the start of the map.
-    fn new(mmap: &MemoryMap, heads: &[BuddyMeta<Head>]) -> Self {
+    fn new(mmap: &MemoryMap, heads: &mut [BuddyMeta<Head>]) -> Self {
         let regions = mmap.regions.read();
 
         let last = regions
@@ -56,6 +54,8 @@ impl BuddyArena<Page> for PageMap {
                     ),
                 },
             };
+
+            heads[0].attach_block(NonNull::from_ref(prev));
 
             for i in 0..page_map.len().saturating_sub(1) {
                 let (left, right) = page_map.split_at_mut(i + 1);
@@ -151,6 +151,10 @@ impl BuddyArena<Page> for PageMap {
 
         let mut detached_block = self.detach_mid(block);
         let mut detached_buddy = self.detach_mid(buddy);
+
+        let (l, r) = if detached_block < detached_buddy {
+            
+        }
         unsafe {
             detached_block
                 .as_mut()

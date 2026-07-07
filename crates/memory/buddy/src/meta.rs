@@ -182,7 +182,10 @@ impl<S> ::core::fmt::Debug for BuddyMeta<S>
 where
     S: MetaState<Next: Debug, Prev: Debug, Flags: Debug>,
 {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    default fn fmt(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+    ) -> core::fmt::Result {
         f.debug_struct("BuddyMeta")
             .field("next", &self.next)
             .field("prev", &self.prev)
@@ -191,8 +194,27 @@ where
     }
 }
 
+impl ::core::fmt::Debug for BuddyMeta<Head> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut list_fmt = f.debug_list();
+
+        let mut next = self.next;
+        let mut i = 0;
+        while let Some(n) = next {
+            list_fmt.entry(unsafe { n.as_ref() });
+            next = unsafe { n.as_ref().next };
+            if i > 50 {
+                return list_fmt.finish();
+            }
+            i += 1;
+        }
+
+        list_fmt.finish()
+    }
+}
+
 pub trait BuddyArena<Block: BuddyBlock>: Sized {
-    fn new(mmap: &MemoryMap, heads: &[BuddyMeta<Head>]) -> Self;
+    fn new(mmap: &MemoryMap, heads: &mut [BuddyMeta<Head>]) -> Self;
 
     /// Returns an iterator over all blocks in this arena.
     fn iter(&self) -> impl ExactSizeIterator<Item = NonNull<Block>>;
