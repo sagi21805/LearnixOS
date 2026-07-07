@@ -4,14 +4,7 @@
 #![feature(const_result_trait_fn)]
 #![allow(incomplete_features)]
 #![feature(explicit_tail_calls)]
-
-#[cfg(feature = "host")]
-extern crate std;
-
-#[cfg(not(feature = "host"))]
-use libk::println;
-#[cfg(feature = "host")]
-use std::println;
+#![feature(min_specialization)]
 
 pub mod meta;
 
@@ -20,6 +13,7 @@ use core::{
     ptr::{self, NonNull},
 };
 
+use libk::println;
 use x86::{memory_map::MemoryMap, structures::paging::PageTable};
 
 use common::{
@@ -46,10 +40,10 @@ where
     Block: const BuddyBlock,
 {
     pub fn new(memory_map: &MemoryMap) -> BuddyAllocator<Arena, Block> {
-        let freelist =
+        let mut freelist =
             [BuddyMeta::<Head>::default(); BuddyOrder::MAX as usize + 1];
 
-        let arena = Arena::new(memory_map, &freelist);
+        let arena = Arena::new(memory_map, &mut freelist);
 
         let mut allocator = BuddyAllocator {
             arena,
@@ -62,6 +56,10 @@ where
         for (n, _power) in
             iter::power_chunk_firsts(0..len, BuddyOrder::MAX as usize)
         {
+            // println!("Power: {}, N: {}", _power, n);
+            if _power != 1 << BuddyOrder::MAX as usize {
+                return allocator;
+            }
             allocator.merge_recursive(allocator.arena.at(n).unwrap());
         }
 
@@ -152,19 +150,18 @@ where
 
     /// This function will try to merge a page with it's buddy, until it
     /// cannot be merged anymore.
-    pub fn merge_recursive(&mut self, page: NonNull<Block>) {
+    pub fn merge_recursive(&mut self, page: NonNull<Block>) -> BuddyOrder {
         let buddy = match self.arena.buddy_of(page) {
             Ok(buddy) => buddy,
             Err(BuddyError::MaxOrder) => {
                 self.freelist[BuddyOrder::MAX as usize].attach_block(page);
-                return;
+                return BuddyOrder::MAX;
             }
             Err(BuddyError::BuddyOutOfRange) => {
-                self.freelist[unsafe {
-                    page.as_ref().meta().flags.get_order() as usize
-                }]
-                .attach_block(page);
-                return;
+                let order =
+                    unsafe { page.as_ref().meta().flags.get_order() };
+                self.freelist[order as usize].attach_block(page);
+                return order;
             }
             Err(
                 BuddyError::PageInLargerOrder | BuddyError::Unsplitable,
@@ -174,12 +171,11 @@ where
         };
 
         if unsafe { buddy.as_ref().meta().flags.is_allocated() } {
+            let order = unsafe { page.as_ref().meta().flags.get_order() };
+
             // Attach block, cannot be merged anymore.
-            self.freelist[unsafe {
-                page.as_ref().meta().flags.get_order() as usize
-            }]
-            .attach_block(page);
-            return;
+            self.freelist[order as usize].attach_block(page);
+            return order;
         }
 
         let merged = match self.arena.merge(page, buddy) {
@@ -199,5 +195,15 @@ where
             );
             address.as_non_null::<PageTable>()
         }
+    }
+}
+
+impl<Arena, Block> ::core::fmt::Debug for BuddyAllocator<Arena, Block>
+where
+    Arena: BuddyArena<Block>,
+    Block: const BuddyBlock,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_list().entry(&self.freelist).finish()
     }
 }
