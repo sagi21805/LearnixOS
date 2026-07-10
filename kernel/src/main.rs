@@ -79,6 +79,10 @@ pub static BUMP_ALLOCATOR: LateInit<BumpAllocator> = LateInit::uninit();
 #[global_allocator]
 static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
 
+pub static BUDDY_ALLOCATOR: LateInit<
+    SpinMutex<BuddyAllocator<PageMap, Page>>,
+> = LateInit::uninit();
+
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 #[allow(clippy::missing_safety_doc)]
@@ -154,10 +158,14 @@ pub unsafe extern "C" fn _start() -> ! {
 
     println!("{}", MMAP.assume_init_ref());
 
-    let buddy =
-        BuddyAllocator::<PageMap, Page>::new(MMAP.assume_init_ref());
+    BUDDY_ALLOCATOR.init(SpinMutex::new(
+        BuddyAllocator::<PageMap, Page>::new(MMAP.assume_init_ref()),
+    ));
 
-    println!("{:#?}", buddy);
+    BUDDY_ALLOCATOR.lock().initialize();
+    let lock = BUDDY_ALLOCATOR.lock();
+    println!("{:#?}", lock);
+
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
     // panic!("")
