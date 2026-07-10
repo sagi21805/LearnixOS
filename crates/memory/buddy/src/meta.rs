@@ -1,6 +1,8 @@
 use core::{fmt::Debug, ptr::NonNull};
 
-use common::{address_types::PhysicalAddress, enums::BuddyOrder};
+use common::{
+    address_types::PhysicalAddress, enums::BuddyOrder, volatile::Volatile,
+};
 
 use macros::bitfields;
 use thiserror::Error;
@@ -28,21 +30,6 @@ pub struct Head;
 #[derive(Copy, Clone)]
 /// A node on the list, that is not the first.
 pub struct Regular;
-/// A node that was on the list, but is no longer.
-#[derive(Copy, Clone)]
-pub struct Detached;
-
-/// Intermidiate state represents a node that is in the list, but is not
-/// known to be a head or a regular node.
-#[derive(Copy, Clone)]
-pub struct Intermidiate;
-
-impl private::Seald for Intermidiate {}
-impl MetaState for Intermidiate {
-    type Next = Option<NonNull<BuddyMeta<Regular>>>;
-    type Prev = ();
-    type Flags = ();
-}
 
 pub trait MetaState: private::Seald {
     type Next: Sized;
@@ -59,13 +46,6 @@ impl private::Seald for Regular {}
 impl MetaState for Regular {
     type Next = Option<NonNull<BuddyMeta<Regular>>>;
     type Prev = NonNull<BuddyMeta<Head>>;
-    type Flags = BuddyFlags;
-}
-
-impl private::Seald for Detached {}
-impl MetaState for Detached {
-    type Next = Option<NonNull<()>>;
-    type Prev = Option<NonNull<()>>;
     type Flags = BuddyFlags;
 }
 
@@ -87,16 +67,14 @@ pub struct BuddyFlags {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BuddyMeta<State: MetaState> {
-    pub next: State::Next,
-    pub prev: State::Prev,
+    pub next: Volatile<State::Next>,
+    pub prev: Volatile<State::Prev>,
     pub flags: State::Flags,
 }
 
 #[derive(Copy, Clone)]
 pub union BuddyMetaType {
     pub regular: BuddyMeta<Regular>,
-    pub intermediate: BuddyMeta<Intermidiate>,
-    pub detached: BuddyMeta<Detached>,
     pub head: BuddyMeta<Head>,
 }
 
@@ -105,49 +83,30 @@ where
     S: MetaState<Next = Option<NonNull<BuddyMeta<Regular>>>>,
 {
     #[inline]
-    pub const fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
+    pub fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
         unsafe { p.as_mut().next = self.next };
-        if let Some(mut next) = self.next {
-            unsafe { next.as_mut().prev = p.cast() };
+        if let Some(mut next) = self.next.read() {
+            unsafe { next.as_mut().prev = Volatile::new(p.cast()) };
         }
-        self.next = Some(p.cast())
+        self.next.write(Some(p.cast()));
+        unsafe { p.as_mut().prev.write(NonNull::from_mut(self).cast()) };
     }
 
     #[inline]
-    pub const fn attach_block<Block: const BuddyBlock>(
+    pub fn attach_block<Block: const BuddyBlock>(
         &mut self,
-        p: NonNull<Block>,
+        mut p: NonNull<Block>,
     ) {
-        self.attach(NonNull::from_ref(unsafe { p.as_ref().meta() }));
-    }
-}
-
-impl From<BuddyMeta<Head>> for BuddyMeta<Intermidiate> {
-    fn from(value: BuddyMeta<Head>) -> Self {
-        Self {
-            next: value.next,
-            prev: (),
-            flags: (),
-        }
+        self.attach(NonNull::from_mut(unsafe { p.as_mut().meta_mut() }));
     }
 }
 
 impl Default for BuddyMeta<Head> {
     fn default() -> Self {
         Self {
-            next: None,
-            prev: (),
+            next: Volatile::new(None),
+            prev: Volatile::new(()),
             flags: (),
-        }
-    }
-}
-
-impl BuddyMeta<Detached> {
-    pub fn new(order: BuddyOrder) -> Self {
-        Self {
-            next: None,
-            prev: None,
-            flags: BuddyFlags::new().order(order).allocated(false),
         }
     }
 }
@@ -160,18 +119,18 @@ impl BuddyMeta<Regular> {
         flags: BuddyFlags,
     ) -> BuddyMeta<Regular> {
         BuddyMeta {
-            next: None,
-            prev: prev.cast(),
+            next: Volatile::new(None),
+            prev: Volatile::new(prev.cast()),
             flags,
         }
     }
 
     /// Detaches self from the list.
     pub fn detach(&mut self) -> NonNull<BuddyMeta<Regular>> {
-        unsafe { self.prev.as_mut().next = self.next }
+        unsafe { self.prev.read().as_mut().next.write(self.next.read()) }
 
-        if let Some(mut next) = self.next {
-            unsafe { next.as_mut().prev = self.prev };
+        if let Some(mut next) = self.next.read() {
+            unsafe { next.as_mut().prev.write(self.prev.read()) };
         }
 
         NonNull::from_mut(self)
@@ -186,11 +145,16 @@ where
         &self,
         f: &mut core::fmt::Formatter<'_>,
     ) -> core::fmt::Result {
-        f.debug_struct("BuddyMeta")
-            .field("next", &self.next)
+        let mut ds = f.debug_struct("BuddyMeta");
+
+        ds.field("next", &self.next)
             .field("prev", &self.prev)
-            .field("flags", &self.flags)
-            .finish()
+            .field("flags", &self.flags);
+
+        #[cfg(debug_assertions)]
+        ds.field("self_ptr", &NonNull::from_ref(self));
+
+        ds.finish()
     }
 }
 
@@ -200,10 +164,10 @@ impl ::core::fmt::Debug for BuddyMeta<Head> {
 
         let mut next = self.next;
         let mut i = 0;
-        while let Some(n) = next {
+        while let Some(n) = next.read() {
             list_fmt.entry(unsafe { n.as_ref() });
             next = unsafe { n.as_ref().next };
-            if i > 50 {
+            if i == 32 {
                 return list_fmt.finish();
             }
             i += 1;
@@ -245,10 +209,13 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
         buddy: NonNull<Block>,
     ) -> Result<NonNull<Block>, BuddyError>;
 
-    /// Detach a block from the middle of the arena, returning the detached
-    /// block.
-    fn detach_mid(&self, block: NonNull<Block>) -> NonNull<Block>;
+    // /// Detach a block from the middle of the arena, returning the
+    // detached /// block.
+    // fn detach_mid(&self, block: NonNull<Block>) -> NonNull<Block>;
 
     /// Returns the block nth block of the arena, if one exists.
     fn at(&self, n: usize) -> Option<NonNull<Block>>;
 }
+
+unsafe impl Send for BuddyMeta<Regular> {}
+unsafe impl Send for BuddyMeta<Head> {}
