@@ -1,13 +1,10 @@
 use core::fmt::Debug;
 
-#[derive(Copy)]
 #[repr(transparent)]
 pub struct Volatile<T>(T);
 
 impl<T> Volatile<T> {
-    pub const fn new(vol: T) -> Volatile<T> {
-        Volatile(vol)
-    }
+    pub const fn new(vol: T) -> Volatile<T> { Volatile(vol) }
 
     /// Read from the hardware register
     pub fn read(&self) -> T {
@@ -20,15 +17,15 @@ impl<T> Volatile<T> {
     }
 }
 
-impl<T> Clone for Volatile<T> {
-    fn clone(&self) -> Self {
-        Volatile(self.read())
-    }
+impl<T: Clone> Clone for Volatile<T> {
+    fn clone(&self) -> Self { Volatile(self.read()) }
 }
 
-impl<T> Debug for Volatile<T> {
+impl<T: Clone + Copy> Copy for Volatile<T> {}
+
+impl<T: Debug> Debug for Volatile<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_fmt(format_args!("{:?}", &self.0 as *const T))
+        f.write_fmt(format_args!("{:?}", &self.read()))
     }
 }
 
