@@ -10,6 +10,7 @@ use common::{
 
 use alloc::boxed::Box;
 
+use libk::println;
 use x86::memory_map::MemoryMap;
 
 use buddy::meta::{
@@ -36,10 +37,11 @@ impl BuddyArena<Page> for PageMap {
 
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
-        // libk::println!("Total pages: {}", total_pages);
+        println!("Total pages: {}", total_pages);
         unsafe {
             let mut page_map =
                 Box::new_uninit_slice(total_pages).assume_init();
+            println!("Last Memory Address: {:?}", page_map.as_ptr_range());
 
             let mut prev = &mut page_map[0];
 
@@ -118,8 +120,8 @@ impl BuddyArena<Page> for PageMap {
 
     fn merge(
         &self,
-        block: NonNull<Page>,
-        buddy: NonNull<Page>,
+        mut block: NonNull<Page>,
+        mut buddy: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
         debug_assert_eq!(self.buddy_of(block)?, buddy);
         debug_assert!(unsafe {
@@ -148,39 +150,33 @@ impl BuddyArena<Page> for PageMap {
                 .ok_or(BuddyError::MaxOrder)?
         };
 
-        let mut detached_block = self.detach_mid(block);
-        let mut detached_buddy = self.detach_mid(buddy);
+        let detached_block = unsafe { block.as_mut().meta_mut().detach() };
+        let detached_buddy = unsafe { buddy.as_mut().meta_mut().detach() };
+
+        let (mut l, mut r) = if detached_block < detached_buddy {
+            (detached_block, detached_buddy)
+        } else {
+            (detached_buddy, detached_block)
+        };
 
         unsafe {
-            detached_block
-                .as_mut()
-                .meta
-                .buddy
-                .flags
-                .set_order(next_order);
+            l.as_mut().flags.set_order(next_order);
 
-            detached_buddy
-                .as_mut()
-                .meta
-                .buddy
-                .flags
-                .set_order(next_order);
+            r.as_mut().flags.set_order(BuddyOrder::None);
         }
 
-        Ok(detached_block.min(detached_buddy))
+        Ok(Page::from_meta(l))
     }
 
     fn split(
         &self,
-        block: NonNull<Page>,
+        mut block: NonNull<Page>,
     ) -> Result<(NonNull<Page>, NonNull<Page>), BuddyError> {
-        let mut detached = self.detach_mid(block);
+        let mut detached = unsafe { block.as_mut().meta_mut().detach() };
 
         let prev_order = unsafe {
             detached
                 .as_ref()
-                .meta
-                .buddy
                 .flags
                 .get_order()
                 .prev()
@@ -190,34 +186,16 @@ impl BuddyArena<Page> for PageMap {
         // First set the order of the current block to find the current
         // buddy
         unsafe {
-            detached.as_mut().meta.buddy.flags.set_order(prev_order);
+            detached.as_mut().flags.set_order(prev_order);
         }
 
-        let mut buddy = self.buddy_of(detached)?;
+        let mut buddy = self.buddy_of(block)?;
 
         unsafe {
             buddy.as_mut().meta.buddy.flags.set_order(prev_order);
         }
 
-        Ok((detached, buddy))
-    }
-
-    /// Detaches the given block from the buddy chain, returning the block
-    /// itself.
-    fn detach_mid(&self, block: NonNull<Page>) -> NonNull<Page> {
-        unsafe {
-            let mut prev = block.as_ref().meta.buddy.prev;
-
-            let next = block.as_ref().meta.buddy.next;
-
-            prev.as_mut().next = next;
-
-            if let Some(mut next) = next {
-                next.as_mut().prev = prev;
-            }
-        }
-
-        block
+        Ok((block, buddy))
     }
 
     /// Returns the page at the given index, if one exists.
