@@ -18,6 +18,8 @@ pub enum BuddyError {
     Unsplitable,
     #[error("The buddy of this block is outside of memory range")]
     BuddyOutOfRange,
+    #[error("Page is not part of the arena")]
+    PageNotInArena,
 }
 
 mod private {
@@ -193,6 +195,13 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
     ///
     /// The first block of Order1 for example allocates 0..4096
     fn address_of(&self, block: NonNull<Block>) -> PhysicalAddress;
+
+    /// Return the corresponding block in the arena for a given physical
+    /// address, if one exists.
+    fn page_with_address(
+        &self,
+        address: PhysicalAddress,
+    ) -> Result<NonNull<Block>, BuddyError>;
 
     /// Split a block into two smaller blocks of previous order.
     fn split(

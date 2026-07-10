@@ -88,6 +88,20 @@ impl BuddyArena<Page> for PageMap {
         }
     }
 
+    fn page_with_address(
+        &self,
+        address: PhysicalAddress,
+    ) -> Result<NonNull<Page>, BuddyError> {
+        let offset = address.as_usize() / REGULAR_PAGE_SIZE;
+        Ok(unsafe {
+            NonNull::from_ref(
+                self.inner
+                    .get(offset)
+                    .ok_or(BuddyError::PageNotInArena)?,
+            )
+        })
+    }
+
     /// Because this is an array, the
     fn buddy_of(
         &self,
