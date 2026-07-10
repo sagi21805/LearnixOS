@@ -18,8 +18,9 @@ use x86::{memory_map::MemoryMap, structures::paging::PageTable};
 
 use common::{
     address_types::{Address, PhysicalAddress},
-    enums::{BuddyOrder, buddy},
+    enums::BuddyOrder,
     iter,
+    volatile::Volatile,
 };
 
 use crate::meta::{BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head};
@@ -45,25 +46,28 @@ where
 
         let arena = Arena::new(memory_map, &mut freelist);
 
-        let mut allocator = BuddyAllocator {
+        BuddyAllocator {
             arena,
             freelist,
             _block: PhantomData,
-        };
+        }
+    }
 
-        let len = allocator.arena.iter().len();
+    pub fn initialize(&mut self) {
+        let len = self.arena.iter().len();
+
+        let mut first = self.arena.at(0).unwrap();
+
+        unsafe {
+            first.as_mut().meta_mut().prev =
+                Volatile::new(NonNull::from_ref(&self.freelist[0]));
+        }
 
         for (n, _power) in
             iter::power_chunk_firsts(0..len, BuddyOrder::MAX as usize)
         {
-            // println!("Power: {}, N: {}", _power, n);
-            if _power != 1 << BuddyOrder::MAX as usize {
-                return allocator;
-            }
-            allocator.merge_recursive(allocator.arena.at(n).unwrap());
+            self.merge_recursive(self.arena.at(n).unwrap());
         }
-
-        allocator
     }
 
     pub fn alloc_pages(&mut self, num_pages: usize) -> PhysicalAddress {
@@ -77,7 +81,7 @@ where
             - num_pages.next_power_of_two().leading_zeros())
             as usize;
 
-        let page = self.freelist[order].next.unwrap_or_else(|| {
+        let page = self.freelist[order].next.read().unwrap_or_else(|| {
             NonNull::from_ref(unsafe {
                 self.split_until(order)
                     .expect("Out of memory, swap is not implemented")
@@ -99,10 +103,11 @@ where
         &mut self,
         wanted_order: usize,
     ) -> Option<NonNull<Block>> {
-        let (closet_order, initial_page) =
-            ((wanted_order + 1)..=BuddyOrder::MAX as usize).find_map(
-                |i| Some((i, Block::from_meta(self.freelist[i].next?))),
-            )?;
+        let (closet_order, initial_page) = ((wanted_order + 1)
+            ..=BuddyOrder::MAX as usize)
+            .find_map(|i| {
+                Some((i, Block::from_meta(self.freelist[i].next.read()?)))
+            })?;
 
         println!(
             "Initial Page: {:?}, Closet Order: {}, Wanted Order: {}",
@@ -162,16 +167,16 @@ where
                 ) => {
                     let order =
                         unsafe { page.as_ref().meta().flags.get_order() };
-                    self.freelist[order as usize].attach_block(page);
                     return order;
                 }
                 Err(
-                    BuddyError::PageInLargerOrder
-                    | BuddyError::Unsplitable,
+                    e @ (BuddyError::PageInLargerOrder
+                    | BuddyError::Unsplitable),
                 ) => {
                     unreachable!(
                         "Problem in algorithm, the error should not \
-                         happen"
+                         happen {:?}\n {:?}",
+                        e, page,
                     )
                 }
             };
@@ -179,7 +184,6 @@ where
             if unsafe { buddy.as_ref().meta().flags.is_allocated() } {
                 let order =
                     unsafe { page.as_ref().meta().flags.get_order() };
-                self.freelist[order as usize].attach_block(page);
                 return order;
             }
 
@@ -188,14 +192,17 @@ where
             let page_order =
                 unsafe { page.as_ref().meta().flags.get_order() };
 
-            if buddy_order > page_order {
-                self.merge_recursive(page);
-            } else if buddy_order < page_order {
-                self.merge_recursive(buddy);
-            }
+            debug_assert!(buddy_order <= page_order);
 
-            page = match self.arena.merge(page, buddy) {
-                Ok(merged) => merged,
+            if buddy_order < page_order {
+                page = buddy;
+                continue;
+            }
+            match self.arena.merge(page, buddy) {
+                Ok(merged) => {
+                    self.attach_block(merged);
+                    page = merged;
+                }
                 Err(_e) => todo!("Handle Error: {:?}", _e),
             };
         }
@@ -211,6 +218,11 @@ where
             address.as_non_null::<PageTable>()
         }
     }
+
+    fn attach_block(&mut self, block: NonNull<Block>) {
+        let order = unsafe { block.as_ref().meta().flags.get_order() };
+        self.freelist[order as usize].attach_block(block);
+    }
 }
 
 impl<Arena, Block> ::core::fmt::Debug for BuddyAllocator<Arena, Block>
@@ -219,6 +231,8 @@ where
     Block: const BuddyBlock,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_list().entry(&self.freelist).finish()
+        f.debug_struct("BuddyAllocator")
+            .field("freelist", &self.freelist)
+            .finish()
     }
 }
