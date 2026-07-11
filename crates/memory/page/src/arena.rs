@@ -25,8 +25,7 @@ pub struct PageMap {
 }
 
 impl BuddyArena<Page> for PageMap {
-    // TODO: head at 0 was never connected to the start of the map.
-    fn new(mmap: &MemoryMap, heads: &mut [BuddyMeta<Head>]) -> Self {
+    fn new(mmap: &MemoryMap, head: &mut BuddyMeta<Head>) -> Self {
         let regions = mmap.regions.read();
 
         let last = regions
@@ -48,7 +47,7 @@ impl BuddyArena<Page> for PageMap {
             *prev = Page {
                 meta: PageMeta {
                     buddy: BuddyMeta::<Regular>::new(
-                        NonNull::from_ref(&heads[0]),
+                        NonNull::from_ref(head),
                         BuddyFlags::new()
                             .order(BuddyOrder::Order0)
                             .allocated(false),
@@ -56,7 +55,7 @@ impl BuddyArena<Page> for PageMap {
                 },
             };
 
-            heads[0].attach_block(NonNull::from_ref(prev));
+            head.attach_block(NonNull::from_ref(prev));
 
             for i in 0..page_map.len().saturating_sub(1) {
                 let (left, right) = page_map.split_at_mut(i + 1);
