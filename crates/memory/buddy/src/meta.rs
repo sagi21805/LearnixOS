@@ -180,7 +180,7 @@ impl ::core::fmt::Debug for BuddyMeta<Head> {
 }
 
 pub trait BuddyArena<Block: BuddyBlock>: Sized {
-    fn new(mmap: &MemoryMap, heads: &mut [BuddyMeta<Head>]) -> Self;
+    fn new(mmap: &MemoryMap, head: &mut BuddyMeta<Head>) -> Self;
 
     /// Returns an iterator over all blocks in this arena.
     fn iter(&self) -> impl ExactSizeIterator<Item = NonNull<Block>>;

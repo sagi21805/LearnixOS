@@ -5,22 +5,19 @@
 #![allow(incomplete_features)]
 #![feature(explicit_tail_calls)]
 #![feature(min_specialization)]
+#![feature(ptr_alignment_type)]
 
 pub mod meta;
 
-use core::{
-    marker::PhantomData,
-    ptr::{self, NonNull},
-};
+use core::{alloc::GlobalAlloc, marker::PhantomData, ptr::NonNull};
 
 use libk::println;
-use x86::{memory_map::MemoryMap, structures::paging::PageTable};
+use sync::mutex::SpinMutex;
+use x86::memory_map::MemoryMap;
 
 use common::{
-    address_types::{Address, PhysicalAddress},
-    enums::BuddyOrder,
-    iter,
-    volatile::Volatile,
+    address_types::Address, constants::REGULAR_PAGE_ALIGNMENT,
+    enums::BuddyOrder, iter, volatile::Volatile,
 };
 
 use crate::meta::{BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head};
@@ -31,7 +28,7 @@ where
     Arena: BuddyArena<Block>,
 {
     arena: Arena,
-    freelist: [BuddyMeta<Head>; BuddyOrder::MAX as usize + 1],
+    freelist: SpinMutex<[BuddyMeta<Head>; BuddyOrder::MAX as usize + 1]>,
     _block: PhantomData<Block>,
 }
 
@@ -41,10 +38,17 @@ where
     Block: const BuddyBlock,
 {
     pub fn new(memory_map: &MemoryMap) -> BuddyAllocator<Arena, Block> {
-        let mut freelist =
-            [BuddyMeta::<Head>::default(); BuddyOrder::MAX as usize + 1];
+        let freelist = SpinMutex::new(
+            [BuddyMeta::<Head>::default(); BuddyOrder::MAX as usize + 1],
+        );
 
-        let arena = Arena::new(memory_map, &mut freelist);
+        let mut lock = freelist.lock();
+
+        let head = &mut lock[0];
+
+        let arena = Arena::new(memory_map, head);
+
+        drop(lock);
 
         BuddyAllocator {
             arena,
@@ -58,39 +62,25 @@ where
 
         let mut first = self.arena.at(0).unwrap();
 
+        let lock = self.freelist.lock();
+        let head = &lock[0];
         unsafe {
             first.as_mut().meta_mut().prev =
-                Volatile::new(NonNull::from_ref(&self.freelist[0]));
+                Volatile::new(NonNull::from_ref(head));
         }
+
+        drop(lock);
 
         for (n, _power) in
             iter::power_chunk_firsts(0..len, BuddyOrder::MAX as usize)
         {
             self.merge_recursive(self.arena.at(n).unwrap());
         }
-    }
 
-    pub fn alloc_pages(&mut self, num_pages: usize) -> PhysicalAddress {
-        assert!(
-            num_pages <= (1 << BuddyOrder::MAX as usize),
-            "Size cannot be greater then: {}",
-            1 << BuddyOrder::MAX as usize
-        );
-        let order = (usize::BITS
-            - 1
-            - num_pages.next_power_of_two().leading_zeros())
-            as usize;
-
-        let page = self.freelist[order].next.read().unwrap_or_else(|| {
-            NonNull::from_ref(unsafe {
-                self.split_until(order)
-                    .expect("Out of memory, swap is not implemented")
-                    .as_ref()
-                    .meta()
-            })
-        });
-
-        self.arena.address_of(Block::from_meta(page))
+        todo!(
+            "Allocate all the reserved spots in the memory map, and take \
+             allocations from the bump allocator."
+        )
     }
 
     // pub fn free_pages(&self, address: usize) {
@@ -100,13 +90,16 @@ where
     /// This function assumes that `wanted_order` is empty, and won't check
     /// it.
     pub fn split_until(
-        &mut self,
+        &self,
         wanted_order: usize,
     ) -> Option<NonNull<Block>> {
         let (closet_order, initial_page) = ((wanted_order + 1)
             ..=BuddyOrder::MAX as usize)
             .find_map(|i| {
-                Some((i, Block::from_meta(self.freelist[i].next.read()?)))
+                Some((
+                    i,
+                    Block::from_meta(self.freelist.lock()[i].next.read()?),
+                ))
             })?;
 
         println!(
@@ -122,7 +115,7 @@ where
     }
 
     fn split_recursive(
-        &mut self,
+        &self,
         page: NonNull<Block>,
         current_order: usize,
         target_order: usize,
@@ -148,7 +141,7 @@ where
 
         let next_order = current_order - 1;
 
-        self.freelist[next_order].attach_block(rhs);
+        self.freelist.lock()[next_order].attach_block(rhs);
 
         become self.split_recursive(lhs, next_order, target_order)
     }
@@ -169,10 +162,7 @@ where
                         unsafe { page.as_ref().meta().flags.get_order() };
                     return order;
                 }
-                Err(
-                    e @ (BuddyError::PageInLargerOrder
-                    | BuddyError::Unsplitable),
-                ) => {
+                Err(e) => {
                     unreachable!(
                         "Problem in algorithm, the error should not \
                          happen {:?}\n {:?}",
@@ -208,20 +198,9 @@ where
         }
     }
 
-    pub fn alloc_table(&mut self) -> NonNull<PageTable> {
-        unsafe {
-            let address = self.alloc_pages(1).translate();
-            ptr::write_volatile(
-                address.as_non_null::<PageTable>().as_ptr(),
-                PageTable::empty(),
-            );
-            address.as_non_null::<PageTable>()
-        }
-    }
-
-    fn attach_block(&mut self, block: NonNull<Block>) {
+    fn attach_block(&self, block: NonNull<Block>) {
         let order = unsafe { block.as_ref().meta().flags.get_order() };
-        self.freelist[order as usize].attach_block(block);
+        self.freelist.lock()[order as usize].attach_block(block);
     }
 }
 
@@ -232,7 +211,56 @@ where
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("BuddyAllocator")
-            .field("freelist", &self.freelist)
+            .field("freelist", &self.freelist.try_lock())
             .finish()
     }
+}
+
+unsafe impl<Arena, Block> GlobalAlloc for BuddyAllocator<Arena, Block>
+where
+    Arena: BuddyArena<Block>,
+    Block: const BuddyBlock,
+{
+    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
+        let num_pages = layout.size().next_multiple_of(
+            REGULAR_PAGE_ALIGNMENT.max(layout.alignment()).as_usize(),
+        );
+
+        debug_assert!(
+            num_pages <= (1 << BuddyOrder::MAX as usize),
+            "Size cannot be greater then: {}",
+            1 << BuddyOrder::MAX as usize
+        );
+        if num_pages > (1 << BuddyOrder::MAX as usize) || num_pages == 0 {
+            return core::ptr::null_mut();
+        }
+
+        let order = (usize::BITS
+            - 1
+            - num_pages.next_power_of_two().leading_zeros())
+            as usize;
+
+        let mut page =
+            self.freelist.lock()[order].next.read().unwrap_or_else(|| {
+                NonNull::from_ref(unsafe {
+                    self.split_until(order)
+                        .expect("Out of memory, swap is not implemented")
+                        .as_ref()
+                        .meta()
+                })
+            });
+
+        // Detach page from the freelist and mark it as allocated
+        unsafe {
+            page.as_mut().detach();
+            page.as_mut().flags.set_allocated(true);
+        };
+
+        self.arena
+            .address_of(Block::from_meta(page))
+            .as_non_null::<u8>()
+            .as_ptr()
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {}
 }
