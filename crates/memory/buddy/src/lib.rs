@@ -16,8 +16,11 @@ use sync::mutex::SpinMutex;
 use x86::memory_map::MemoryMap;
 
 use common::{
-    address_types::Address, constants::REGULAR_PAGE_ALIGNMENT,
-    enums::BuddyOrder, iter, volatile::Volatile,
+    address_types::{Address, PhysicalAddress},
+    constants::REGULAR_PAGE_ALIGNMENT,
+    enums::BuddyOrder,
+    iter,
+    volatile::Volatile,
 };
 
 use crate::meta::{BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head};
@@ -262,5 +265,40 @@ where
             .as_ptr()
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {}
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
+        let num_pages = layout.size().next_multiple_of(
+            REGULAR_PAGE_ALIGNMENT.max(layout.alignment()).as_usize(),
+        );
+
+        debug_assert!(
+            num_pages <= (1 << BuddyOrder::MAX as usize),
+            "Size cannot be greater then: {}",
+            1 << BuddyOrder::MAX as usize
+        );
+        if num_pages > (1 << BuddyOrder::MAX as usize) || num_pages == 0 {
+            panic!(
+                "Tried to deallocate a layout that couldn't possibly be \
+                 allocated by the allocate function."
+            )
+        }
+        let mut page = self
+            .arena
+            .page_with_address(PhysicalAddress::from(ptr as usize))
+            .unwrap();
+
+        let order = (usize::BITS
+            - 1
+            - num_pages.next_power_of_two().leading_zeros())
+            as usize;
+
+        unsafe {
+            page.as_mut()
+                .meta_mut()
+                .flags
+                .set_order(BuddyOrder::from(order as u8));
+        }
+
+        // Deallocate the page by attaching it back to the freelist.
+        self.freelist.lock()[order].attach_block(page);
+    }
 }
