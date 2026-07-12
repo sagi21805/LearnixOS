@@ -113,20 +113,6 @@ pub unsafe extern "C" fn _start() -> ! {
 
         #[allow(static_mut_refs)]
         GLOBAL_ALLOCATOR.init(BUMP_ALLOCATOR.assume_init_ref());
-
-        let v = VirtualAddress::new_unchecked(
-            PHYSICAL_MEMORY_OFFSET + 6 * MiB,
-        );
-        let p = PhysicalAddress::new_unchecked(6 * MiB);
-
-        println!("Virtual address: {:x?} is mapped: {}", v, v.is_mapped());
-
-        let succ = v.map(p, None, PageSize::Big);
-
-        println!("Map succeeded: {:?}", succ);
-
-        println!("Virtual address: {:x?} is mapped: {}", v, v.is_mapped());
-        println!("Map succeeded: {:?}", succ);
     }
 
     unsafe {
@@ -145,7 +131,6 @@ pub unsafe extern "C" fn _start() -> ! {
         interrupts::enable();
     }
     let cursor_position = WRITER.lock().inner.write_cursor_position();
-    println!("Position: {}", cursor_position);
     let w = ADVANCED_WRITER.leak();
     let x = unsafe { &mut *(w as *mut _ as *mut AdvancedWriter<80, 25>) };
     w.init(AdvancedWriter::default());
@@ -163,8 +148,8 @@ pub unsafe extern "C" fn _start() -> ! {
     ));
 
     BUDDY_ALLOCATOR.lock().initialize();
-    let lock = BUDDY_ALLOCATOR.lock();
-    println!("{:#?}", lock);
+    okprintln!("Initialized Buddy Allocator");
+    let mut lock = BUDDY_ALLOCATOR.lock();
 
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
@@ -247,7 +232,13 @@ pub unsafe extern "C" fn _start() -> ! {
                 PS2ScanCode::DownArrow => {
                     WRITER.lock().inner.scroll_down(1)
                 }
-                // WRITER.lock().inner.scroll_down(1),
+                PS2ScanCode::LeftArrow => {
+                    WRITER.lock().inner.scroll_up(24)
+                }
+                PS2ScanCode::RightArrow => {
+                    WRITER.lock().inner.scroll_down(24)
+                }
+
                 _ => {}
             },
         }
