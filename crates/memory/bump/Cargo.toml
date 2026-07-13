@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 common = { path = "../../common" }
 x86 = { path = "../../arch/x86" }
+sync = { path = "../../sync" }
