@@ -1,13 +1,19 @@
 #![no_std]
 #![feature(ptr_alignment_type)]
+#![feature(const_default)]
+#![feature(const_trait_impl)]
 
 use core::alloc::{GlobalAlloc, Layout};
 
 use common::{
-    address_types::{Address, PhysicalAddress},
+    address_types::{Address, VirtualAddress},
+    alloc::{Allocation, Allocations},
     constants::REGULAR_PAGE_ALIGNMENT,
     enums::MemoryRegionType,
 };
+
+static ALLOCATIONS: SpinMutex<Allocations<64>> =
+    SpinMutex::new(Allocations::default());
 
 use sync::mutex::SpinMutex;
 use x86::memory_map::MemoryMap;
@@ -15,6 +21,7 @@ use x86::memory_map::MemoryMap;
 pub struct BumpAllocator<'a> {
     curser: SpinMutex<usize>,
     mmap: &'a MemoryMap,
+    allocations: &'static SpinMutex<Allocations<64>>,
 }
 
 impl<'a> BumpAllocator<'a> {
@@ -22,6 +29,7 @@ impl<'a> BumpAllocator<'a> {
         BumpAllocator {
             curser: SpinMutex::new(0),
             mmap,
+            allocations: &ALLOCATIONS,
         }
     }
 }
@@ -34,7 +42,7 @@ unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
         let alignment = layout.alignment().max(REGULAR_PAGE_ALIGNMENT);
 
         let mut aligned_cursor = unsafe {
-            PhysicalAddress::new_unchecked(*curser).align_up(alignment)
+            VirtualAddress::new_unchecked(*curser).align_up(alignment)
         };
 
         let regions = self.mmap.regions.read();
@@ -46,7 +54,7 @@ unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
                 // If the cursor is before the block, advance it.
                 if aligned_cursor.as_usize() < b.base_address as usize {
                     aligned_cursor = unsafe {
-                        PhysicalAddress::new_unchecked(
+                        VirtualAddress::new_unchecked(
                             b.base_address as usize,
                         )
                         .align_up(alignment)
@@ -62,6 +70,10 @@ unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
 
         if memmap_block.is_some() {
             *curser = aligned_cursor.as_usize() + layout.size();
+            self.allocations.lock().write(Allocation {
+                layout,
+                base: aligned_cursor,
+            });
             unsafe { aligned_cursor.as_non_null().as_mut() }
         } else {
             core::ptr::null_mut()
