@@ -7,21 +7,21 @@ use core::alloc::{GlobalAlloc, Layout};
 
 use common::{
     address_types::{Address, VirtualAddress},
-    alloc::{Allocation, Allocations},
+    alloc::{Allocation, Allocations, BumpAllocations},
     constants::REGULAR_PAGE_ALIGNMENT,
     enums::MemoryRegionType,
 };
 
-static ALLOCATIONS: SpinMutex<Allocations<64>> =
-    SpinMutex::new(Allocations::default());
-
 use sync::mutex::SpinMutex;
 use x86::memory_map::MemoryMap;
+
+static ALLOCATIONS: SpinMutex<BumpAllocations> =
+    SpinMutex::new(Allocations::default());
 
 pub struct BumpAllocator<'a> {
     curser: SpinMutex<usize>,
     mmap: &'a MemoryMap,
-    allocations: &'static SpinMutex<Allocations<64>>,
+    allocations: &'static SpinMutex<BumpAllocations>,
 }
 
 impl<'a> BumpAllocator<'a> {

@@ -17,8 +17,9 @@ use x86::memory_map::MemoryMap;
 
 use common::{
     address_types::{Address, PhysicalAddress},
+    alloc::{Allocations, BumpAllocations},
     constants::REGULAR_PAGE_ALIGNMENT,
-    enums::BuddyOrder,
+    enums::{BuddyOrder, MemoryRegionType},
     iter,
     volatile::Volatile,
 };
@@ -60,7 +61,11 @@ where
         }
     }
 
-    pub fn initialize(&mut self) {
+    pub fn initialize(
+        &mut self,
+        allocations: &'static BumpAllocations,
+        mmap: &MemoryMap,
+    ) {
         let len = self.arena.iter().len();
 
         let mut first = self.arena.at(0).unwrap();
@@ -73,6 +78,18 @@ where
         }
 
         drop(lock);
+
+        // Allocate all previous allocations
+        for allocation in allocations.iter() {}
+
+        // Allocate all the non-usable regions in the memory map
+        for region in mmap
+            .regions
+            .read()
+            .iter()
+            .filter(|r| r.region_type != MemoryRegionType::Usable)
+        {
+        }
 
         for (n, _power) in
             iter::power_chunk_firsts(0..len, BuddyOrder::MAX as usize)
