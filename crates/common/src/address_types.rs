@@ -61,6 +61,8 @@ pub const trait Address: Sized + Clone + Copy {
             }
         }
     }
+
+    fn null() -> Self { unsafe { Self::new_unchecked(0) } }
 }
 
 #[derive(
@@ -74,7 +76,6 @@ pub const trait Address: Sized + Clone + Copy {
     MulAssign,
     Div,
     DivAssign,
-    Default,
     AsMut,
     AsRef,
     Copy,
@@ -145,7 +146,6 @@ impl const From<PhysicalAddress> for u64 {
     MulAssign,
     Div,
     DivAssign,
-    Default,
     AsMut,
     AsRef,
     Copy,
