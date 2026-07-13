@@ -1,5 +1,7 @@
 use core::{alloc::Layout, mem::Alignment};
 
+use crate::constants::BUMP_TOTAL_ALLOCATIONS;
+
 use crate::address_types::{Address, VirtualAddress};
 
 #[derive(Copy, Clone, Debug)]
@@ -52,3 +54,5 @@ impl<const N: usize> Allocations<N> {
         self.allocations.iter().take(self.index)
     }
 }
+
+pub type BumpAllocations = Allocations<BUMP_TOTAL_ALLOCATIONS>;
