@@ -17,14 +17,16 @@ use x86::memory_map::MemoryMap;
 
 use common::{
     address_types::{Address, PhysicalAddress},
-    alloc::{Allocations, BumpAllocations},
+    alloc::BumpAllocations,
     constants::REGULAR_PAGE_ALIGNMENT,
     enums::{BuddyOrder, MemoryRegionType},
     iter,
     volatile::Volatile,
 };
 
-use crate::meta::{BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head};
+use crate::meta::{
+    BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head, Regular,
+};
 
 pub struct BuddyAllocator<Arena, Block>
 where
@@ -63,7 +65,7 @@ where
 
     pub fn initialize(
         &mut self,
-        allocations: &'static BumpAllocations,
+        allocations: &BumpAllocations,
         mmap: &MemoryMap,
     ) {
         let len = self.arena.iter().len();
@@ -79,16 +81,27 @@ where
 
         drop(lock);
 
-        // Allocate all previous allocations
-        for allocation in allocations.iter() {}
-
         // Allocate all the non-usable regions in the memory map
-        for region in mmap
+        if let Some(last_usable_idx) = mmap
             .regions
             .read()
             .iter()
-            .filter(|r| r.region_type != MemoryRegionType::Usable)
+            .rposition(|r| r.region_type == MemoryRegionType::Usable)
         {
+            for region in mmap
+                .regions
+                .read()
+                .iter()
+                .take(last_usable_idx + 1)
+                .filter(|r| r.region_type != MemoryRegionType::Usable)
+            {
+                println!("{:#x?}", region)
+            }
+        }
+
+        // Allocate all previous allocations
+        for allocation in allocations.iter() {
+            println!("{:#x?}", allocation)
         }
 
         for (n, _power) in
@@ -101,6 +114,17 @@ where
             "Allocate all the reserved spots in the memory map, and take \
              allocations from the bump allocator."
         )
+    }
+
+    unsafe fn allocate_specific_block(
+        &self,
+        mut block: NonNull<BuddyMeta<Regular>>,
+    ) {
+        // Detach page from the freelist and mark it as allocated
+        unsafe {
+            block.as_mut().detach();
+            block.as_mut().flags.set_allocated(true);
+        };
     }
 
     // pub fn free_pages(&self, address: usize) {
@@ -260,7 +284,7 @@ where
             - num_pages.next_power_of_two().leading_zeros())
             as usize;
 
-        let mut page =
+        let page =
             self.freelist.lock()[order].next.read().unwrap_or_else(|| {
                 NonNull::from_ref(unsafe {
                     self.split_until(order)
@@ -270,11 +294,7 @@ where
                 })
             });
 
-        // Detach page from the freelist and mark it as allocated
-        unsafe {
-            page.as_mut().detach();
-            page.as_mut().flags.set_allocated(true);
-        };
+        unsafe { self.allocate_specific_block(page) };
 
         self.arena
             .address_of(Block::from_meta(page))
