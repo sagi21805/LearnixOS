@@ -13,12 +13,12 @@ use core::{alloc::GlobalAlloc, marker::PhantomData, ptr::NonNull};
 
 use libk::println;
 use sync::mutex::SpinMutex;
-use x86::memory_map::MemoryMap;
+use x86::{memory_map::MemoryMap, structures::paging::VirtualAddressExt};
 
 use common::{
     address_types::{Address, PhysicalAddress},
     alloc::BumpAllocations,
-    constants::REGULAR_PAGE_ALIGNMENT,
+    constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
     enums::{BuddyOrder, MemoryRegionType},
     iter,
     volatile::Volatile,
@@ -33,9 +33,10 @@ where
     Block: BuddyBlock,
     Arena: BuddyArena<Block>,
 {
-    arena: Arena,
+    arena: SpinMutex<Arena>,
     freelist: SpinMutex<[BuddyMeta<Head>; BuddyOrder::MAX as usize + 1]>,
-    _block: PhantomData<Block>,
+    // Wrap in a mutex to automatically implement Sync and Send.
+    _block: PhantomData<SpinMutex<Block>>,
 }
 
 impl<Arena, Block> BuddyAllocator<Arena, Block>
@@ -52,7 +53,7 @@ where
 
         let head = &mut lock[0];
 
-        let arena = Arena::new(memory_map, head);
+        let arena = SpinMutex::new(Arena::new(memory_map, head));
 
         drop(lock);
 
@@ -64,13 +65,13 @@ where
     }
 
     pub fn initialize(
-        &mut self,
+        &self,
         allocations: &BumpAllocations,
         mmap: &MemoryMap,
     ) {
-        let len = self.arena.iter().len();
+        let len = self.arena.lock().iter().len();
 
-        let mut first = self.arena.at(0).unwrap();
+        let mut first = self.arena.lock().at(0).unwrap();
 
         let lock = self.freelist.lock();
         let head = &lock[0];
@@ -95,31 +96,105 @@ where
                 .take(last_usable_idx + 1)
                 .filter(|r| r.region_type != MemoryRegionType::Usable)
             {
-                println!("{:#x?}", region)
+                let mut block = self
+                    .arena
+                    .lock()
+                    .page_with_address(unsafe {
+                        PhysicalAddress::new_unchecked(
+                            region.base_address as usize,
+                        )
+                        .align_down(REGULAR_PAGE_ALIGNMENT)
+                    })
+                    .unwrap();
+                println!("First Block: {:?}", block);
+
+                let mut length = (region.length as usize)
+                    .next_multiple_of(REGULAR_PAGE_SIZE);
+
+                while length > 0 {
+                    length -= REGULAR_PAGE_SIZE;
+                    unsafe {
+                        self.allocate_block(block);
+                    }
+                    block = unsafe { block.add(1) };
+                }
+                println!(
+                    "Allocated Range {:x}..{:x}",
+                    PhysicalAddress::new_unchecked(
+                        region.base_address as usize,
+                    )
+                    .align_down(REGULAR_PAGE_ALIGNMENT)
+                    .as_usize(),
+                    region.base_address + region.length
+                )
             }
         }
 
-        // Allocate all previous allocations
-        for allocation in allocations.iter() {
-            println!("{:#x?}", allocation)
+        // Note: Because this is a hobby OS, I do not hanlde all cases on
+        // the ranges in the memory map. And I rely on the observation that
+        // the first first matching free range in the arena is a power of
+        // 2, which is good for this allocator.
+        if allocations.index > 1 {
+            todo!(
+                "Currently does not implement passing allocations that \
+                 are not the arena of this allocator"
+            )
+        }
+
+        let allocation = allocations.iter().nth(0).unwrap();
+
+        println!("Allocation Base: {:x?}", allocation.base.as_usize());
+
+        let allocation_address = allocation.base.translate().unwrap();
+
+        println!(
+            "Initial Allocation Address: {}",
+            allocation_address.as_usize()
+        );
+
+        let mut block = self
+            .arena
+            .lock()
+            .page_with_address(allocation_address)
+            .unwrap();
+
+        println!("Block: {:?}", block);
+
+        let mut length =
+            allocation.layout.size().next_multiple_of(REGULAR_PAGE_SIZE);
+
+        while length > 0 {
+            length -= REGULAR_PAGE_SIZE;
+            unsafe {
+                self.allocate_block(block);
+            }
+            block = unsafe { block.add(1) };
         }
 
         for (n, _power) in
             iter::power_chunk_firsts(0..len, BuddyOrder::MAX as usize)
         {
-            self.merge_recursive(self.arena.at(n).unwrap());
+            let page = self.arena.lock().at(n).unwrap();
+            self.merge_recursive(page);
         }
-
-        todo!(
-            "Allocate all the reserved spots in the memory map, and take \
-             allocations from the bump allocator."
-        )
     }
 
-    unsafe fn allocate_specific_block(
+    /// Mark a block as allocated, detaching it from the freelist.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `block` is a valid free block in the
+    /// arena.
+    unsafe fn allocate_meta(
         &self,
         mut block: NonNull<BuddyMeta<Regular>>,
     ) {
+        debug_assert!(
+            unsafe { !block.as_ref().flags.is_allocated() },
+            "{:?}",
+            block
+        );
+
         // Detach page from the freelist and mark it as allocated
         unsafe {
             block.as_mut().detach();
@@ -127,12 +202,12 @@ where
         };
     }
 
-    // pub fn free_pages(&self, address: usize) {
-    //     let page_index = address / REGULAR_PAGE_SIZE;
-    // }
+    unsafe fn allocate_block(&self, block: NonNull<Block>) {
+        unsafe {
+            self.allocate_meta(NonNull::from_ref(block.as_ref().meta()));
+        }
+    }
 
-    /// This function assumes that `wanted_order` is empty, and won't check
-    /// it.
     pub fn split_until(
         &self,
         wanted_order: usize,
@@ -145,11 +220,6 @@ where
                     Block::from_meta(self.freelist.lock()[i].next.read()?),
                 ))
             })?;
-
-        println!(
-            "Initial Page: {:?}, Closet Order: {}, Wanted Order: {}",
-            initial_page, closet_order, wanted_order
-        );
 
         Some(self.split_recursive(
             initial_page,
@@ -164,21 +234,13 @@ where
         current_order: usize,
         target_order: usize,
     ) -> NonNull<Block> {
-        debug_assert!(
-            target_order < current_order,
-            "Target order cannot be greater then current order"
-        );
-
-        println!(
-            "Target Order: {}, Current Order: {}",
-            target_order, current_order
-        );
+        debug_assert!(target_order < current_order);
 
         if current_order == target_order {
             return page;
         }
 
-        let (lhs, rhs) = match self.arena.split(page) {
+        let (lhs, rhs) = match self.arena.lock().split(page) {
             Ok((lhs, rhs)) => (lhs, rhs),
             Err(e) => todo!("Handle Error, {:?}", e),
         };
@@ -192,12 +254,10 @@ where
 
     /// This function will try to merge a page with it's buddy, until it
     /// cannot be merged anymore.
-    pub fn merge_recursive(
-        &mut self,
-        mut page: NonNull<Block>,
-    ) -> BuddyOrder {
+    pub fn merge_recursive(&self, mut page: NonNull<Block>) -> BuddyOrder {
+        let arena = self.arena.lock();
         loop {
-            let buddy = match self.arena.buddy_of(page) {
+            let buddy = match arena.buddy_of(page) {
                 Ok(buddy) => buddy,
                 Err(
                     BuddyError::BuddyOutOfRange | BuddyError::MaxOrder,
@@ -232,12 +292,12 @@ where
                 page = buddy;
                 continue;
             }
-            match self.arena.merge(page, buddy) {
+            match arena.merge(page, buddy) {
                 Ok(merged) => {
                     self.attach_block(merged);
                     page = merged;
                 }
-                Err(_e) => todo!("Handle Error: {:?}", _e),
+                Err(e) => unreachable!("{}", e),
             };
         }
     }
@@ -245,6 +305,28 @@ where
     fn attach_block(&self, block: NonNull<Block>) {
         let order = unsafe { block.as_ref().meta().flags.get_order() };
         self.freelist.lock()[order as usize].attach_block(block);
+    }
+
+    pub fn print_allocated_regions(&self) {
+        let arena = self.arena.lock();
+
+        let mut prev_address =
+            unsafe { PhysicalAddress::new_unchecked(0) };
+
+        for block in arena.iter() {
+            let meta = unsafe { block.as_ref().meta() };
+
+            if meta.flags.is_allocated() {
+                let address = arena.address_of(block);
+                if address.as_usize() - prev_address.as_usize()
+                    > REGULAR_PAGE_SIZE
+                {
+                    println!("");
+                }
+                println!("{:x?}", address);
+                prev_address = address;
+            }
+        }
     }
 }
 
@@ -265,16 +347,14 @@ where
     Arena: BuddyArena<Block>,
     Block: const BuddyBlock,
 {
+    #[track_caller]
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
         let num_pages = layout.size().next_multiple_of(
             REGULAR_PAGE_ALIGNMENT.max(layout.alignment()).as_usize(),
-        );
+        ) / REGULAR_PAGE_SIZE;
 
-        debug_assert!(
-            num_pages <= (1 << BuddyOrder::MAX as usize),
-            "Size cannot be greater then: {}",
-            1 << BuddyOrder::MAX as usize
-        );
+        debug_assert!(num_pages <= (1 << BuddyOrder::MAX as usize));
+
         if num_pages > (1 << BuddyOrder::MAX as usize) || num_pages == 0 {
             return core::ptr::null_mut();
         }
@@ -294,9 +374,10 @@ where
                 })
             });
 
-        unsafe { self.allocate_specific_block(page) };
+        unsafe { self.allocate_meta(page) };
 
         self.arena
+            .lock()
             .address_of(Block::from_meta(page))
             .as_non_null::<u8>()
             .as_ptr()
@@ -320,6 +401,7 @@ where
         }
         let mut page = self
             .arena
+            .lock()
             .page_with_address(PhysicalAddress::from(ptr as usize))
             .unwrap();
 
