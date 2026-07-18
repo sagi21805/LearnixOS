@@ -21,7 +21,7 @@ static ALLOCATIONS: SpinMutex<BumpAllocations> =
 pub struct BumpAllocator<'a> {
     curser: SpinMutex<usize>,
     mmap: &'a MemoryMap,
-    allocations: &'static SpinMutex<BumpAllocations>,
+    pub allocations: &'static SpinMutex<BumpAllocations>,
 }
 
 impl<'a> BumpAllocator<'a> {
