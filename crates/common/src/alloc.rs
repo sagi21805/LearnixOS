@@ -31,7 +31,7 @@ impl Allocation {
 
 pub struct Allocations<const N: usize> {
     allocations: [Allocation; N],
-    index: usize,
+    pub index: usize,
 }
 
 #[rustfmt::skip]
@@ -50,7 +50,7 @@ impl<const N: usize> Allocations<N> {
         self.index += 1;
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Allocation> + '_ {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &Allocation> + '_ {
         self.allocations.iter().take(self.index)
     }
 }
