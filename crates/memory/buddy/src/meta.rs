@@ -224,6 +224,19 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
 
     /// Returns the block nth block of the arena, if one exists.
     fn at(&self, n: usize) -> Option<NonNull<Block>>;
+
+    /// Returns the (section index, section offset) of the given page.
+    ///
+    /// A section is a contiguous range of pages aligned to
+    /// [`BuddyOrder::MAX`].
+    ///
+    /// # Safety
+    ///
+    /// The page must be contained within the arena's memory range.
+    unsafe fn section_index_of(
+        &self,
+        block: NonNull<Block>,
+    ) -> (usize, usize);
 }
 
 unsafe impl Send for BuddyMeta<Regular> {}
