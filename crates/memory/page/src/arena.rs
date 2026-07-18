@@ -210,6 +210,17 @@ impl BuddyArena<Page> for PageMap {
         }
         Some(unsafe { NonNull::from_ref(self.inner.get_unchecked(n)) })
     }
+
+    unsafe fn section_index_of(
+        &self,
+        page: NonNull<Page>,
+    ) -> (usize, usize) {
+        let offset = unsafe { self.index_of(page) };
+        let section_offset = offset % (1 << BuddyOrder::MAX as usize);
+        let section_idx = offset / (1 << BuddyOrder::MAX as usize);
+
+        (section_idx, section_offset)
+    }
 }
 
 impl PageMap {
@@ -220,11 +231,15 @@ impl PageMap {
     /// The page must be contained within the arena's memory range.
     pub unsafe fn index_of(&self, page: NonNull<Page>) -> usize {
         debug_assert!(
-            self.inner.as_mut_ptr_range().contains(&page.as_ptr())
+            self.inner
+                .as_ptr_range()
+                .contains(&(page.as_ptr() as *const _))
         );
         unsafe { page.as_ptr().offset_from_unsigned(self.inner.as_ptr()) }
     }
+}
 
+impl PageMap {
     /// Returns the (section index, section offset) of the given page.
     ///
     /// A section is a contiguous range of pages aligned to
