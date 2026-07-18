@@ -21,7 +21,7 @@ pub struct GlobalAllocator<'a> {
 }
 
 impl<'a> GlobalAllocator<'a> {
-    pub fn init(&mut self, allocator: &'a Allocator) {
+    pub fn set(&mut self, allocator: &'a Allocator) {
         self.allocator = LateInit::new(allocator);
     }
 
@@ -29,14 +29,6 @@ impl<'a> GlobalAllocator<'a> {
         Self {
             allocator: LateInit::uninit(),
         }
-    }
-
-    pub fn swap(&mut self, _allocator: &'a dyn GlobalAlloc) {
-        todo!(
-            "Ensure allocation is passsed to the next allocator, or it \
-             deallocated all"
-        );
-        // self.allocator = LateInit::new(allocator);
     }
 }
 
@@ -78,30 +70,8 @@ pub fn alloc_table(
     Ok(table)
 }
 
-#[extend::ext]
+#[extend::ext(name = VirtualAddressMapping)]
 pub impl VirtualAddress {
-    #[cfg(target_arch = "x86_64")]
-    fn walk(&self) -> impl Iterator<Item = NonNull<PageTableEntry>> {
-        let mut table = Some(PageTable::current_table());
-        let mut level = Some(PageTableLevel::PML4);
-        ::core::iter::from_fn(move || {
-            let current_level = level?;
-
-            let entry = unsafe {
-                &table?.as_ref().entries[self.index_of(current_level)]
-            };
-
-            if entry.get_flags().is_present() {
-                table = entry.mapped_table().ok();
-                level = current_level.next();
-            } else {
-                // Stop at the next iteration.
-                level = None;
-            }
-            Some(NonNull::from_ref(entry))
-        })
-    }
-
     #[cfg(target_arch = "x86_64")]
     fn walk_map(&self) -> impl Iterator<Item = NonNull<PageTableEntry>> {
         let mut table = PageTable::current_table();
@@ -134,11 +104,6 @@ pub impl VirtualAddress {
 
             Some(entry)
         })
-    }
-
-    fn is_mapped(&self) -> bool {
-        self.walk()
-            .all(|e| unsafe { e.as_ref().get_flags().is_present() })
     }
 
     #[cfg(target_arch = "x86_64")]
