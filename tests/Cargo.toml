@@ -9,3 +9,8 @@ num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features
     "complex-expressions",
 ] }
 thiserror = { version = "2.0.12", default-features = false }
+page = { path = "../crates/memory/page", features = ["host"] }
+buddy = { path = "../crates/memory/buddy", features = ["host"] }
+x86 = { path = "../crates/arch/x86" }
+common = { path = "../crates/common" }
+sync = { path = "../crates/sync" }

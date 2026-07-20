@@ -39,6 +39,15 @@ impl PageTableLevel {
         let n = (*self as i8) - 1;
         (n > 0).then(|| unsafe { core::mem::transmute(n) })
     }
+
+    pub fn level_number(&self) -> usize {
+        match self {
+            PageTableLevel::PML4 => 4,
+            PageTableLevel::PDPT => 3,
+            PageTableLevel::PD => 2,
+            PageTableLevel::PT => 1,
+        }
+    }
 }
 #[repr(u8)]
 #[derive(

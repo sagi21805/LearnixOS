@@ -21,17 +21,17 @@ pub struct AdvancedWriter<const W: usize, const H: usize> {
     pub line_offset: usize,
     pub buffer: Box<[ScreenChar]>,
     pub display_line: usize,
-    pub row_table: Box<[u16]>,
+    pub row_table: Box<[usize]>,
     pub screen: &'static SpinMutex<Screen>,
 }
 
 impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
     fn default() -> Self {
         const BUFFER_SIZE: usize =
-            (2 * REGULAR_PAGE_SIZE) / size_of::<ScreenChar>();
+            (64 * REGULAR_PAGE_SIZE) / size_of::<ScreenChar>();
 
         const ROW_TABLE_SIZE: usize =
-            (REGULAR_PAGE_SIZE) / size_of::<u16>();
+            (4 * REGULAR_PAGE_SIZE) / size_of::<usize>();
 
         Self {
             color: ColorCode::default(),
@@ -45,7 +45,7 @@ impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
                     .assume_init()
             },
             row_table: unsafe {
-                Box::<[u16; ROW_TABLE_SIZE]>::new_zeroed().assume_init()
+                Box::<[usize; ROW_TABLE_SIZE]>::new_zeroed().assume_init()
             },
             screen: &SCREEN,
         }
@@ -68,8 +68,12 @@ impl<const W: usize, const H: usize> GenericWriter
     fn new_line(&mut self) {
         self.write_vga_char(ScreenChar::new(Char::LineFeed, self.color));
         self.line += 1;
+        if self.line >= self.row_table.len() {
+            return;
+        }
         self.row_table[self.line] = self.row_table[self.line - 1];
         self.line_offset = 0;
+        self.scroll_down(1);
     }
 
     fn screen_height(&self) -> usize { H }
@@ -78,6 +82,9 @@ impl<const W: usize, const H: usize> GenericWriter
 
     fn scroll_down(&mut self, lines: usize) {
         let new_line = self.display_line.saturating_add(lines);
+        if new_line + self.screen_height() >= self.row_table.len() {
+            return;
+        }
         if self.row_table[new_line + self.screen_height()] != 0 {
             self.screen.lock().scroll_up(lines);
             self.screen.lock().reset_cursor();
@@ -88,6 +95,9 @@ impl<const W: usize, const H: usize> GenericWriter
 
     fn scroll_up(&mut self, lines: usize) {
         let new_line = self.display_line.saturating_sub(lines);
+        if new_line >= self.row_table.len() {
+            return;
+        }
         if self.row_table[new_line] != 0 || new_line == 0 {
             self.screen.lock().scroll_down(lines);
             self.screen.lock().reset_cursor();
@@ -125,10 +135,17 @@ impl<const W: usize, const H: usize> GenericWriter
     }
 
     fn write_vga_char(&mut self, char: ScreenChar) {
+        if self.cursor + 1 > self.buffer.len() {
+            return;
+        }
+
         let position = &mut self.buffer.as_mut()[self.cursor];
         unsafe { ::core::ptr::write_volatile(position as *mut _, char) };
         self.cursor += 1;
         self.line_offset += 1;
+        if self.line + 1 >= self.row_table.len() {
+            return;
+        }
         self.row_table[self.line] += 1;
         if self.line_offset >= self.screen_width() {
             self.line += 1;

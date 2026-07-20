@@ -1,42 +1,51 @@
 #![no_std]
 #![feature(ptr_alignment_type)]
+#![feature(const_default)]
+#![feature(const_trait_impl)]
 
-use core::{
-    alloc::{GlobalAlloc, Layout},
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use core::alloc::{GlobalAlloc, Layout};
 
 use common::{
-    address_types::{Address, PhysicalAddress},
+    address_types::{Address, VirtualAddress},
+    alloc::{Allocation, Allocations, BumpAllocations},
+    constants::REGULAR_PAGE_ALIGNMENT,
     enums::MemoryRegionType,
 };
 
-use x86::{instructions::interrupts::hlt, memory_map::MemoryMap};
+use sync::mutex::SpinMutex;
+use x86::memory_map::MemoryMap;
+
+static ALLOCATIONS: SpinMutex<BumpAllocations> =
+    SpinMutex::new(Allocations::default());
 
 pub struct BumpAllocator<'a> {
-    curser: AtomicUsize,
+    curser: SpinMutex<usize>,
     mmap: &'a MemoryMap,
+    pub allocations: &'static SpinMutex<BumpAllocations>,
 }
 
 impl<'a> BumpAllocator<'a> {
     pub fn new(mmap: &'a MemoryMap) -> BumpAllocator<'a> {
         BumpAllocator {
-            curser: AtomicUsize::new(0),
+            curser: SpinMutex::new(0),
             mmap,
+            allocations: &ALLOCATIONS,
         }
     }
 }
 
 unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let mut curser = self.curser.lock();
+
+        // Allocate at least a page per allocation.
+        let alignment = layout.alignment().max(REGULAR_PAGE_ALIGNMENT);
+
         let mut aligned_cursor = unsafe {
-            PhysicalAddress::new_unchecked(
-                self.curser.load(Ordering::Relaxed),
-            )
-            .align_up(layout.alignment())
+            VirtualAddress::new_unchecked(*curser).align_up(alignment)
         };
 
-        let regions = self.mmap.regions.lock();
+        let regions = self.mmap.regions.read();
 
         let memmap_block = regions
             .iter()
@@ -45,24 +54,26 @@ unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
                 // If the cursor is before the block, advance it.
                 if aligned_cursor.as_usize() < b.base_address as usize {
                     aligned_cursor = unsafe {
-                        PhysicalAddress::new_unchecked(
+                        VirtualAddress::new_unchecked(
                             b.base_address as usize,
                         )
-                        .align_up(layout.alignment())
+                        .align_up(alignment)
                     }
                 }
 
                 // Check that the allocation fits the block.
                 aligned_cursor.as_usize() >= b.base_address as usize
-                    && (b.base_address + b.length) as usize - layout.size()
+                    && ((b.base_address + b.length) as usize)
+                        .saturating_sub(layout.size())
                         >= aligned_cursor.as_usize()
             });
 
         if memmap_block.is_some() {
-            self.curser.store(
-                aligned_cursor.as_usize() + layout.size(),
-                Ordering::Relaxed,
-            );
+            *curser = aligned_cursor.as_usize() + layout.size();
+            self.allocations.lock().write(Allocation {
+                layout,
+                base: aligned_cursor,
+            });
             unsafe { aligned_cursor.as_non_null().as_mut() }
         } else {
             core::ptr::null_mut()

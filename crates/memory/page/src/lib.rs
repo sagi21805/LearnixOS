@@ -1,21 +1,22 @@
 #![no_std]
+#![feature(const_trait_impl)]
 
-// pub mod arena;
-pub mod map;
-// pub mod meta;
+pub mod arena;
+pub mod meta;
+
+use core::ptr::NonNull;
 
 use crate::meta::PageMeta;
 use buddy::meta::{BuddyBlock, BuddyMeta, Regular};
-use core::ptr::NonNull;
 
-// pub struct Page {
-//     pub meta: PageMeta,
-// }
+#[derive(Debug)]
+pub struct Page {
+    pub meta: PageMeta,
+}
 
-impl BuddyBlock for Page {
-    fn from_meta<S: buddy::meta::MetaState>(
-        meta: NonNull<BuddyMeta<S>>,
-    ) -> NonNull<Self> {
+#[rustfmt::skip]
+impl const BuddyBlock for Page {
+    fn from_meta(meta: NonNull<BuddyMeta<Regular>>) -> NonNull<Self> {
         let offset = core::mem::offset_of!(Page, meta.buddy);
         unsafe {
             NonNull::new_unchecked(
@@ -24,14 +25,12 @@ impl BuddyBlock for Page {
         }
     }
 
-    fn meta_mut<S: buddy::meta::MetaState>(
-        &mut self,
-    ) -> &mut BuddyMeta<S> {
-        unsafe { NonNull::from_ref(&self.meta.buddy).cast().as_mut() }
+    fn meta_mut(&mut self) -> &mut BuddyMeta<Regular> {
+        unsafe { NonNull::from_ref(&self.meta.buddy).as_mut() }
     }
 
-    fn meta<S: buddy::meta::MetaState>(&self) -> &BuddyMeta<S> {
-        unsafe { NonNull::from_ref(&self.meta.buddy).cast().as_ref() }
+    fn meta(&self) -> &BuddyMeta<Regular> {
+        unsafe { NonNull::from_ref(&self.meta.buddy).as_ref() }
     }
 }
 

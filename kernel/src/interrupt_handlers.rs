@@ -1,16 +1,20 @@
 use common::{
-    address_types::{Address, VirtualAddress},
+    address_types::{Address, PhysicalAddress, VirtualAddress},
     enums::{
-        ProtectionLevel,
+        PageSize, ProtectionLevel,
         interrupts::{Interrupt, InterruptType},
     },
 };
 use keyboard::keyboard_handler;
+use libk::alloc::VirtualAddressMapping;
 use vga_display::println;
 use x86::{
     registers::cr2,
-    structures::interrupt_descriptor_table::{
-        InterruptDescriptorTable, InterruptStackFrame,
+    structures::{
+        interrupt_descriptor_table::{
+            InterruptDescriptorTable, InterruptStackFrame,
+        },
+        paging::PageEntryFlags,
     },
 };
 
@@ -164,10 +168,19 @@ pub extern "x86-interrupt" fn page_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    panic!("Interrupt: PageFault");
-    // panic!("Stack frame: {:#?}", stack_frame);
-    // panic!("Error code: {:#x}", error_code);
-    panic!("Faulting address: {:x}", cr2::read());
+    let faulting_address =
+        unsafe { VirtualAddress::new_unchecked(cr2::read() as usize) };
+
+    let identity_map =
+        unsafe { PhysicalAddress::new_unchecked(cr2::read() as usize) };
+
+    faulting_address
+        .map(
+            identity_map,
+            Some(PageEntryFlags::regular_page_flags()),
+            PageSize::Regular,
+        )
+        .expect("Cannot map address");
 }
 
 pub extern "x86-interrupt" fn alignment_check_handler(
