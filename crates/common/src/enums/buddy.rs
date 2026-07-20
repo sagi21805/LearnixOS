@@ -1,8 +1,5 @@
 use num_enum::{ConstFromPrimitive, ConstIntoPrimitive};
-use strum::VariantArray;
 use strum_macros::VariantArray;
-
-pub const BUDDY_MAX_ORDER: usize = BuddyOrder::VARIANTS.len();
 
 #[repr(u8)]
 #[derive(
@@ -12,6 +9,8 @@ pub const BUDDY_MAX_ORDER: usize = BuddyOrder::VARIANTS.len();
     PartialEq,
     Debug,
     Eq,
+    PartialOrd,
+    Ord,
     ConstIntoPrimitive,
     ConstFromPrimitive,
 )]
@@ -32,6 +31,22 @@ pub enum BuddyOrder {
 }
 
 impl BuddyOrder {
-    pub const MIN: BuddyOrder = *BuddyOrder::VARIANTS.first().unwrap();
-    pub const MAX: BuddyOrder = *BuddyOrder::VARIANTS.last().unwrap();
+    pub const MIN: BuddyOrder = BuddyOrder::Order0;
+    pub const MAX: BuddyOrder = BuddyOrder::Order10;
+
+    pub fn next(self) -> Option<BuddyOrder> {
+        match self {
+            BuddyOrder::None => unreachable!(),
+            BuddyOrder::MAX => None,
+            _ => BuddyOrder::try_from(self as u8 + 1).ok(),
+        }
+    }
+
+    pub fn prev(self) -> Option<BuddyOrder> {
+        match self {
+            BuddyOrder::None => unreachable!(),
+            BuddyOrder::MIN => None,
+            _ => BuddyOrder::try_from(self as u8 - 1).ok(),
+        }
+    }
 }

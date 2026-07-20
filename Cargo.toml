@@ -6,13 +6,13 @@ members = [
     "crates/arch/x86",
     "crates/common",
     "crates/macros",
-    "crates/drivers/ahci",
+    # "crates/drivers/ahci",
     "crates/drivers/keyboard",
-    "crates/drivers/pci",
+    # "crates/drivers/pci",
     "crates/drivers/vga-display",
     "crates/memory/bump",
     "crates/memory/buddy",
-    "crates/memory/slab",
+    # "crates/memory/slab",
     "crates/memory/page",
     "crates/sync",
     "crates/libk",
@@ -29,3 +29,13 @@ opt-level = 's'
 # overflow-checks = true
 codegen-units = 1
 panic = "abort"
+
+[profile.release.package.buddy]
+inherits = "release"
+debug = true
+debug-assertions = true
+
+[profile.release.package.page]
+inherits = "release"
+debug = true
+debug-assertions = true

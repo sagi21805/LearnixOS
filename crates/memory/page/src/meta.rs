@@ -1,13 +1,15 @@
-use core::{mem::ManuallyDrop, ptr::NonNull};
+use core::fmt::Debug;
 
-use buddy::meta::{BuddyBlock, BuddyMeta, BuddyMetaType};
+use buddy::meta::{BuddyMeta, Regular};
 
 pub union PageMeta {
-    pub buddy: BuddyMetaType,
+    pub buddy: BuddyMeta<Regular>,
 }
 
-// #[derive(Debug)]
-// pub struct SlabPageMeta<T: Slab> {
-//     pub owner: NonNull<SlabCache<T>>,
-//     pub freelist: NonNull<SlabDescriptor<T>>,
-// }
+impl Debug for PageMeta {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PageMeta")
+            .field("buddy", unsafe { &self.buddy })
+            .finish()
+    }
+}

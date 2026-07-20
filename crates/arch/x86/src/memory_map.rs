@@ -2,20 +2,16 @@ use common::{
     constants::{INIT_AREA_SIZE_BYTES, KiB, MiB},
     enums::MemoryRegionType,
 };
-use core::{
-    fmt::{self, Display, Formatter},
-    ops::Deref,
-    ptr::NonNull,
-};
-use sync::mutex::SpinMutex;
+use core::fmt::{self, Display, Formatter};
+use sync::rwlock::{RwLock, SpinRwLock};
 
 #[repr(C)]
 #[derive(Clone, Debug, Copy)]
 pub struct MemoryRegionExtended {
-    base_address: u64,
-    length: u64,
-    region_type: MemoryRegionType,
-    extended_attributes: u32,
+    pub base_address: u64,
+    pub length: u64,
+    pub region_type: MemoryRegionType,
+    pub extended_attributes: u32,
 }
 
 #[repr(C)]
@@ -24,6 +20,17 @@ pub struct MemoryRegion {
     pub base_address: u64,
     pub length: u64,
     pub region_type: MemoryRegionType,
+}
+
+#[rustfmt::skip]
+impl const Default for MemoryRegion {
+    fn default() -> Self {
+        MemoryRegion {
+            base_address: 0,
+            length: 0,
+            region_type: MemoryRegionType::Filler,
+        }
+    }
 }
 
 impl From<&MemoryRegionExtended> for MemoryRegion {
@@ -43,7 +50,7 @@ pub enum MemoryMapError {
 }
 
 pub struct MemoryMap {
-    pub regions: SpinMutex<&'static mut [MemoryRegion]>,
+    pub regions: SpinRwLock<&'static mut [MemoryRegion]>,
     pub capacity: usize,
 }
 
@@ -52,7 +59,7 @@ impl Display for MemoryMap {
         let mut usable = 0u64;
         let mut reserved = 0u64;
 
-        let regions = self.regions.lock();
+        let regions = self.regions.read();
         for entry in regions.iter() {
             let size_mib = entry.length / MiB as u64;
             let size_kib = (entry.length % MiB as u64) / KiB as u64;
@@ -156,7 +163,7 @@ impl MemoryMap {
         };
 
         Ok(MemoryMap {
-            regions: SpinMutex::new(modified),
+            regions: RwLock::new(modified),
             capacity,
         })
     }

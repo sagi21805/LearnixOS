@@ -6,9 +6,10 @@
 #![feature(const_trait_impl)]
 extern crate alloc;
 
-use core::{cell::OnceCell, hint::black_box, panic::PanicInfo};
+use core::panic::PanicInfo;
 
 use alloc::boxed::Box;
+use buddy::BuddyAllocator;
 use bump::BumpAllocator;
 use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
@@ -20,6 +21,7 @@ use common::{
     late_init::LateInit,
 };
 use keyboard::ps2_keyboard::Keyboard;
+use page::{Page, arena::PageMap};
 use vga_display::{
     SCREEN,
     advanced_writer::AdvancedWriter,
@@ -36,7 +38,7 @@ use x86::{
 };
 
 use libk::{
-    alloc::{BUMP_ALLOCATOR, GlobalAllocator, VirtualAddressExt},
+    alloc::{GlobalAllocator, VirtualAddressMapping},
     print, println,
 };
 
@@ -72,8 +74,13 @@ static ADVANCED_WRITER: SpinMutex<LateInit<AdvancedWriter<80, 25>>> =
 static WRITER: SpinMutex<Writer<'static>> =
     SpinMutex::new(Writer::new(unsafe { SIMPLE_WRITER.leak() }));
 
+pub static BUMP_ALLOCATOR: LateInit<BumpAllocator> = LateInit::uninit();
+
 #[global_allocator]
 static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
+
+pub static BUDDY_ALLOCATOR: LateInit<BuddyAllocator<PageMap, Page>> =
+    LateInit::uninit();
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -100,26 +107,26 @@ pub unsafe extern "C" fn _start() -> ! {
 
     unsafe {
         MMAP.init(MemoryMap::parse_map(raw, buf).unwrap());
+
         BUMP_ALLOCATOR.init(BumpAllocator::new(MMAP.assume_init_ref()));
 
         #[allow(static_mut_refs)]
-        GLOBAL_ALLOCATOR.init(BUMP_ALLOCATOR.assume_init_ref());
-
-        let v = VirtualAddress::new_unchecked(
-            PHYSICAL_MEMORY_OFFSET + 6 * MiB,
-        );
-        let p = PhysicalAddress::new_unchecked(6 * MiB);
-
-        println!("Virtual address: {:x?} is mapped: {}", v, v.is_mapped());
-
-        let succ = v.map(p, None, PageSize::Big);
-
-        println!("Map succeeded: {:?}", succ);
-
-        println!("Virtual address: {:x?} is mapped: {}", v, v.is_mapped());
-        println!("Map succeeded: {:?}", succ);
+        GLOBAL_ALLOCATOR.set(BUMP_ALLOCATOR.assume_init_ref());
     }
 
+    BUDDY_ALLOCATOR.init(BuddyAllocator::<PageMap, Page>::new(
+        MMAP.assume_init_ref(),
+    ));
+
+    BUDDY_ALLOCATOR.initialize(
+        &*BUMP_ALLOCATOR.allocations.lock(),
+        MMAP.assume_init_ref(),
+    );
+
+    #[allow(static_mut_refs)]
+    GLOBAL_ALLOCATOR.set(BUDDY_ALLOCATOR.assume_init_ref());
+
+    okprintln!("Initialized Buddy Allocator");
     unsafe {
         interrupts::disable();
         InterruptDescriptorTable::init(&IDT);
@@ -131,17 +138,11 @@ pub unsafe extern "C" fn _start() -> ! {
         let buffer = Box::new([0u8; 4096]);
         KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
 
-        println!("BUFFER: {:?}", KEYBOARD_BUFFER.buffer());
-
         KEYBOARD.init(Keyboard::new(&KEYBOARD_BUFFER));
-        println!("BUFFER: {:?}", KEYBOARD.consumer().inner().buffer());
         okprintln!("Initialized Keyboard");
         interrupts::enable();
     }
-    let cursor_position = WRITER.lock().inner.write_cursor_position();
-    println!("Position: {}", cursor_position);
     let w = ADVANCED_WRITER.leak();
-    let x = unsafe { &mut *(w as *mut _ as *mut AdvancedWriter<80, 25>) };
     w.init(AdvancedWriter::default());
     WRITER.lock().set_writer(w.assume_init_mut());
     okprintln!("Set advanced writer");
@@ -149,16 +150,9 @@ pub unsafe extern "C" fn _start() -> ! {
     unsafe {
         hlt();
     }
-    println!(
-        "cursor: {}, line: {}, buffer: {:?}, row_table: {:?}, Display \
-         Line: {}",
-        x.cursor,
-        x.line,
-        x.buffer.as_ptr(),
-        x.row_table.as_ptr(),
-        x.display_line
-    );
 
+    println!("{}", MMAP.assume_init_ref());
+    BUDDY_ALLOCATOR.print_allocated_regions();
     // unsafe { SLAB_ALLOCATOR.init() }
     // okprintln!("Initialized slab allocator");
     // panic!("")
@@ -168,19 +162,20 @@ pub unsafe extern "C" fn _start() -> ! {
     // println!("pci_devices address: {:x}", a);
 
     // loop {
-    //     let c = unsafe { KEYBOARD.assume_init_mut().read_raw_scancode()
-    // };     if let Some(e) = c
-    //         && PS2ScanCode::from_scancode(e) == PS2ScanCode::Enter
-    //     {
+    //     let c = unsafe {
+    // KEYBOARD.assume_init_mut().read_raw_scancode() };     if
+    // let Some(e) = c         && PS2ScanCode::from_scancode(e)
+    // == PS2ScanCode::Enter     {
     //         break;
     //     }
     // }
 
     // unsafe { PIC.enable_irq(CascadedPicInterruptLine::Ahci) };
     // for device in pci_devices.iter_mut() {
-    //     // println!("{:#?}", unsafe { device.common.vendor_device });
-    //     // println!("{:#?}", unsafe { device.common.header_type });
-    //     // println!("{:#?}\n", unsafe { device.common.device_type });
+    //     // println!("{:#?}", unsafe { device.common.vendor_device
+    // });     // println!("{:#?}", unsafe {
+    // device.common.header_type });     // println!("{:#?}\n",
+    // unsafe { device.common.device_type });
 
     //     if device.header.common().device_type.is_ahci() {
     //         let a = unsafe {
@@ -190,19 +185,20 @@ pub unsafe extern "C" fn _start() -> ! {
     //         };
 
     //         println!(
-    //             "Bus Master: {}, Interrupts Disable {}, I/O Space: {}, \
-    //              Memory Space: {}",
+    //             "Bus Master: {}, Interrupts Disable {}, I/O Space:
+    // {}, \              Memory Space: {}",
     //             device.header.common().command.is_bus_master(),
-    //             device.header.common().command.is_interrupt_disable(),
+    //
+    // device.header.common().command.is_interrupt_disable(),
     //             device.header.common().command.is_io_space(),
     //             device.header.common().command.is_memory_space()
     //         );
 
     //         println!(
     //             "Interrupt Line: {}, Interrupt Pin: {}",
-    //             unsafe { device.header.general_device.interrupt_line },
-    //             unsafe { device.header.general_device.interrupt_pin }
-    //         );
+    //             unsafe { device.header.general_device.interrupt_line
+    // },             unsafe {
+    // device.header.general_device.interrupt_pin }         );
 
     //         let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
     //         let hba = HBAMemoryRegisters::new(aligned).unwrap();
@@ -210,7 +206,8 @@ pub unsafe extern "C" fn _start() -> ! {
     //         let p = &mut hba.ports[0];
 
     //         let buf =
-    //             unsafe { alloc_pages!(1) as *mut IdentityPacketData };
+    //             unsafe { alloc_pages!(1) as *mut IdentityPacketData
+    // };
 
     //         p.identity_packet(buf);
     //         let id = unsafe {
@@ -240,7 +237,13 @@ pub unsafe extern "C" fn _start() -> ! {
                 PS2ScanCode::DownArrow => {
                     WRITER.lock().inner.scroll_down(1)
                 }
-                // WRITER.lock().inner.scroll_down(1),
+                PS2ScanCode::LeftArrow => {
+                    WRITER.lock().inner.scroll_up(24)
+                }
+                PS2ScanCode::RightArrow => {
+                    WRITER.lock().inner.scroll_down(24)
+                }
+
                 _ => {}
             },
         }
@@ -251,18 +254,29 @@ pub unsafe extern "C" fn _start() -> ! {
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {
     unsafe {
-        interrupts::disable();
-    }
-    SCREEN.force_unlock();
-    SCREEN.lock().reset_cursor();
-    SIMPLE_WRITER.force_unlock();
+        SCREEN.force_unlock();
+        SIMPLE_WRITER.force_unlock();
+        // ADVANCED_WRITER.force_unlock();
+        // WRITER.force_unlock();
+    };
     // eprintln!("{}", _info ; color =
     // ColorCode::new().foreground(Color::Yellow).
     // background(Color::Black));
-
     SIMPLE_WRITER
         .lock()
         .panic_message(format_args!("{}", _info));
-
-    loop {}
+    loop {
+        // let input = KEYBOARD.read_char();
+        // match input {
+        //     Err(key) => match key {
+        //         PS2ScanCode::UpArrow =>
+        // WRITER.lock().inner.scroll_up(1),
+        //         PS2ScanCode::DownArrow => {
+        //             WRITER.lock().inner.scroll_down(1)
+        //         }
+        //         _ => {}
+        //     },
+        //     Ok(_) => {}
+        // }
+    }
 }

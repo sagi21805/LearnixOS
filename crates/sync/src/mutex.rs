@@ -1,5 +1,6 @@
 use core::{
     cell::UnsafeCell,
+    fmt::Debug,
     marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicBool, Ordering},
@@ -98,5 +99,20 @@ impl<T, R: RelaxStrategy> Drop for MutexGuard<'_, T, R> {
         unsafe {
             self.mutex.force_unlock();
         }
+    }
+}
+
+impl<'a, T, R> Debug for MutexGuard<'a, T, R>
+where
+    T: Sized + Debug,
+    R: RelaxStrategy,
+{
+    fn fmt(
+        &self,
+        f: &mut ::core::fmt::Formatter<'_>,
+    ) -> ::core::fmt::Result {
+        f.debug_struct("MutexGuard")
+            .field("data", &&**self)
+            .finish()
     }
 }
