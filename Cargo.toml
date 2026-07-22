@@ -29,13 +29,3 @@ opt-level = 's'
 # overflow-checks = true
 codegen-units = 1
 panic = "abort"
-
-[profile.release.package.buddy]
-inherits = "release"
-debug = true
-debug-assertions = true
-
-[profile.release.package.page]
-inherits = "release"
-debug = true
-debug-assertions = true
