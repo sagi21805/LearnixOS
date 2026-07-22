@@ -244,7 +244,9 @@ pub unsafe extern "C" fn _start() -> ! {
                     WRITER.lock().inner.scroll_down(24)
                 }
 
-                _ => {}
+                _ => {
+                    println!("")
+                }
             },
         }
     }
