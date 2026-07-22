@@ -1,10 +1,13 @@
+use crate::constants::REGULAR_PAGE_SIZE;
+
 pub const FIRST_STAGE_OFFSET: u32 = 0x7c00;
 pub const MASTER_BOOT_RECORD_OFFSET: u32 = FIRST_STAGE_OFFSET + 446;
 pub const SECOND_STAGE_OFFSET: u32 = FIRST_STAGE_OFFSET + 512;
 pub const DISK_NUMBER_OFFSET: u16 = 0x7BFE;
 pub const VGA_BUFFER_PTR: u32 = 0xb8000;
-pub const MEMORY_MAP_LENGTH: usize = 0x9000;
-pub const MEMORY_MAP_OFFSET: usize = MEMORY_MAP_LENGTH + size_of::<u32>();
+pub const MEMORY_MAP_LENGTH: usize =
+    MEMORY_MAP_OFFSET + REGULAR_PAGE_SIZE - size_of::<u32>();
+pub const MEMORY_MAP_OFFSET: usize = 0x9000;
 pub const PARSED_MEMORY_MAP: usize = 0xa000;
 pub const IDENTITY_PAGE_TABLE_L4_OFFSET: usize = 0xb000;
 pub const IDENTITY_PAGE_TABLE_L3_OFFSET: usize = 0xc000;
