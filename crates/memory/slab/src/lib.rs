@@ -1,16 +1,16 @@
+#![no_std]
 #![feature(specialization)]
+#![feature(allocator_api)]
+#![feature(ptr_alignment_type)]
 
 pub mod cache;
 pub mod descriptor;
-pub mod macros;
+pub mod local_macros;
 pub mod traits;
 pub mod unassigned;
 
-use ::macros::generate_generics;
-
 use crate::{
     cache::SlabCache,
-    define_slab_system,
     descriptor::SlabDescriptor,
     traits::{Generic, Slab, SlabPosition},
 };
@@ -18,6 +18,9 @@ use core::{
     alloc::{AllocError, Allocator},
     ptr::NonNull,
 };
+
+use macros::generate_generics;
+use page::Page;
 
 generate_generics!(
     8, 16, 32, 64, 96, 128, 192, 256, 512, 1024, 2048, 4096, 8192

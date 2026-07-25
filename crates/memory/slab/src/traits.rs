@@ -29,11 +29,6 @@ impl<T: SlabPosition> SlabFlags for T {
     default const PSIZE: PageSize = PageSize::Regular;
 }
 
-impl SlabFlags for () {
-    const PFLAGS: PageEntryFlags = PageEntryFlags::default();
-    const PSIZE: PageSize = PageSize::Regular;
-}
-
 pub trait SlabCacheConstructor {
     fn new(buddy_order: usize) -> Self;
 }
