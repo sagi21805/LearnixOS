@@ -1,6 +1,6 @@
 use core::{num::NonZero, ptr::NonNull};
 
-use common::address_types::VirtualAddress;
+use common::{address_types::VirtualAddress, enums::BuddyOrder};
 
 use crate::{traits::Slab, unassigned::UnassignSlab};
 
@@ -97,16 +97,12 @@ impl<T: Slab> SlabCache<T> {
              allocation from the page allocator is needed."
         )
     }
-    pub fn dealloc(&self, _ptr: NonNull<T>) {
-        todo!()
-    }
+    pub fn dealloc(&self, _ptr: NonNull<T>) { todo!() }
 }
 
 impl SlabCache<()> {
     pub fn assign<T: Slab>(&self) -> NonNull<SlabCache<T>> {
-        unsafe {
-            NonNull::new_unchecked(self as *const _ as *mut SlabCache<T>)
-        }
+        unsafe { NonNull::from_ref(self).cast() }
     }
 }
 

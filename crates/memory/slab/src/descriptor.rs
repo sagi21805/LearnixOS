@@ -1,12 +1,10 @@
-use crate::{
-    alloc_pages,
-    memory::{
-        allocators::slab::traits::Slab,
-        unassigned::{AssignSlab, UnassignSlab},
-    },
-};
-use common::constants::REGULAR_PAGE_SIZE;
+extern crate alloc;
+
+use crate::traits::Slab;
+use alloc::alloc::{Layout, alloc};
+use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
 use core::{
+    alloc::LayoutError,
     fmt::Debug,
     mem::{ManuallyDrop, size_of},
     ptr::NonNull,
@@ -14,14 +12,17 @@ use core::{
 use nonmax::NonMaxU16;
 
 /// Preallocated object in the slab allocator.
-pub union PreallocatedObject<T: 'static + Sized> {
+pub union PreAllocated<T: Sized> {
     pub allocated: ManuallyDrop<T>,
     pub next_free_idx: Option<NonMaxU16>,
 }
 
-impl<T> Debug for PreallocatedObject<T> {
-    fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Ok(())
+impl<T: Debug> Debug for PreAllocated<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PreAllocated")
+            .field("allocated", unsafe { &self.allocated })
+            .field("next_free_idx", unsafe { &self.next_free_idx })
+            .finish()
     }
 }
 
@@ -29,28 +30,10 @@ impl<T> Debug for PreallocatedObject<T> {
 pub struct SlabDescriptor<T: Slab> {
     pub next_free_idx: Option<NonMaxU16>,
     pub total_allocated: u16,
-    pub objects: NonNull<[PreallocatedObject<T>]>,
+    // TODO: Check the possibility to not save the length here because it
+    // is already managed by a freelist so the len may not be needed.
+    pub objects: NonNull<[PreAllocated<T>]>,
     pub next: Option<NonNull<SlabDescriptor<T>>>,
-}
-
-impl AssignSlab for NonNull<SlabDescriptor<()>> {
-    type Target<Unassigned: Slab> = NonNull<SlabDescriptor<Unassigned>>;
-
-    fn assign<T: Slab>(&self) -> NonNull<SlabDescriptor<T>> {
-        unsafe {
-            NonNull::new_unchecked(self.as_ptr() as *mut SlabDescriptor<T>)
-        }
-    }
-}
-
-impl<T: Slab> UnassignSlab for NonNull<SlabDescriptor<T>> {
-    type Target = NonNull<SlabDescriptor<()>>;
-
-    fn as_unassigned(&self) -> Self::Target {
-        unsafe {
-            NonNull::new_unchecked(self.as_ptr() as *mut SlabDescriptor<()>)
-        }
-    }
 }
 
 impl<T: Slab> SlabDescriptor<T> {
@@ -67,24 +50,35 @@ impl<T: Slab> SlabDescriptor<T> {
         order: usize,
         next: Option<NonNull<SlabDescriptor<T>>>,
     ) -> SlabDescriptor<T> {
-        let address = unsafe { alloc_pages!(1 << order).translate() };
+        let address = unsafe {
+            NonNull::new_unchecked(alloc(
+                Layout::from_size_alignment_unchecked(
+                    REGULAR_PAGE_SIZE * (1 << order),
+                    REGULAR_PAGE_ALIGNMENT,
+                ),
+            ))
+            .cast::<PreAllocated<T>>()
+        };
 
         let mut objects = NonNull::slice_from_raw_parts(
-            address.as_non_null::<PreallocatedObject<T>>(),
-            ((1 << order) * REGULAR_PAGE_SIZE)
-                / size_of::<PreallocatedObject<T>>(),
+            address,
+            (REGULAR_PAGE_SIZE * (1 << order))
+                / size_of::<PreAllocated<T>>(),
         );
 
+        // Initialize each free object to point at the next free.
         for (i, object) in
             unsafe { objects.as_mut() }.iter_mut().enumerate()
         {
-            *object = PreallocatedObject {
+            *object = PreAllocated {
                 next_free_idx: Some(unsafe {
                     NonMaxU16::new_unchecked(i as u16 + 1)
                 }),
             }
         }
 
+        // Set the last object free_index into none because it is the end
+        // of the slab.
         unsafe {
             objects.as_mut().last_mut().unwrap().next_free_idx = None
         };
@@ -103,6 +97,10 @@ impl<T: Slab> SlabDescriptor<T> {
             "Called allocate on a full slab"
         );
 
+        todo!(
+            "Didn't handle the case the slab is full becasue of unwrap. \
+             Should allocate another slab"
+        );
         let idx = self.next_free_idx.unwrap().get() as usize;
         let preallocated = unsafe { &mut self.objects.as_mut()[idx] };
 
@@ -116,11 +114,18 @@ impl<T: Slab> SlabDescriptor<T> {
     // TODO: In tests rembmber to implement something on T that implement
     // drop and see that when freeing the memory it is called
     pub unsafe fn dealloc(&mut self, ptr: NonNull<T>) {
-        todo!("Remember to call drop on the item");
+        todo!(
+            "Should think if calling drop is the responisibility of the \
+             allocator"
+        );
+        todo!(
+            "Should add a check if the ptr that is freed from this slab \
+             is actually allocated from it "
+        );
 
         let freed_index = (ptr.as_ptr().addr()
             - self.objects.as_ptr().addr())
-            / size_of::<PreallocatedObject<T>>();
+            / size_of::<PreAllocated<T>>();
 
         unsafe {
             self.objects.as_mut()[freed_index].next_free_idx =
