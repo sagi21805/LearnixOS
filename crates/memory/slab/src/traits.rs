@@ -1,5 +1,7 @@
-use common::enums::PageSize;
+use common::{address_types::VirtualAddress, enums::PageSize};
 use x86::structures::paging::PageEntryFlags;
+
+use crate::descriptor::SlabDescriptor;
 
 /// Get the position on the slab array, for a slab of the given type.
 ///
@@ -29,10 +31,6 @@ impl<T: SlabPosition> SlabFlags for T {
     default const PSIZE: PageSize = PageSize::Regular;
 }
 
-pub trait SlabCacheConstructor {
-    fn new(buddy_order: usize) -> Self;
-}
-
 pub trait Generic {
     const START: usize;
     const END: usize;
@@ -47,9 +45,24 @@ pub trait DmaGeneric {
     fn size(&self) -> usize;
 }
 
-pub trait SlabMeta {
+pub trait SlabBlock {
+    fn from_address(address: VirtualAddress) -> Self;
 
-    fn 
-    
-    
+    /// Retrive a reference to the [`SlabDescriptor`] from the block.
+    ///
+    /// # Safety
+    ///
+    /// The `T` that this function gets will cast the [`SlabDescriptor`]
+    /// that in this block unconditionality which in unsafe.
+    unsafe fn slab_descriptor<T: Slab>(&self) -> &SlabDescriptor<T>;
+
+    /// Retrive a mutable reference [`SlabDescriptor`] from the block.
+    ///
+    /// # Safety
+    ///
+    /// The `T` that this function gets will cast the [`SlabDescriptor`]
+    /// that in this block unconditionality which in unsafe.
+    unsafe fn slab_descriptor_mut<T: Slab>(
+        &mut self,
+    ) -> &mut SlabDescriptor<T>;
 }
