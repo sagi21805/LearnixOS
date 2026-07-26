@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 common = { path = "../../common" }
 x86 = { path = "../../arch/x86" }
+buddy = { path = "../buddy" }
+sync = { path = "../../sync" }
 num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = [
     "complex-expressions",
 ] }
