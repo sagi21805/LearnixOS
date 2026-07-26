@@ -3,8 +3,8 @@ macro_rules! register_slabs {
     ($($t:ty),* $(,)?) => {
         $crate::register_slabs!(@step 0; $($t),*);
     };
-
-    (@step $idx:expr; $head:ty, $($tail:ty),+) => {
+    // One arm handles both "head + rest" and "head only" via optional repetition.
+    (@step $idx:expr; $head:ty $(, $tail:ty)*) => {
         impl $crate::traits::SlabPosition for $head {
             const SLAB_POSITION: usize = $idx;
         }
@@ -13,15 +13,6 @@ macro_rules! register_slabs {
 
         $crate::register_slabs!(@step $idx + 1; $($tail),*);
     };
-
-    (@step $idx:expr; $head:ty) => {
-        impl $crate::traits::SlabPosition for $head {
-            const SLAB_POSITION: usize = $idx;
-        }
-
-        impl $crate::traits::Slab for $head {}
-    };
-
     (@step $idx:expr; ) => {};
 }
 
@@ -29,37 +20,24 @@ macro_rules! register_slabs {
 macro_rules! define_slab_system {
     ($($t:ty),* $(,)?) => {
         use common::constants::REGULAR_PAGE_SIZE;
-        use $crate::traits::SlabCacheConstructor;
 
         $crate::register_slabs!($($t),*);
 
         const COUNT: usize = [$(stringify!($t)),*].len();
 
-        pub struct SlabAllocator {
-            slabs: [common::late_init::LateInit<SlabCache<()>>; COUNT]
-        }
+        impl<Block, Arena> SlabAllocator<Block, Arena> where
+            Block: BuddyBlock + SlabBlock,
+            Arena: BuddyArena<Block>
+        {
 
-        impl SlabAllocator {
-            pub const fn new() -> Self {
-                Self {
-                    slabs: [
-                        $({
-                            let _ = stringify!($t);
-                            common::late_init::LateInit::uninit()
-                        }),*
-                    ]
-                }
-            }
 
-            pub fn init(&'static mut self) {
+            pub fn init(&mut self) {
                 $(
                     let index = <$t>::SLAB_POSITION;
 
-                    let initialized = SlabCache::<$t>::new(size_of::<$t>().div_ceil(REGULAR_PAGE_SIZE));
+                    let slab_cache = SlabCache::<$t>::new(size_of::<$t>().div_ceil(REGULAR_PAGE_SIZE));
 
-                    let unassigned = NonNull::from_ref(&initialized).as_unassigned();
-
-                    self.slabs[index].write(unsafe { unassigned.as_ref().clone() });
+                    self.slabs[index] = unsafe { slab_cache.as_unit() };
                 )*
             }
         }
