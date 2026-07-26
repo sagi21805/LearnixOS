@@ -2,31 +2,50 @@
 #![feature(specialization)]
 #![feature(allocator_api)]
 #![feature(ptr_alignment_type)]
+#![feature(const_trait_impl)]
+#![feature(const_default)]
+#![feature(const_convert)]
+#![feature(const_result_trait_fn)]
 
 pub mod cache;
 pub mod descriptor;
 pub mod local_macros;
 pub mod traits;
-pub mod unassigned;
 
 use crate::{
     cache::SlabCache,
-    descriptor::SlabDescriptor,
-    traits::{Generic, Slab, SlabPosition},
+    traits::{Generic, Slab, SlabBlock, SlabPosition},
 };
 use core::{
     alloc::{AllocError, Allocator},
+    marker::PhantomData,
     ptr::NonNull,
 };
 
+use common::address_types::{Address, VirtualAddress};
+use sync::mutex::SpinMutex;
+
+use buddy::meta::{BuddyArena, BuddyBlock};
+
 use macros::generate_generics;
+use x86::structures::paging::VirtualAddressExt;
 
 generate_generics!(
     8, 16, 32, 64, 96, 128, 192, 256, 512, 1024, 2048, 4096, 8192
 );
 
+pub struct SlabAllocator<Block, Arena>
+where
+    Block: BuddyBlock + SlabBlock,
+    Arena: BuddyArena<Block> + 'static,
+{
+    slabs: [SlabCache<()>; COUNT],
+    arena: &'static SpinMutex<Arena>,
+    // Wrap in a mutex to automatically implement Sync and Send.
+    _block: PhantomData<SpinMutex<Block>>,
+}
+
 define_slab_system!(
-    SlabDescriptor<()>,
     Generic8,
     Generic16,
     Generic32,
@@ -42,10 +61,22 @@ define_slab_system!(
     Generic8192,
 );
 
-impl SlabAllocator {
+impl<Block, Arena> SlabAllocator<Block, Arena>
+where
+    Block: BuddyBlock + SlabBlock,
+    Arena: BuddyArena<Block> + 'static,
+{
+    pub const fn new(arena: &'static SpinMutex<Arena>) -> Self {
+        const EMPTY_SLAB: SlabCache<()> = SlabCache::default();
+        Self {
+            slabs: [EMPTY_SLAB; COUNT],
+            arena,
+            _block: PhantomData,
+        }
+    }
+
     pub fn slab_of<T: Slab>(&self) -> NonNull<SlabCache<T>> {
-        NonNull::from_ref(self.slabs[T::SLAB_POSITION].assume_init_ref())
-            .cast()
+        NonNull::from_ref(&self.slabs[T::SLAB_POSITION]).cast()
     }
 
     pub fn kmalloc<T: Slab>(&self) -> NonNull<T> {
@@ -54,11 +85,20 @@ impl SlabAllocator {
     }
 
     pub fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
-        let page = unsafe { Page::<T>::from_virt(ptr.into()).as_ref() };
+        let mut page = self
+            .arena
+            .lock()
+            .page_with_address(unsafe {
+                VirtualAddress::new_unchecked(ptr.addr().get())
+                    .translate()
+                    .unwrap()
+            })
+            .unwrap();
 
-        let descriptor = unsafe { page.meta.slab.freelist };
+        let descriptor =
+            unsafe { page.as_mut().slab_descriptor_mut::<T>() };
 
-        unsafe { descriptor.assign::<T>().as_mut().dealloc(ptr) };
+        unsafe { descriptor.dealloc(ptr) };
     }
 }
 
@@ -77,7 +117,11 @@ pub impl<T: Generic> NonNull<T> {
     }
 }
 
-unsafe impl Allocator for SlabAllocator {
+unsafe impl<Block, Arena> Allocator for SlabAllocator<Block, Arena>
+where
+    Block: BuddyBlock + SlabBlock,
+    Arena: BuddyArena<Block> + 'static,
+{
     fn allocate(
         &self,
         layout: core::alloc::Layout,
@@ -179,7 +223,3 @@ unsafe impl Allocator for SlabAllocator {
         }
     }
 }
-unsafe impl<T: Slab> Send for SlabDescriptor<T> {}
-unsafe impl<T: Slab> Sync for SlabDescriptor<T> {}
-unsafe impl<T: Slab> Send for SlabCache<T> {}
-unsafe impl<T: Slab> Sync for SlabCache<T> {}
