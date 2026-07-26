@@ -8,7 +8,8 @@ use core::{
     mem::{ManuallyDrop, size_of},
     ptr::NonNull,
 };
-use nonmax::NonMaxU16;
+use macros::bitfields;
+use nonmax::{NonMaxU16, NonMaxU32};
 
 /// Preallocated object in the slab allocator.
 pub union PreAllocated<T: Sized> {
@@ -25,10 +26,58 @@ impl<T: Debug> Debug for PreAllocated<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Copy)]
+struct Free {
+    next_free_idx: Option<NonMaxU32>,
+    total_allocated: u32,
+}
+
+#[derive(Debug)]
+struct SlabAddr(u64);
+
+#[rustfmt::skip]
+impl const From<u64> for SlabAddr {
+    fn from(value: u64) -> Self {
+        SlabAddr(value)
+    }
+}
+
+#[rustfmt::skip]
+impl const From<SlabAddr> for u64 {
+    fn from(value: SlabAddr) -> Self {
+        value.0
+    }
+}
+
+impl SlabAddr {
+    pub unsafe fn as_ptr<T: Slab>(
+        &self,
+    ) -> Option<NonNull<SlabDescriptor<T>>> {
+        NonNull::new(self.0 as *mut SlabDescriptor<T>)
+    }
+
+    pub fn from_ptr<T: Slab>(&mut self, ptr: NonNull<SlabDescriptor<T>>) {
+        self.0 = ptr.addr().get() as u64
+    }
+}
+
+// TODO: Future useful addition could be to remmove the unsafe cast on slab
+// addr, and support type T inside the bitfields macro.
+#[bitfields]
+struct Full {
+    #[flag(flag_type = SlabAddr)]
+    prev: B63,
+    full: B1,
+}
+
+pub union SlabState {
+    free: Free,
+    full: Full,
+}
+
+#[repr(C)]
 pub struct SlabDescriptor<T: Slab> {
-    pub next_free_idx: Option<NonMaxU16>,
-    pub total_allocated: u16,
+    pub state: SlabState,
     // TODO: Check the possibility to not save the length here because it
     // is already managed by a freelist so the len may not be needed.
     //
@@ -99,10 +148,6 @@ impl<T: Slab> SlabDescriptor<T> {
             "Called allocate on a full slab"
         );
 
-        todo!(
-            "Didn't handle the case the slab is full becasue of unwrap. \
-             Should allocate another slab"
-        );
         let idx = self.next_free_idx.unwrap().get() as usize;
         let preallocated = unsafe { &mut self.objects.as_mut()[idx] };
 
@@ -116,10 +161,6 @@ impl<T: Slab> SlabDescriptor<T> {
     // TODO: In tests rembmber to implement something on T that implement
     // drop and see that when freeing the memory it is called
     pub unsafe fn dealloc(&mut self, ptr: NonNull<T>) {
-        todo!(
-            "Should think if calling drop is the responisibility of the \
-             allocator"
-        );
         todo!(
             "Should add a check if the ptr that is freed from this slab \
              is actually allocated from it "
@@ -137,31 +178,5 @@ impl<T: Slab> SlabDescriptor<T> {
             unsafe { Some(NonMaxU16::new_unchecked(freed_index as u16)) };
 
         self.total_allocated -= 1;
-    }
-}
-
-impl SlabDescriptor<SlabDescriptor<()>> {
-    /// Return a pointer to the initial descriptor after it allocated
-    /// himself.
-    ///
-    /// The pointer the is returned by this function contains an already
-    /// initialized descriptor that allocates itself.
-    pub fn initial_descriptor(
-        order: usize,
-    ) -> NonNull<SlabDescriptor<SlabDescriptor<()>>> {
-        let mut descriptor = unsafe {
-            SlabDescriptor::<SlabDescriptor<()>>::new(order, None)
-        };
-
-        let mut self_allocation = descriptor.alloc();
-
-        unsafe {
-            *self_allocation.as_mut() = NonNull::from_ref(&descriptor)
-                .cast::<SlabDescriptor<()>>()
-                .as_ref()
-                .clone()
-        }
-
-        self_allocation.cast()
     }
 }
