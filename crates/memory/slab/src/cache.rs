@@ -1,12 +1,10 @@
-use core::{num::NonZero, ptr::NonNull};
+use core::ptr::NonNull;
 
-use common::address_types::VirtualAddress;
+use crate::traits::Slab;
 
-use crate::{traits::Slab, unassigned::UnassignSlab};
+use super::descriptor::SlabDescriptor;
 
-use super::{descriptor::SlabDescriptor, traits::SlabCacheConstructor};
-
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct SlabCache<T: Slab> {
     pub buddy_order: usize,
     pub free: Option<NonNull<SlabDescriptor<T>>>,
@@ -14,7 +12,32 @@ pub struct SlabCache<T: Slab> {
     pub full: Option<NonNull<SlabDescriptor<T>>>,
 }
 
+#[rustfmt::skip]
+impl const Default for SlabCache<()> {
+    fn default() -> Self {
+        SlabCache {
+            buddy_order: 0,
+            free: None,
+            partial: None,
+            full: None,
+        }
+    }
+}
+
 impl<T: Slab> SlabCache<T> {
+    pub fn new(buddy_order: usize) -> SlabCache<T> {
+        SlabCache {
+            buddy_order,
+            free: None,
+            partial: None,
+            full: None,
+        }
+    }
+
+    pub unsafe fn as_unit(self) -> SlabCache<()> {
+        unsafe { core::mem::transmute(self) }
+    }
+
     /// Allocate a new slab descriptor, attaches it to the free slab list,
     /// and initialize it's page.
     ///
@@ -34,27 +57,6 @@ impl<T: Slab> SlabCache<T> {
         // self.take_ownership(slab);
 
         // self.free = Some(slab);
-    }
-
-    pub fn take_ownership(&self, slab: NonNull<SlabDescriptor<T>>) {
-        let slab_address: VirtualAddress =
-            unsafe { slab.as_ref().objects.as_ptr().addr().into() };
-
-        slab_address
-            .set_flags(T::PFLAGS, T::PSIZE, unsafe {
-                NonZero::<usize>::new_unchecked(1 << self.buddy_order)
-            })
-            .unwrap();
-
-        let slab_page =
-            unsafe { UnassignedPage::from_virt(slab_address).as_mut() };
-
-        // Set owner and freelist.
-        unsafe {
-            (*slab_page.meta.slab).freelist = slab.as_unassigned();
-            (*slab_page.meta.slab).owner =
-                NonNull::from_ref(self).as_unassigned();
-        };
     }
 
     pub fn alloc(&mut self) -> NonNull<T> {
@@ -88,48 +90,4 @@ impl<T: Slab> SlabCache<T> {
         )
     }
     pub fn dealloc(&self, _ptr: NonNull<T>) { todo!() }
-}
-
-impl<T: Slab> SlabCacheConstructor for SlabCache<T> {
-    default fn new(buddy_order: usize) -> SlabCache<T> {
-        SlabCache {
-            buddy_order,
-            free: None,
-            partial: None,
-            full: None,
-        }
-    }
-}
-
-impl SlabCacheConstructor for SlabCache<SlabDescriptor<()>> {
-    fn new(buddy_order: usize) -> SlabCache<SlabDescriptor<()>> {
-        let partial =
-            SlabDescriptor::<SlabDescriptor<()>>::initial_descriptor(
-                buddy_order,
-            );
-
-        // This assumption can be made, because the created cache in
-        // this function will go to the constant position on the slab
-        // array defined with the `SlabPosition` array
-        let mut future_owner =
-            unsafe { SLAB_ALLOCATOR.slab_of::<SlabDescriptor<()>>() };
-
-        let cache = SlabCache {
-            buddy_order,
-            free: None,
-            partial: Some(partial),
-            full: None,
-        };
-
-        // Only in this function, we initialiuze the global array in the
-        // new function.
-        //
-        // Because then we can use the `take_ownership` function
-        unsafe {
-            *future_owner.as_mut() = cache.clone();
-            future_owner.as_mut().take_ownership(partial);
-        }
-
-        cache
-    }
 }
