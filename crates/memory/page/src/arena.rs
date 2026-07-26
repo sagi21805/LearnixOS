@@ -18,7 +18,7 @@ use buddy::meta::{
     Regular,
 };
 
-use crate::{Page, meta::PageMeta};
+use crate::Page;
 
 pub struct PageMap {
     inner: Box<[Page]>,
@@ -45,14 +45,12 @@ impl BuddyArena<Page> for PageMap {
             let mut prev = &mut page_map[0];
 
             *prev = Page {
-                meta: PageMeta {
-                    buddy: BuddyMeta::<Regular>::new(
-                        NonNull::from_ref(head),
-                        BuddyFlags::new()
-                            .order(BuddyOrder::Order0)
-                            .allocated(false),
-                    ),
-                },
+                buddy: BuddyMeta::<Regular>::new(
+                    NonNull::from_ref(head),
+                    BuddyFlags::new()
+                        .order(BuddyOrder::Order0)
+                        .allocated(false),
+                ),
             };
 
             head.attach_block(NonNull::from_ref(prev));
@@ -62,16 +60,14 @@ impl BuddyArena<Page> for PageMap {
                 prev = left.last_mut().unwrap();
                 let next = right.first_mut().unwrap();
                 *next = Page {
-                    meta: PageMeta {
-                        buddy: BuddyMeta::<Regular>::new(
-                            NonNull::from_ref(prev.meta()),
-                            BuddyFlags::new()
-                                .order(BuddyOrder::Order0)
-                                .allocated(false),
-                        ),
-                    },
+                    buddy: BuddyMeta::<Regular>::new(
+                        NonNull::from_ref(prev.meta()),
+                        BuddyFlags::new()
+                            .order(BuddyOrder::Order0)
+                            .allocated(false),
+                    ),
                 };
-                prev.meta.buddy.attach_block(NonNull::from_mut(next));
+                prev.buddy.attach_block(NonNull::from_mut(next));
             }
 
             PageMap { inner: page_map }
@@ -102,7 +98,7 @@ impl BuddyArena<Page> for PageMap {
         &self,
         block: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
-        let order = unsafe { block.as_ref().meta.buddy.flags.get_order() };
+        let order = unsafe { block.as_ref().buddy.flags.get_order() };
 
         let (section_idx, section_offset) =
             unsafe { self.section_index_of(block) };
@@ -130,24 +126,23 @@ impl BuddyArena<Page> for PageMap {
     ) -> Result<NonNull<Page>, BuddyError> {
         debug_assert_eq!(self.buddy_of(block)?, buddy);
         debug_assert!(unsafe {
-            block.as_ref().meta.buddy.flags.get_order()
-                == buddy.as_ref().meta.buddy.flags.get_order()
+            block.as_ref().buddy.flags.get_order()
+                == buddy.as_ref().buddy.flags.get_order()
         });
         debug_assert!(
-            unsafe { block.as_ref().meta.buddy.flags.get_order() }
+            unsafe { block.as_ref().buddy.flags.get_order() }
                 != BuddyOrder::None
         );
         debug_assert!(unsafe {
-            !block.as_ref().meta.buddy.flags.is_allocated()
+            !block.as_ref().buddy.flags.is_allocated()
         });
         debug_assert!(unsafe {
-            !buddy.as_ref().meta.buddy.flags.is_allocated()
+            !buddy.as_ref().buddy.flags.is_allocated()
         });
 
         let next_order = unsafe {
             block
                 .as_ref()
-                .meta
                 .buddy
                 .flags
                 .get_order()
@@ -197,7 +192,7 @@ impl BuddyArena<Page> for PageMap {
         let mut buddy = self.buddy_of(block)?;
 
         unsafe {
-            buddy.as_mut().meta.buddy.flags.set_order(prev_order);
+            buddy.as_mut().buddy.flags.set_order(prev_order);
         }
 
         Ok((block, buddy))

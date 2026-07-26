@@ -4,7 +4,6 @@ use crate::traits::Slab;
 use alloc::alloc::{Layout, alloc};
 use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
 use core::{
-    alloc::LayoutError,
     fmt::Debug,
     mem::{ManuallyDrop, size_of},
     ptr::NonNull,
@@ -32,6 +31,9 @@ pub struct SlabDescriptor<T: Slab> {
     pub total_allocated: u16,
     // TODO: Check the possibility to not save the length here because it
     // is already managed by a freelist so the len may not be needed.
+    //
+    // Moreover the local T holds the const order in which we allocate for
+    // the array so the size can always be calculated.
     pub objects: NonNull<[PreAllocated<T>]>,
     pub next: Option<NonNull<SlabDescriptor<T>>>,
 }
@@ -155,11 +157,11 @@ impl SlabDescriptor<SlabDescriptor<()>> {
 
         unsafe {
             *self_allocation.as_mut() = NonNull::from_ref(&descriptor)
-                .as_unassigned()
+                .cast::<SlabDescriptor<()>>()
                 .as_ref()
                 .clone()
         }
 
-        self_allocation.assign::<SlabDescriptor<()>>()
+        self_allocation.cast()
     }
 }

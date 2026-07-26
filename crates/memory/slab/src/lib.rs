@@ -20,7 +20,6 @@ use core::{
 };
 
 use macros::generate_generics;
-use page::Page;
 
 generate_generics!(
     8, 16, 32, 64, 96, 128, 192, 256, 512, 1024, 2048, 4096, 8192
@@ -45,7 +44,8 @@ define_slab_system!(
 
 impl SlabAllocator {
     pub fn slab_of<T: Slab>(&self) -> NonNull<SlabCache<T>> {
-        self.slabs[T::SLAB_POSITION].assign::<T>()
+        NonNull::from_ref(self.slabs[T::SLAB_POSITION].assume_init_ref())
+            .cast()
     }
 
     pub fn kmalloc<T: Slab>(&self) -> NonNull<T> {
