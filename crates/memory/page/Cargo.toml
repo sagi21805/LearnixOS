@@ -7,6 +7,7 @@ edition = "2024"
 common = { path = "../../common" }
 x86 = { path = "../../arch/x86" }
 buddy = { path = "../buddy" }
+slab = { path = "../slab" }
 num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = [
     "complex-expressions",
 ] }

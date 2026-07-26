@@ -5,7 +5,7 @@ use x86::structures::paging::PageEntryFlags;
 ///
 /// Shouldn't implement this trait manually; it is implemented
 /// via the `define_slab_system` macro.
-pub trait Slab: 'static + Sized + SlabPosition + SlabFlags {}
+pub trait Slab: Sized + SlabPosition + SlabFlags {}
 
 impl Slab for () {}
 
@@ -45,4 +45,11 @@ pub trait DmaGeneric {
     const END: usize;
 
     fn size(&self) -> usize;
+}
+
+pub trait SlabMeta {
+
+    fn 
+    
+    
 }

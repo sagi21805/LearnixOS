@@ -1,6 +1,6 @@
 use core::{num::NonZero, ptr::NonNull};
 
-use common::{address_types::VirtualAddress, enums::BuddyOrder};
+use common::address_types::VirtualAddress;
 
 use crate::{traits::Slab, unassigned::UnassignSlab};
 
@@ -12,16 +12,6 @@ pub struct SlabCache<T: Slab> {
     pub free: Option<NonNull<SlabDescriptor<T>>>,
     pub partial: Option<NonNull<SlabDescriptor<T>>>,
     pub full: Option<NonNull<SlabDescriptor<T>>>,
-}
-
-impl<T: Slab> UnassignSlab for NonNull<SlabCache<T>> {
-    type Target = NonNull<SlabCache<()>>;
-
-    fn as_unassigned(&self) -> Self::Target {
-        unsafe {
-            NonNull::new_unchecked(self.as_ptr() as *mut SlabCache<()>)
-        }
-    }
 }
 
 impl<T: Slab> SlabCache<T> {
@@ -98,12 +88,6 @@ impl<T: Slab> SlabCache<T> {
         )
     }
     pub fn dealloc(&self, _ptr: NonNull<T>) { todo!() }
-}
-
-impl SlabCache<()> {
-    pub fn assign<T: Slab>(&self) -> NonNull<SlabCache<T>> {
-        unsafe { NonNull::from_ref(self).cast() }
-    }
 }
 
 impl<T: Slab> SlabCacheConstructor for SlabCache<T> {
