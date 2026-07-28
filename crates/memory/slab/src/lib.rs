@@ -10,6 +10,7 @@
 pub mod cache;
 pub mod descriptor;
 pub mod local_macros;
+pub mod preallocated;
 pub mod traits;
 
 use crate::{
