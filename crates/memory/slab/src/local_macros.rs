@@ -25,6 +25,10 @@ macro_rules! define_slab_system {
 
         const COUNT: usize = [$(stringify!($t)),*].len();
 
+        const EMPTY_SLAB: SlabCache<()> = SlabCache::default();
+
+        pub(crate) static SLAB_ARENA: SpinMutex<[SlabCache<()>; COUNT]> = SpinMutex::new([EMPTY_SLAB; COUNT]);
+
         impl<Block, Arena> SlabAllocator<Block, Arena> where
             Block: BuddyBlock + SlabBlock,
             Arena: BuddyArena<Block>
@@ -37,7 +41,7 @@ macro_rules! define_slab_system {
 
                     let slab_cache = SlabCache::<$t>::new(size_of::<$t>().div_ceil(REGULAR_PAGE_SIZE));
 
-                    self.slabs[index] = unsafe { slab_cache.as_unit() };
+                    self.slab_arena.lock()[index] = unsafe { slab_cache.as_unit() };
                 )*
             }
         }
