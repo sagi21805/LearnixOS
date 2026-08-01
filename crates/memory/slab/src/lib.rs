@@ -6,6 +6,7 @@
 #![feature(const_default)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
+#![feature(slice_ptr_get)]
 
 pub mod cache;
 pub mod descriptor;
@@ -40,8 +41,8 @@ where
     Block: BuddyBlock + SlabBlock,
     Arena: BuddyArena<Block> + 'static,
 {
-    slabs: [SlabCache<()>; COUNT],
-    arena: &'static SpinMutex<Arena>,
+    slab_arena: &'static SpinMutex<[SlabCache<()>; COUNT]>,
+    buddy_arena: &'static SpinMutex<Arena>,
     // Wrap in a mutex to automatically implement Sync and Send.
     _block: PhantomData<SpinMutex<Block>>,
 }
@@ -67,28 +68,24 @@ where
     Block: BuddyBlock + SlabBlock,
     Arena: BuddyArena<Block> + 'static,
 {
-    pub const fn new(arena: &'static SpinMutex<Arena>) -> Self {
-        const EMPTY_SLAB: SlabCache<()> = SlabCache::default();
+    pub const fn new(buddy_arena: &'static SpinMutex<Arena>) -> Self {
         Self {
-            slabs: [EMPTY_SLAB; COUNT],
-            arena,
+            slab_arena: &SLAB_ARENA,
+            buddy_arena,
             _block: PhantomData,
         }
     }
 
-    pub fn slab_of<T: Slab>(&self) -> NonNull<SlabCache<T>> {
-        NonNull::from_ref(&self.slabs[T::SLAB_POSITION]).cast()
-    }
-
     pub fn kmalloc<T: Slab>(&self) -> NonNull<T> {
-        let mut slab = self.slab_of::<T>();
-        unsafe { slab.as_mut().alloc() }
+        unsafe {
+            self.slab_arena.lock()[T::SLAB_POSITION].with::<T>().alloc()
+        }
     }
 
     pub fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
-        let mut page = self
-            .arena
-            .lock()
+        let mut arena_lock = self.buddy_arena.lock();
+
+        let mut page = arena_lock
             .page_with_address(unsafe {
                 VirtualAddress::new_unchecked(ptr.addr().get())
                     .translate()
@@ -99,7 +96,17 @@ where
         let descriptor =
             unsafe { page.as_mut().slab_descriptor_mut::<T>() };
 
-        unsafe { descriptor.dealloc(ptr) };
+        let idx_in_slab = unsafe {
+            ptr.offset_from_unsigned(
+                descriptor.objects.as_non_null_ptr().cast(),
+            )
+        };
+
+        let cache = self.slab_of::<T>();
+
+        unsafe { descriptor.dealloc(idx_in_slab, descriptor) };
+
+        drop(arena_lock)
     }
 }
 
