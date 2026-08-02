@@ -2,7 +2,7 @@ use core::ptr::NonNull;
 
 #[cfg(target_arch = "x86_64")]
 use crate::constants::PHYSICAL_MEMORY_OFFSET;
-use crate::enums::PageTableLevel;
+use crate::{constants::KERNEL_OFFSET, enums::PageTableLevel};
 
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Div, DivAssign, Mul, MulAssign, Sub,
@@ -160,17 +160,15 @@ pub struct VirtualAddress(usize);
 #[rustfmt::skip]
 impl const Address for VirtualAddress {
     unsafe fn new_unchecked(address: usize) -> Self {
-        Self(address)
+        Self(((address << 16) as isize >> 16) as usize)
     }
 
     fn new(address: usize) -> Option<Self> {
         #[cfg(not(target_arch = "x86"))]
         {
-            if address < (1usize << 48) {
+            if address < (1 << 48) {
                 return Some(unsafe {
-                    Self::new_unchecked(
-                        (((address << 16) as isize) >> 16) as usize,
-                    )
+                    Self::new_unchecked(address)
                 });
             } else {
                 None
