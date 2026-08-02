@@ -4,17 +4,17 @@
 pub mod arena;
 pub mod meta;
 
-use core::ptr::NonNull;
+use core::{mem::ManuallyDrop, ptr::NonNull};
 
 use buddy::meta::{BuddyBlock, BuddyMeta, Regular};
 
 use core::fmt::Debug;
 
-use slab::descriptor::SlabDescriptor;
+use slab::descriptor::{SlabDescriptor, Used};
 
 pub union Page {
     pub buddy: BuddyMeta<Regular>,
-    pub slab: SlabDescriptor<()>,
+    pub slab: ManuallyDrop<SlabDescriptor<(), Used>>,
 }
 
 impl Debug for Page {

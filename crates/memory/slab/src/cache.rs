@@ -3,7 +3,7 @@ use core::ptr::NonNull;
 use nonmax::NonMaxU16;
 
 use crate::{
-    descriptor::{Free, Full, Partial, SlabStateKind},
+    descriptor::{Free, Full, Partial, PartialMeta, SlabStateKind, Used},
     traits::Slab,
 };
 
@@ -124,56 +124,26 @@ impl<T: Slab> SlabCache<T> {
     pub fn dealloc(
         &mut self,
         idx: NonMaxU16,
-        slab: &mut SlabDescriptor<T>,
+        slab: &mut SlabDescriptor<T, Used>,
     ) {
-        match slab.state.is_partial_mut() {
+        match slab.is_partial_mut() {
             // TODO: understand how to extract that logic into a function
             // on the slab.
             Ok(partial) => {
-                unsafe {
-                    slab.objects.as_mut()[idx.get() as usize]
-                        .next_free_idx = partial.next_free_idx;
-                }
-
-                partial.next_free_idx = Some(idx);
-
-                partial.flags.set_total_allocated(
-                    partial.flags.get_total_allocated() - 1,
-                );
+                unsafe { partial.dealloc(idx) };
             }
-            Err(full_or_free) => {
-                let prev =
-                    unsafe { full_or_free.get_prev().as_slab_ptr::<T>() };
+            Err(full) => {
+                full.detach();
 
-                if let Some(mut prev) = prev {
-                    unsafe { prev.as_mut().next = slab.next };
-                } else {
-                    // Ensure that the prev is saved and tracks the state
-                    // currectly.
-                    // Because prev is `None` it is known to be the first
-                    // node in either free or full.
-                    debug_assert!(
-                        Some(NonNull::from_mut(slab)) == self.full
-                            || Some(NonNull::from_mut(slab)) == self.free
-                    )
-                }
+                let partial: &mut SlabDescriptor<T, Partial> =
+                    unsafe { core::mem::transmute(full) };
 
-                if let Some(mut next) = slab.next {
-                    let next = unsafe { next.as_mut() };
-                    match next.state.is_partial_mut() {
-                        Ok(_) => unreachable!(
-                            "Slabs in the same list should have the same \
-                             state."
-                        ),
-                        Err(full_or_free) => {
-                            let prev = unsafe {
-                                full_or_free.get_prev().as_slab_ptr::<T>()
-                            };
+                partial.state = PartialMeta::new()
+                    .partial(true)
+                    .next_free_idx(u16::MAX)
+                    .total_allocated(T::OBJECT_PER_SLAB as u32);
 
-                            next.next = prev;
-                        }
-                    }
-                }
+                unsafe { partial.dealloc(idx) };
             }
         }
     }

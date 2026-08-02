@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use crate::{cache::SlabCache, preallocated::PreAllocated, traits::Slab};
+use crate::{preallocated::PreAllocated, traits::Slab};
 use alloc::alloc::{Layout, alloc};
 use common::{
     address_types::{Address, VirtualAddress},
@@ -242,11 +242,16 @@ impl<T: Slab> SlabDescriptor<T, Partial> {
     /// # Parameters
     ///
     /// * `idx` - The index of the object to deallocate.
-    pub unsafe fn dealloc(
-        &mut self,
-        idx: NonMaxU16,
-        cache: &mut SlabCache<T>,
-    ) {
+    pub unsafe fn dealloc(&mut self, idx: NonMaxU16) {
+        unsafe {
+            self.objects.as_mut()[idx.get() as usize].next_free_idx =
+                NonMaxU16::new(self.state.get_next_free_idx());
+        }
+
+        self.state.set_next_free_idx(idx.get());
+
+        self.state
+            .set_total_allocated(self.state.get_total_allocated() - 1);
     }
 }
 
