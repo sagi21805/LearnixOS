@@ -23,7 +23,7 @@ where
     //
     // Moreover the local T holds the const order in which we allocate for
     // the array so the size can always be calculated.
-    pub objects: NonNull<[PreAllocated<T>]>,
+    pub objects: NonNull<PreAllocated<T>>,
     pub next: Option<NonNull<SlabDescriptor<T, S>>>,
 }
 
@@ -65,29 +65,6 @@ pub enum SlabStateKind {
     Partial,
     Free,
     Full,
-}
-
-pub struct OptionalU16(pub Option<NonMaxU16>);
-
-impl OptionalU16 {
-    pub fn get(self) -> Option<u16> { self.0.map(|v| v.get()) }
-}
-
-#[rustfmt::skip]
-impl const From<OptionalU16> for u16 {
-    fn from(value: OptionalU16) -> Self {
-        match value.0 {
-            Some(v) => v.get(),
-            None => u16::MAX,
-        }
-    }
-}
-
-#[rustfmt::skip]
-impl const From<u16> for OptionalU16 {
-    fn from(value: u16) -> Self {
-        Self(NonMaxU16::new(value))
-    }
 }
 
 #[bitfields]
@@ -194,7 +171,7 @@ impl<T: Slab> SlabDescriptor<T, Free> {
                 state: FullFreeMeta::new()
                     .prev(SlabAddress(None))
                     .partial(false),
-                objects,
+                objects: objects.cast(),
                 next,
             }
         }
@@ -216,7 +193,8 @@ impl<T: Slab> SlabDescriptor<T, Partial> {
         );
 
         let idx = self.state.get_next_free_idx() as usize;
-        let preallocated = unsafe { &mut self.objects.as_mut()[idx] };
+        let preallocated =
+            unsafe { self.objects.add(idx as usize).as_mut() };
 
         let mut final_state = SlabStateKind::Partial;
 
@@ -244,7 +222,7 @@ impl<T: Slab> SlabDescriptor<T, Partial> {
     /// * `idx` - The index of the object to deallocate.
     pub unsafe fn dealloc(&mut self, idx: NonMaxU16) {
         unsafe {
-            self.objects.as_mut()[idx.get() as usize].next_free_idx =
+            self.objects.add(idx.get() as usize).as_mut().next_free_idx =
                 NonMaxU16::new(self.state.get_next_free_idx());
         }
 

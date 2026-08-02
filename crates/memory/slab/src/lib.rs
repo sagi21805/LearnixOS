@@ -7,7 +7,6 @@
 #![feature(const_default)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
-#![feature(slice_ptr_get)]
 
 pub mod cache;
 pub mod descriptor;
@@ -100,10 +99,9 @@ where
             unsafe { page.as_mut().slab_descriptor_mut::<T>() };
 
         let idx_in_slab = unsafe {
-            match NonMaxU16::new(ptr.offset_from_unsigned(
-                descriptor.objects.as_non_null_ptr().cast(),
-            ) as u16)
-            {
+            match NonMaxU16::new(
+                ptr.offset_from_unsigned(descriptor.objects.cast()) as u16,
+            ) {
                 Some(idx) => idx,
                 None => unreachable!(
                     "Object is not allocated inside the given page."
