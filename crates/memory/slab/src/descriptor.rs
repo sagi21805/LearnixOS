@@ -52,6 +52,15 @@ impl<T: Slab> SlabState<T> for Full {
     type Meta = FullFreeMeta;
 }
 
+/// A used slab may be full or partial.
+///
+/// This state is ment to be when trying to free an object and trying to
+/// figure out the state of the slab.
+pub struct Used;
+impl<T: Slab> SlabState<T> for Used {
+    type Meta = RawMeta;
+}
+
 pub enum SlabStateKind {
     Partial,
     Free,
@@ -85,6 +94,13 @@ impl const From<u16> for OptionalU16 {
 pub struct PartialMeta {
     pub next_free_idx: B16,
     pub total_allocated: B31,
+    pub partial: B1,
+}
+
+#[bitfields]
+pub struct RawMeta {
+    #[flag(r)]
+    pub reserved: B63,
     pub partial: B1,
 }
 
@@ -282,6 +298,32 @@ where
             unsafe { self.state.get_prev().as_non_null() }
         {
             unsafe { prev.as_mut() }.next = self.next;
+        }
+    }
+}
+
+impl<T: Slab> SlabDescriptor<T, Used> {
+    pub fn is_partial(
+        &self,
+    ) -> Result<&SlabDescriptor<T, Partial>, &SlabDescriptor<T, Full>>
+    {
+        if self.state.is_partial() {
+            Ok(unsafe { core::mem::transmute(self) })
+        } else {
+            Err(unsafe { core::mem::transmute(self) })
+        }
+    }
+
+    pub fn is_partial_mut(
+        &mut self,
+    ) -> Result<
+        &mut SlabDescriptor<T, Partial>,
+        &mut SlabDescriptor<T, Full>,
+    > {
+        if self.state.is_partial() {
+            Ok(unsafe { core::mem::transmute(self) })
+        } else {
+            Err(unsafe { core::mem::transmute(self) })
         }
     }
 }
