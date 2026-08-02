@@ -2,8 +2,12 @@ extern crate alloc;
 
 use crate::{cache::SlabCache, preallocated::PreAllocated, traits::Slab};
 use alloc::alloc::{Layout, alloc};
-use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
-use core::{mem::size_of, ptr::NonNull};
+use common::{
+    address_types::{Address, VirtualAddress},
+    constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
+};
+use core::{mem::size_of, num::NonZeroU64, ptr::NonNull};
+use macros::bitfields;
 use nonmax::NonMaxU16;
 
 #[repr(C)]
@@ -12,7 +16,7 @@ where
     T: Slab,
     S: SlabState<T>,
 {
-    pub state: S::State,
+    pub state: S::Meta,
 
     // TODO: Check the possibility to not save the length here because it
     // is already managed by a freelist so the len may not be needed.
@@ -25,27 +29,111 @@ where
 
 // TODO: Seal trait
 pub trait SlabState<T: Slab> {
-    type State: Sized;
+    type Meta: Sized;
 }
 
+/// Partial slab is a slab that has some allocated objects, and some free
+/// objects.
 pub struct Partial;
 impl<T: Slab> SlabState<T> for Partial {
-    type State = PartialMeta;
-}
-pub struct Free;
-impl<T: Slab> SlabState<T> for Free {
-    type State = Option<NonNull<SlabDescriptor<T, Free>>>;
-}
-pub struct Full;
-impl<T: Slab> SlabState<T> for Full {
-    type State = Option<NonNull<SlabDescriptor<T, Full>>>;
+    type Meta = PartialMeta;
 }
 
-#[repr(C)]
-#[derive(Clone, Copy)]
+/// Free slab is a slab that does not allocate any objects, and is
+/// initialized that the first allocatable index is 0.
+pub struct Free;
+impl<T: Slab> SlabState<T> for Free {
+    type Meta = FullFreeMeta;
+}
+
+/// Full slab is a slab that is fully allocated.
+pub struct Full;
+impl<T: Slab> SlabState<T> for Full {
+    type Meta = FullFreeMeta;
+}
+
+pub enum SlabStateKind {
+    Partial,
+    Free,
+    Full,
+}
+
+pub struct OptionalU16(pub Option<NonMaxU16>);
+
+impl OptionalU16 {
+    pub fn get(self) -> Option<u16> { self.0.map(|v| v.get()) }
+}
+
+#[rustfmt::skip]
+impl const From<OptionalU16> for u16 {
+    fn from(value: OptionalU16) -> Self {
+        match value.0 {
+            Some(v) => v.get(),
+            None => u16::MAX,
+        }
+    }
+}
+
+#[rustfmt::skip]
+impl const From<u16> for OptionalU16 {
+    fn from(value: u16) -> Self {
+        Self(NonMaxU16::new(value))
+    }
+}
+
+#[bitfields]
 pub struct PartialMeta {
-    pub next_free_idx: Option<NonMaxU16>,
-    pub total_allocated: u32,
+    pub next_free_idx: B16,
+    pub total_allocated: B31,
+    pub partial: B1,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SlabAddress(Option<NonZeroU64>);
+
+#[rustfmt::skip]
+impl const From<u64> for SlabAddress {
+    fn from(value: u64) -> Self {
+        Self(NonZeroU64::new(value))
+    }
+}
+
+#[rustfmt::skip]
+impl const From<SlabAddress> for u64 {
+    fn from(value: SlabAddress) -> Self {
+        match value.0 {
+            Some(v) => v.get(),
+            None => 0,
+        }
+    }
+}
+
+impl SlabAddress {
+    pub unsafe fn as_non_null<T: Slab, S: SlabState<T>>(
+        &self,
+    ) -> Option<NonNull<SlabDescriptor<T, S>>> {
+        unsafe {
+            Some(
+                VirtualAddress::new_unchecked(self.0?.get() as usize)
+                    .as_non_null(),
+            )
+        }
+    }
+
+    pub fn from_non_null<T: Slab, S: SlabState<T>>(
+        ptr: NonNull<SlabDescriptor<T, S>>,
+    ) -> Self {
+        Self(NonZeroU64::try_from(ptr.addr()).ok())
+    }
+}
+
+#[bitfields]
+pub struct FullFreeMeta {
+    #[flag(flag_type = SlabAddress)]
+    pub prev: B48,
+    #[flag(r)]
+    pub reserved: B15,
+    pub partial: B1,
 }
 
 impl<T: Slab> SlabDescriptor<T, Free> {
@@ -87,7 +175,9 @@ impl<T: Slab> SlabDescriptor<T, Free> {
             objects.as_mut().last_mut().unwrap().next_free_idx = None;
 
             SlabDescriptor {
-                state: None,
+                state: FullFreeMeta::new()
+                    .prev(SlabAddress(None))
+                    .partial(false),
                 objects,
                 next,
             }
@@ -96,39 +186,38 @@ impl<T: Slab> SlabDescriptor<T, Free> {
 }
 
 impl<T: Slab> SlabDescriptor<T, Partial> {
-    /// Allocate an object from this slab.
+    /// Allocate an object from this slab returning the allocated object
+    /// and state of the slab.
     ///
     /// # Parameters
     ///
     /// * `head` - The head of the full slab descriptor. This slab will be
     ///   attached to it, if the allocation will make this slab full.
-    pub fn alloc(
-        &mut self,
-        head: &mut SlabDescriptor<T, Full>,
-    ) -> NonNull<T> {
+    pub fn alloc(&mut self) -> (NonNull<T>, SlabStateKind) {
         debug_assert!(
-            self.state.is_partial().unwrap().next_free_idx.is_some(),
-            "Called allocate on a full slab"
+            self.state.is_partial(),
+            "Compiletime state does not match runtime state"
         );
 
-        match self.state.is_partial_mut() {
-            Ok(partial) => {
-                let idx = partial.next_free_idx.unwrap().get() as usize;
-                let preallocated =
-                    unsafe { &mut self.objects.as_mut()[idx] };
+        let idx = self.state.get_next_free_idx() as usize;
+        let preallocated = unsafe { &mut self.objects.as_mut()[idx] };
 
-                partial.next_free_idx =
-                    unsafe { preallocated.next_free_idx };
+        let mut final_state = SlabStateKind::Partial;
 
-                partial.flags.set_total_allocated(
-                    partial.flags.get_total_allocated() + 1,
-                );
+        self.state
+            .set_total_allocated(self.state.get_total_allocated() + 1);
 
-                unsafe { NonNull::from_mut(&mut preallocated.allocated) }
+        match unsafe { preallocated.next_free_idx } {
+            Some(idx) => {
+                self.state.set_next_free_idx(idx.get());
             }
-            Err(full_or_free) => {
-                todo!()
+            None => {
+                final_state = SlabStateKind::Full;
             }
+        }
+
+        unsafe {
+            (NonNull::from_mut(&mut preallocated.allocated), final_state)
         }
     }
 
@@ -145,18 +234,40 @@ impl<T: Slab> SlabDescriptor<T, Partial> {
     }
 }
 
+impl<T> SlabDescriptor<T, Free>
+where
+    T: Slab,
+{
+    pub fn alloc(&mut self) -> (NonNull<T>, SlabStateKind) {
+        self.detach();
+
+        let partial: &mut SlabDescriptor<T, Partial> =
+            unsafe { core::mem::transmute(self) };
+
+        partial.state = PartialMeta::new()
+            .partial(true)
+            .next_free_idx(0)
+            .total_allocated(0);
+
+        partial.alloc()
+    }
+}
+
 impl<T, S> SlabDescriptor<T, S>
 where
     T: Slab,
-    S: SlabState<T, State = Option<NonNull<SlabDescriptor<T, S>>>>,
+    S: SlabState<T, Meta = FullFreeMeta>,
 {
     pub fn attach(&mut self, other: &mut SlabDescriptor<T, S>) {
         other.next = self.next;
-        other.state = Some(NonNull::from_ref(self));
+        other
+            .state
+            .set_prev(SlabAddress::from_non_null(NonNull::from_ref(self)));
 
         if let Some(mut next) = self.next {
-            unsafe { next.as_mut() }.state =
-                Some(NonNull::from_ref(other));
+            unsafe { next.as_mut() }.state.set_prev(
+                SlabAddress::from_non_null(NonNull::from_mut(other)),
+            );
         }
 
         self.next = Some(NonNull::from_mut(other));
@@ -164,10 +275,12 @@ where
 
     pub fn detach(&mut self) {
         if let Some(mut next) = self.next {
-            unsafe { next.as_mut() }.state = self.state;
+            unsafe { next.as_mut().state = self.state };
         }
 
-        if let Some(mut prev) = self.state {
+        if let Some(mut prev) =
+            unsafe { self.state.get_prev().as_non_null() }
+        {
             unsafe { prev.as_mut() }.next = self.next;
         }
     }
