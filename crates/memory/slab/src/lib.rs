@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(incomplete_features)]
 #![feature(specialization)]
 #![feature(allocator_api)]
 #![feature(ptr_alignment_type)]
@@ -25,6 +26,7 @@ use core::{
 };
 
 use common::address_types::{Address, VirtualAddress};
+use nonmax::NonMaxU16;
 use sync::mutex::SpinMutex;
 
 use buddy::meta::{BuddyArena, BuddyBlock};
@@ -83,7 +85,8 @@ where
     }
 
     pub fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
-        let mut arena_lock = self.buddy_arena.lock();
+        let arena_lock = self.buddy_arena.lock();
+        let mut slab_lock = self.slab_arena.lock();
 
         let mut page = arena_lock
             .page_with_address(unsafe {
@@ -97,16 +100,23 @@ where
             unsafe { page.as_mut().slab_descriptor_mut::<T>() };
 
         let idx_in_slab = unsafe {
-            ptr.offset_from_unsigned(
+            match NonMaxU16::new(ptr.offset_from_unsigned(
                 descriptor.objects.as_non_null_ptr().cast(),
-            )
+            ) as u16)
+            {
+                Some(idx) => idx,
+                None => unreachable!(
+                    "Object is not allocated inside the given page."
+                ),
+            }
         };
 
-        let cache = self.slab_of::<T>();
+        let cache = unsafe { slab_lock[T::SLAB_POSITION].with::<T>() };
 
-        unsafe { descriptor.dealloc(idx_in_slab, descriptor) };
+        cache.dealloc(idx_in_slab, descriptor);
 
-        drop(arena_lock)
+        drop(arena_lock);
+        drop(slab_lock)
     }
 }
 

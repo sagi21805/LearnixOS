@@ -1,4 +1,7 @@
-use common::{address_types::VirtualAddress, enums::PageSize};
+use common::{
+    address_types::VirtualAddress, constants::REGULAR_PAGE_SIZE,
+    enums::PageSize,
+};
 use x86::structures::paging::PageEntryFlags;
 
 use crate::descriptor::{SlabDescriptor, Used};
@@ -7,12 +10,17 @@ use crate::descriptor::{SlabDescriptor, Used};
 ///
 /// Shouldn't implement this trait manually; it is implemented
 /// via the `define_slab_system` macro.
-pub trait Slab: Sized + SlabPosition + SlabFlags {}
+pub trait Slab: SlabPosition + SlabFlags {}
 
 impl Slab for () {}
 
-pub trait SlabPosition {
+pub trait SlabPosition: Sized {
     const SLAB_POSITION: usize;
+    const PAGES_PER_SLAB: usize = size_of::<Self>()
+        .next_multiple_of(REGULAR_PAGE_SIZE)
+        / REGULAR_PAGE_SIZE;
+    const OBJECT_PER_SLAB: usize =
+        Self::PAGES_PER_SLAB / size_of::<Self>();
 }
 
 impl SlabPosition for () {
