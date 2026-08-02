@@ -3,7 +3,7 @@ use core::ptr::NonNull;
 use nonmax::NonMaxU16;
 
 use crate::{
-    descriptor::{Free, Full, Partial},
+    descriptor::{Free, Full, Partial, SlabStateKind},
     traits::Slab,
 };
 
@@ -73,36 +73,45 @@ impl<T: Slab> SlabCache<T> {
     }
 
     pub fn alloc(&mut self) -> NonNull<T> {
-        if let Some(mut partial) = self.partial {
-            let slab = unsafe { partial.as_mut() };
-
-            match slab.state.is_partial() {
-                Ok(partial) => {
-                    let allocation = slab.alloc();
-                    if partial.next_free_idx.is_none() {
-                        self.partial = slab.next;
-
-                        slab.next = self.full;
-                        if let Some(mut full) = self.full {
-                            full.as_mut().prev = slab.next;
+        if let Some(partial) =
+            self.partial.map(|mut p| unsafe { p.as_mut() })
+        {
+            let (allocation, final_state) = partial.alloc();
+            match final_state {
+                SlabStateKind::Full => {
+                    self.partial = partial.next;
+                    match self.full {
+                        Some(mut full) => unsafe {
+                            full.as_mut()
+                                .attach(core::mem::transmute(partial))
+                        },
+                        None => {
+                            self.full = Some(unsafe {
+                                core::mem::transmute(partial)
+                            });
                         }
-                        self.full = Some(NonNull::from_mut(slab));
                     }
-                    return allocation;
                 }
-                Err(_) => unreachable!(
-                    "Found non partial state inside the partial list."
-                ),
+                _ => debug_assert!(false, "unreachable!"),
             }
+            return allocation;
         }
-        if let Some(mut free) = self.free {
-            let free = unsafe { free.as_mut() };
 
+        if let Some(free) = self.free.map(|mut p| unsafe { p.as_mut() }) {
             self.free = free.next;
-            free.next = self.partial;
-            self.partial = Some(NonNull::from_mut(free));
-
-            let allocation = free.alloc();
+            let (allocation, final_state) = free.alloc();
+            let partial: &mut SlabDescriptor<T, Partial> =
+                unsafe { core::mem::transmute(free) };
+            match final_state {
+                SlabStateKind::Partial => match self.partial {
+                    Some(current_partial) => {
+                        partial.next = Some(current_partial);
+                    }
+                    None => {}
+                },
+                _ => debug_assert!(false, "unreachable!"),
+            }
+            self.partial = Some(NonNull::from_mut(partial));
             return allocation;
         }
 
