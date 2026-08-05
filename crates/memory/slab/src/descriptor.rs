@@ -9,6 +9,7 @@ use common::{
 use core::{mem::size_of, num::NonZeroU64, ptr::NonNull};
 use macros::bitfields;
 use nonmax::NonMaxU16;
+use x86::structures::mbr::PartitionTableEntry;
 
 #[repr(C)]
 pub struct SlabDescriptor<T, S>
@@ -59,6 +60,14 @@ impl<T: Slab> SlabState<T> for Full {
 pub struct Used;
 impl<T: Slab> SlabState<T> for Used {
     type Meta = RawMeta;
+}
+
+pub trait Attach {
+    fn attach(&mut self, other: &mut Self);
+}
+
+pub trait Detach {
+    fn detach(&mut self);
 }
 
 pub enum SlabStateKind {
@@ -220,7 +229,7 @@ impl<T: Slab> SlabDescriptor<T, Partial> {
     /// # Parameters
     ///
     /// * `idx` - The index of the object to deallocate.
-    pub unsafe fn dealloc(&mut self, idx: NonMaxU16) {
+    pub unsafe fn dealloc(&mut self, idx: NonMaxU16) -> SlabStateKind {
         unsafe {
             self.objects.add(idx.get() as usize).as_mut().next_free_idx =
                 NonMaxU16::new(self.state.get_next_free_idx());
@@ -230,6 +239,12 @@ impl<T: Slab> SlabDescriptor<T, Partial> {
 
         self.state
             .set_total_allocated(self.state.get_total_allocated() - 1);
+
+        if self.state.get_total_allocated() == 0 {
+            SlabStateKind::Free
+        } else {
+            SlabStateKind::Partial
+        }
     }
 }
 
@@ -252,12 +267,12 @@ where
     }
 }
 
-impl<T, S> SlabDescriptor<T, S>
+impl<T, S> Attach for SlabDescriptor<T, S>
 where
     T: Slab,
     S: SlabState<T, Meta = FullFreeMeta>,
 {
-    pub fn attach(&mut self, other: &mut SlabDescriptor<T, S>) {
+    fn attach(&mut self, other: &mut SlabDescriptor<T, S>) {
         other.next = self.next;
         other
             .state
@@ -272,7 +287,14 @@ where
         self.next = Some(NonNull::from_mut(other));
     }
 
-    pub fn detach(&mut self) {
+}
+
+impl<T, S> Detach for SlabDescriptor<T, S>
+where
+    T: Slab,
+    S: SlabState<T, Meta = FullFreeMeta>,
+{
+    fn detach(&mut self) {
         if let Some(mut next) = self.next {
             unsafe { next.as_mut().state = self.state };
         }
@@ -282,8 +304,20 @@ where
         {
             unsafe { prev.as_mut() }.next = self.next;
         }
+
+        self.next = None;
     }
 }
+
+impl<T: Slab> Attach for SlabDescriptor<T, Partial> {
+    fn attach(&mut self, other: &mut SlabDescriptor<T, Partial>) {
+        other.next = self.next;
+
+        self.next = Some(NonNull::from_mut(other));
+    }
+}
+
+
 
 impl<T: Slab> SlabDescriptor<T, Used> {
     pub fn is_partial(
