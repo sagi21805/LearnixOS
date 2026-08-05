@@ -47,6 +47,17 @@ impl<T: Slab> SlabCache<T> {
         }
     }
 
+    pub fn find_partial(&self, partial: &SlabDescriptor<T, Partial>) -> Option<&SlabDescriptor<T, Partial>> {
+        let mut current = self.partial?;
+        while let Some(next) = unsafe { current.as_ref().next } {
+            if NonNull::from_ref(partial) == current  {
+                return Some(unsafe { next.as_ref() });
+            }
+            current = next;
+        }
+        None
+    }
+
     pub unsafe fn as_unit(self) -> SlabCache<()> {
         unsafe { core::mem::transmute(self) }
     }
@@ -126,12 +137,10 @@ impl<T: Slab> SlabCache<T> {
         idx: NonMaxU16,
         slab: &mut SlabDescriptor<T, Used>,
     ) {
-        match slab.is_partial_mut() {
+        let state = match slab.is_partial_mut() {
             // TODO: understand how to extract that logic into a function
             // on the slab.
-            Ok(partial) => {
-                unsafe { partial.dealloc(idx) };
-            }
+            Ok(partial) => unsafe { partial.dealloc(idx) },
             Err(full) => {
                 full.detach();
 
@@ -143,8 +152,16 @@ impl<T: Slab> SlabCache<T> {
                     .next_free_idx(u16::MAX)
                     .total_allocated(T::OBJECT_PER_SLAB as u32);
 
-                unsafe { partial.dealloc(idx) };
+                unsafe { partial.dealloc(idx) }
             }
-        }
+        };
+
+        // match state {
+        //     SlabStateKind::Free => {
+        //         // There should not be a lot of slabs in the partial list.
+        //         // So the find cost will be small.
+        //     }
+        //     SlabStateKind::Partial => {}
+        // }
     }
 }
