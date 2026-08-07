@@ -1,6 +1,6 @@
 use core::ptr::NonNull;
 
-use nonmax::NonMaxU16;
+use common::address_types::VirtualAddress;
 
 use crate::{
     descriptor::{Free, Full, Partial, PartialMeta, SlabStateKind, Used},
