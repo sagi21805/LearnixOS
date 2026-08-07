@@ -317,10 +317,10 @@ impl<'a> BitFields<'a> {
         let struct_name = self.struct_name;
         let struct_type = &self.struct_type;
         quote! {
-            impl const ::core::convert::From<#struct_type> for #struct_name {
+            const impl ::core::convert::From<#struct_type> for #struct_name {
                 fn from(value: #struct_type) -> Self { #struct_name(value) }
             }
-            impl const ::core::convert::From<#struct_name> for #struct_type {
+            const impl ::core::convert::From<#struct_name> for #struct_type {
                 fn from(value: #struct_name) -> Self { value.0 }
             }
         }

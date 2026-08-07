@@ -193,8 +193,7 @@ pub enum PS2ScanCode {
     ReleasedSuperKey,
 }
 
-#[rustfmt::skip]
-impl const From<u8> for PS2ScanCode {
+const impl From<u8> for PS2ScanCode {
     fn from(value: u8) -> Self {
         match value {
             // Number row
