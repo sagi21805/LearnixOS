@@ -245,7 +245,7 @@ pub unsafe extern "C" fn _start() -> ! {
                 }
 
                 _ => {
-                    println!("")
+                    // println!("")
                 }
             },
         }
