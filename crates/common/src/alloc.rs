@@ -10,8 +10,7 @@ pub struct Allocation {
     pub base: VirtualAddress,
 }
 
-#[rustfmt::skip]
-impl const Default for Allocation {
+const impl Default for Allocation {
     fn default() -> Self {
         Allocation {
             layout: unsafe {
@@ -34,8 +33,7 @@ pub struct Allocations<const N: usize> {
     pub index: usize,
 }
 
-#[rustfmt::skip]
-impl<const N: usize> const Default for Allocations<N> {
+const impl<const N: usize> Default for Allocations<N> {
     fn default() -> Self {
         Allocations {
             allocations: [Allocation::default(); N],

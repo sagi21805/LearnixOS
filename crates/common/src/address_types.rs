@@ -87,11 +87,8 @@ pub const trait Address: Sized + Clone + Copy {
 #[repr(C)]
 pub struct PhysicalAddress(usize);
 
-#[rustfmt::skip]
-impl const Address for PhysicalAddress {
-    unsafe fn new_unchecked(address: usize) -> Self {
-        Self(address)
-    }
+const impl Address for PhysicalAddress {
+    unsafe fn new_unchecked(address: usize) -> Self { Self(address) }
 
     fn new(address: usize) -> Option<Self> {
         #[cfg(not(target_arch = "x86"))]
@@ -109,30 +106,23 @@ impl const Address for PhysicalAddress {
         }
     }
 
-    fn as_usize(&self) -> usize {
-        self.0
-    }
+    fn as_usize(&self) -> usize { self.0 }
 }
 
-#[rustfmt::skip]
-impl const From<usize> for PhysicalAddress {
+const impl From<usize> for PhysicalAddress {
     fn from(value: usize) -> Self {
         unsafe { PhysicalAddress::new_unchecked(value) }
     }
 }
 
-#[rustfmt::skip]
-impl const From<u64> for PhysicalAddress {
+const impl From<u64> for PhysicalAddress {
     fn from(value: u64) -> Self {
         unsafe { PhysicalAddress::new_unchecked(value as usize) }
     }
 }
 
-#[rustfmt::skip]
-impl const From<PhysicalAddress> for u64 {
-    fn from(value: PhysicalAddress) -> Self {
-        value.0 as u64
-    }
+const impl From<PhysicalAddress> for u64 {
+    fn from(value: PhysicalAddress) -> Self { value.0 as u64 }
 }
 
 #[derive(
@@ -157,19 +147,14 @@ impl const From<PhysicalAddress> for u64 {
 #[repr(C)]
 pub struct VirtualAddress(usize);
 
-#[rustfmt::skip]
-impl const Address for VirtualAddress {
-    unsafe fn new_unchecked(address: usize) -> Self {
-        Self(((address << 16) as isize >> 16) as usize)
-    }
+const impl Address for VirtualAddress {
+    unsafe fn new_unchecked(address: usize) -> Self { Self(address) }
 
     fn new(address: usize) -> Option<Self> {
         #[cfg(not(target_arch = "x86"))]
         {
             if address < (1 << 48) {
-                return Some(unsafe {
-                    Self::new_unchecked(address)
-                });
+                return Some(unsafe { Self::new_unchecked(address) });
             } else {
                 None
             }
@@ -181,9 +166,7 @@ impl const Address for VirtualAddress {
         }
     }
 
-    fn as_usize(&self) -> usize {
-        self.0
-    }
+    fn as_usize(&self) -> usize { self.0 }
 }
 
 impl<T> From<NonNull<T>> for VirtualAddress {
@@ -192,8 +175,7 @@ impl<T> From<NonNull<T>> for VirtualAddress {
     }
 }
 
-#[rustfmt::skip]
-impl const From<usize> for VirtualAddress {
+const impl From<usize> for VirtualAddress {
     fn from(value: usize) -> Self {
         unsafe { VirtualAddress::new_unchecked(value) }
     }

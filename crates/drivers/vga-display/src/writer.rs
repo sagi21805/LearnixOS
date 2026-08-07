@@ -39,8 +39,7 @@ impl<const W: usize, const H: usize> SimpleWriter<W, H> {
     }
 }
 
-#[rustfmt::skip]
-impl<const W: usize, const H: usize> const Default for SimpleWriter<W, H> {
+const impl<const W: usize, const H: usize> Default for SimpleWriter<W, H> {
     fn default() -> Self {
         Self {
             color: ColorCode::default(),

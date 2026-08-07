@@ -20,8 +20,7 @@ impl ScreenChar {
     }
 }
 
-#[rustfmt::skip]
-impl const Default for ScreenChar {
+const impl Default for ScreenChar {
     /// Create a default Screen char with Space as char
     /// value, and with the default [`ColorCode`]
     fn default() -> Self {

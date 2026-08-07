@@ -76,15 +76,11 @@ impl<T: Clone + Copy> SpscRingBuffer<T> {
         self.has_producer.store(false, Ordering::Release);
     }
 
-    pub unsafe fn buffer(&self) -> NonNull<[T]> {
-        self.buffer
-    }
+    pub unsafe fn buffer(&self) -> NonNull<[T]> { self.buffer }
 }
 
 impl<T: Clone + Copy> Drop for SpscRingBuffer<T> {
-    fn drop(&mut self) {
-        todo!()
-    }
+    fn drop(&mut self) { todo!() }
 }
 
 /// Writes into the RingBuffer
@@ -114,9 +110,7 @@ impl<T: Clone + Copy> Producer<'_, T> {
         Some(())
     }
 
-    pub unsafe fn inner(&self) -> &SpscRingBuffer<T> {
-        &self.buf
-    }
+    pub unsafe fn inner(&self) -> &SpscRingBuffer<T> { &self.buf }
 }
 
 impl<T: Clone + Copy> Drop for Producer<'_, T> {
@@ -149,9 +143,7 @@ impl<T: Clone + Copy> Consumer<'_, T> {
         }
     }
 
-    pub unsafe fn inner(&self) -> &SpscRingBuffer<T> {
-        &self.buf
-    }
+    pub unsafe fn inner(&self) -> &SpscRingBuffer<T> { &self.buf }
 }
 
 impl<T: Clone + Copy> Drop for Consumer<'_, T> {

@@ -40,6 +40,4 @@ pub unsafe extern "C" fn second_stage() -> ! {
 }
 
 #[panic_handler]
-unsafe fn panic(_info: &PanicInfo) -> ! {
-    loop {}
-}
+unsafe fn panic(_info: &PanicInfo) -> ! { loop {} }

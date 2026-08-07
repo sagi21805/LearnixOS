@@ -22,8 +22,7 @@ pub struct MemoryRegion {
     pub region_type: MemoryRegionType,
 }
 
-#[rustfmt::skip]
-impl const Default for MemoryRegion {
+const impl Default for MemoryRegion {
     fn default() -> Self {
         MemoryRegion {
             base_address: 0,

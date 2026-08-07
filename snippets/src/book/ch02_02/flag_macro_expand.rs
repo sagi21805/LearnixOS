@@ -19,9 +19,7 @@ impl ::core::clone::Clone for AccessByte {
 }
 impl AccessByte {
     #[inline]
-    pub const fn new() -> Self {
-        Self(0)
-    }
+    pub const fn new() -> Self { Self(0) }
     #[inline]
     #[track_caller]
     fn is_accessed(&self) -> bool {
@@ -383,15 +381,11 @@ impl AccessByte {
         self
     }
 }
-impl const ::core::convert::From<u8> for AccessByte {
-    fn from(value: u8) -> Self {
-        AccessByte(value)
-    }
+const impl ::core::convert::From<u8> for AccessByte {
+    fn from(value: u8) -> Self { AccessByte(value) }
 }
-impl const ::core::convert::From<AccessByte> for u8 {
-    fn from(value: AccessByte) -> Self {
-        value.0
-    }
+const impl ::core::convert::From<AccessByte> for u8 {
+    fn from(value: AccessByte) -> Self { value.0 }
 }
 impl ::core::fmt::Debug for AccessByte {
     fn fmt(
