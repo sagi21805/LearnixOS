@@ -10,11 +10,11 @@ use buddy::meta::{BuddyBlock, BuddyMeta, Regular};
 
 use core::fmt::Debug;
 
-use slab::descriptor::{SlabDescriptor, Used};
+use slab::descriptor::SlabDescriptor;
 
 pub union Page {
     pub buddy: BuddyMeta<Regular>,
-    pub slab: ManuallyDrop<SlabDescriptor<(), Used>>,
+    pub slab: SlabDescriptor<()>,
 }
 
 impl Debug for Page {
