@@ -147,8 +147,11 @@ const impl From<PhysicalAddress> for u64 {
 #[repr(C)]
 pub struct VirtualAddress(usize);
 
-const impl Address for VirtualAddress {
-    unsafe fn new_unchecked(address: usize) -> Self { Self(address) }
+#[rustfmt::skip]
+impl const Address for VirtualAddress {
+    unsafe fn new_unchecked(address: usize) -> Self {
+        Self(((address << 16) as isize >> 16) as usize)
+    }
 
     fn new(address: usize) -> Option<Self> {
         #[cfg(not(target_arch = "x86"))]
