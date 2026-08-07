@@ -131,6 +131,4 @@ pub extern "C" fn obtain_memory_map() {
     );
 }
 #[panic_handler]
-pub fn panic_handler(_info: &PanicInfo) -> ! {
-    loop {}
-}
+pub fn panic_handler(_info: &PanicInfo) -> ! { loop {} }

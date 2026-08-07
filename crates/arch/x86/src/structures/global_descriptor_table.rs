@@ -40,8 +40,7 @@ struct GlobalDescriptorTableEntry32 {
     base_high: u8,
 }
 
-#[rustfmt::skip]
-impl const Default for GlobalDescriptorTableEntry32 {
+const impl Default for GlobalDescriptorTableEntry32 {
     fn default() -> Self {
         GlobalDescriptorTableEntry32 {
             limit_low: 0,
@@ -118,8 +117,7 @@ pub struct SystemSegmentDescriptor64 {
     _reserved: u32,
 }
 
-#[rustfmt::skip]
-impl const Default for SystemSegmentDescriptor64 {
+const impl Default for SystemSegmentDescriptor64 {
     fn default() -> Self {
         SystemSegmentDescriptor64 {
             limit_low: 0,

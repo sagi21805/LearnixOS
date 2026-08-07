@@ -45,8 +45,7 @@ impl<T: Clone + Copy> LateInit<T> {
     }
 }
 
-#[rustfmt::skip]
-impl<T> const Deref for LateInit<T> {
+const impl<T> Deref for LateInit<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -54,8 +53,7 @@ impl<T> const Deref for LateInit<T> {
     }
 }
 
-#[rustfmt::skip]
-impl<T> const DerefMut for LateInit<T> {
+const impl<T> DerefMut for LateInit<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { self.0.assume_init_mut() }
     }
