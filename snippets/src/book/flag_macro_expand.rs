@@ -19,9 +19,7 @@ impl ::core::clone::Clone for AccessByte {
 }
 impl AccessByte {
     #[inline]
-    pub fn new() -> Self {
-        Self(0)
-    }
+    pub fn new() -> Self { Self(0) }
     #[inline]
     fn is_accessed(&self) -> bool {
         unsafe {
@@ -311,20 +309,14 @@ impl AccessByte {
         self
     }
 }
-impl const Default for AccessByte {
-    fn default() -> Self {
-        Self(0)
-    }
+const impl Default for AccessByte {
+    fn default() -> Self { Self(0) }
 }
-impl const From<u8> for AccessByte {
-    fn from(value: u8) -> Self {
-        AccessByte(value)
-    }
+const impl From<u8> for AccessByte {
+    fn from(value: u8) -> Self { AccessByte(value) }
 }
-impl const From<AccessByte> for u8 {
-    fn from(value: AccessByte) -> u8 {
-        value.0
-    }
+const impl From<AccessByte> for u8 {
+    fn from(value: AccessByte) -> u8 { value.0 }
 }
 impl core::fmt::Debug for AccessByte {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

@@ -9,8 +9,7 @@ pub struct ColorCode {
     pub background: B4,
 }
 
-#[rustfmt::skip]
-impl const Default for ColorCode {
+const impl Default for ColorCode {
     fn default() -> Self {
         ColorCode::new()
             .foreground(Color::White)
