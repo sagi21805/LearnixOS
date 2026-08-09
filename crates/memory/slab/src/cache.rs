@@ -1,11 +1,11 @@
-use core::ptr::NonNull;
+use core::{hint::unreachable_unchecked, ptr::NonNull};
 
 use nonmax::NonMaxU16;
 
 use crate::{
     descriptor::{
-        Attach, Detach, Free, Full, Partial, PartialMeta, SlabStateKind,
-        Used,
+        Attach, Detach, Free, Full, Partial, PartialMeta, SlabState,
+        SlabStateKind, Used,
     },
     traits::Slab,
 };
@@ -49,19 +49,28 @@ impl<T: Slab> SlabCache<T> {
         }
     }
 
-    pub fn find_partial(
-        &self,
+    /// Remove partial slab entry from the cache.
+    ///
+    /// # Safety
+    ///
+    /// This function assumes that the entry is part of the partial slab
+    /// list.
+    pub unsafe fn remove_partial_entry(
+        &mut self,
         partial: &SlabDescriptor<T, Partial>,
-    ) -> Option<(&SlabDescriptor<T, Partial>, &SlabDescriptor<T, Partial>)>
-    {
-        let mut current = self.partial?;
-        while let Some(next) = unsafe { current.as_ref().next } {
-            if NonNull::from_ref(partial) == current {
-                return Some(unsafe { next.as_ref() });
+    ) {
+        let mut current = NonNull::from_ref(&self.partial);
+        unsafe {
+            while current.as_ref().unwrap_unchecked()
+                != NonNull::from_ref(partial)
+            {
+                current = NonNull::from_ref(
+                    &current.as_ref().unwrap_unchecked().as_ref().next,
+                )
             }
-            current = next;
+
+            *current.as_mut() = partial.next;
         }
-        None
     }
 
     pub unsafe fn as_unit(self) -> SlabCache<()> {
@@ -126,7 +135,7 @@ impl<T: Slab> SlabCache<T> {
                     }
                     None => {}
                 },
-                _ => debug_assert!(false, "unreachable!"),
+                _ => unsafe { unreachable_unchecked() },
             }
             self.partial = Some(NonNull::from_mut(partial));
             return allocation;
@@ -143,10 +152,25 @@ impl<T: Slab> SlabCache<T> {
         idx: NonMaxU16,
         slab: &mut SlabDescriptor<T, Used>,
     ) {
-        let state = match slab.is_partial_mut() {
-            // TODO: understand how to extract that logic into a function
-            // on the slab.
-            Ok(partial) => unsafe { partial.dealloc(idx) },
+        match slab.is_partial_mut() {
+            Ok(partial) => {
+                let state = unsafe { partial.dealloc(idx) };
+                if let SlabStateKind::Free = state {
+                    unsafe { self.remove_partial_entry(partial) };
+                    match self.free {
+                        Some(mut free) => unsafe {
+                            free.as_mut().attach(todo!(
+                                "Create a function partial into free"
+                            ));
+                        },
+                        None => {
+                            self.free = Some(NonNull::from_ref(todo!(
+                                "create a function partial into free"
+                            )))
+                        }
+                    }
+                }
+            }
             Err(full) => {
                 full.detach();
 
@@ -158,16 +182,36 @@ impl<T: Slab> SlabCache<T> {
                     .next_free_idx(u16::MAX)
                     .total_allocated(T::OBJECT_PER_SLAB as u32);
 
-                unsafe { partial.dealloc(idx) }
+                let state = unsafe { partial.dealloc(idx) };
+
+                match state {
+                    SlabStateKind::Free => match self.free {
+                        Some(mut free) => unsafe {
+                            free.as_mut().attach(todo!(
+                                "Create a function partial into free"
+                            ));
+                        },
+                        None => {
+                            self.free = Some(NonNull::from_ref(todo!(
+                                "create a function partial into free"
+                            )))
+                        }
+                    },
+                    SlabStateKind::Partial => match self.partial {
+                        Some(mut partial) => unsafe {
+                            partial.as_mut().attach(todo!(
+                                "Create a function partial into free"
+                            ));
+                        },
+                        None => {
+                            self.partial = Some(NonNull::from_ref(todo!(
+                                "create a function partial into free"
+                            )))
+                        }
+                    },
+                    _ => unsafe { unreachable_unchecked() },
+                }
             }
         };
-
-        // match state {
-        //     SlabStateKind::Free => {
-        //         // There should not be a lot of slabs in the partial
-        // list.         // So the find cost will be small.
-        //     }
-        //     SlabStateKind::Partial => {}
-        // }
     }
 }
