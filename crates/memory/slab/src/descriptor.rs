@@ -9,7 +9,6 @@ use common::{
 use core::{mem::size_of, num::NonZeroU64, ptr::NonNull};
 use macros::bitfields;
 use nonmax::NonMaxU16;
-use x86::structures::mbr::PartitionTableEntry;
 
 #[repr(C)]
 pub struct SlabDescriptor<T, S>
@@ -93,15 +92,11 @@ pub struct RawMeta {
 #[derive(Debug, Clone, Copy)]
 pub struct SlabAddress(Option<NonZeroU64>);
 
-#[rustfmt::skip]
-impl const From<u64> for SlabAddress {
-    fn from(value: u64) -> Self {
-        Self(NonZeroU64::new(value))
-    }
+const impl From<u64> for SlabAddress {
+    fn from(value: u64) -> Self { Self(NonZeroU64::new(value)) }
 }
 
-#[rustfmt::skip]
-impl const From<SlabAddress> for u64 {
+const impl From<SlabAddress> for u64 {
     fn from(value: SlabAddress) -> Self {
         match value.0 {
             Some(v) => v.get(),
@@ -267,12 +262,12 @@ where
     }
 }
 
-impl<T, S> Attach for SlabDescriptor<T, S>
+impl<T, S> SlabDescriptor<T, S>
 where
     T: Slab,
     S: SlabState<T, Meta = FullFreeMeta>,
 {
-    fn attach(&mut self, other: &mut SlabDescriptor<T, S>) {
+    fn attach_linked(&mut self, other: &mut SlabDescriptor<T, S>) {
         other.next = self.next;
         other
             .state
@@ -287,14 +282,7 @@ where
         self.next = Some(NonNull::from_mut(other));
     }
 
-}
-
-impl<T, S> Detach for SlabDescriptor<T, S>
-where
-    T: Slab,
-    S: SlabState<T, Meta = FullFreeMeta>,
-{
-    fn detach(&mut self) {
+    fn detach_linked(&mut self) {
         if let Some(mut next) = self.next {
             unsafe { next.as_mut().state = self.state };
         }
@@ -309,6 +297,26 @@ where
     }
 }
 
+impl<T: Slab> Attach for SlabDescriptor<T, Full> {
+    fn attach(&mut self, other: &mut SlabDescriptor<T, Full>) {
+        self.attach_linked(other);
+    }
+}
+
+impl<T: Slab> Detach for SlabDescriptor<T, Full> {
+    fn detach(&mut self) { self.detach_linked(); }
+}
+
+impl<T: Slab> Detach for SlabDescriptor<T, Free> {
+    fn detach(&mut self) { self.detach_linked(); }
+}
+
+impl<T: Slab> Attach for SlabDescriptor<T, Free> {
+    fn attach(&mut self, other: &mut SlabDescriptor<T, Free>) {
+        self.attach_linked(other);
+    }
+}
+
 impl<T: Slab> Attach for SlabDescriptor<T, Partial> {
     fn attach(&mut self, other: &mut SlabDescriptor<T, Partial>) {
         other.next = self.next;
@@ -316,8 +324,6 @@ impl<T: Slab> Attach for SlabDescriptor<T, Partial> {
         self.next = Some(NonNull::from_mut(other));
     }
 }
-
-
 
 impl<T: Slab> SlabDescriptor<T, Used> {
     pub fn is_partial(

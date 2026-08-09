@@ -1,9 +1,12 @@
 use core::ptr::NonNull;
 
-use common::address_types::VirtualAddress;
+use nonmax::NonMaxU16;
 
 use crate::{
-    descriptor::{Free, Full, Partial, PartialMeta, SlabStateKind, Used},
+    descriptor::{
+        Attach, Detach, Free, Full, Partial, PartialMeta, SlabStateKind,
+        Used,
+    },
     traits::Slab,
 };
 
@@ -19,8 +22,7 @@ pub struct SlabCache<T: Slab> {
 
 unsafe impl<T: Slab> Send for SlabCache<T> {}
 
-#[rustfmt::skip]
-impl const Default for SlabCache<()> {
+const impl Default for SlabCache<()> {
     fn default() -> Self {
         SlabCache {
             buddy_order: 0,
@@ -47,10 +49,14 @@ impl<T: Slab> SlabCache<T> {
         }
     }
 
-    pub fn find_partial(&self, partial: &SlabDescriptor<T, Partial>) -> Option<&SlabDescriptor<T, Partial>> {
+    pub fn find_partial(
+        &self,
+        partial: &SlabDescriptor<T, Partial>,
+    ) -> Option<(&SlabDescriptor<T, Partial>, &SlabDescriptor<T, Partial>)>
+    {
         let mut current = self.partial?;
         while let Some(next) = unsafe { current.as_ref().next } {
-            if NonNull::from_ref(partial) == current  {
+            if NonNull::from_ref(partial) == current {
                 return Some(unsafe { next.as_ref() });
             }
             current = next;
@@ -158,8 +164,8 @@ impl<T: Slab> SlabCache<T> {
 
         // match state {
         //     SlabStateKind::Free => {
-        //         // There should not be a lot of slabs in the partial list.
-        //         // So the find cost will be small.
+        //         // There should not be a lot of slabs in the partial
+        // list.         // So the find cost will be small.
         //     }
         //     SlabStateKind::Partial => {}
         // }
