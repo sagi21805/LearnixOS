@@ -61,12 +61,20 @@ impl<T: Slab> SlabState<T> for Used {
     type Meta = RawMeta;
 }
 
-pub trait Attach {
-    fn attach(&mut self, other: &mut Self);
+pub trait Attach<T: Slab, D: SlabState<T>> {
+    fn attach(&mut self, other: &mut SlabDescriptor<T, D>);
 }
 
-pub trait Detach {
+pub trait Detach<T: Slab, D: SlabState<T>> {
     fn detach(&mut self);
+}
+
+/// Convert from
+pub trait ConvertInplace<T: Slab, D: SlabState<T>> {
+    fn convert_inplace(
+        &mut self,
+        meta: D::Meta,
+    ) -> &mut SlabDescriptor<T, D>;
 }
 
 pub enum SlabStateKind {
@@ -297,27 +305,39 @@ where
     }
 }
 
-impl<T: Slab> Attach for SlabDescriptor<T, Full> {
+impl<T: Slab> Attach<T, Full> for SlabDescriptor<T, Full> {
     fn attach(&mut self, other: &mut SlabDescriptor<T, Full>) {
         self.attach_linked(other);
     }
 }
 
-impl<T: Slab> Detach for SlabDescriptor<T, Full> {
+impl<T: Slab> Detach<T, Full> for SlabDescriptor<T, Full> {
     fn detach(&mut self) { self.detach_linked(); }
 }
 
-impl<T: Slab> Detach for SlabDescriptor<T, Free> {
+impl<T: Slab> Detach<T, Free> for SlabDescriptor<T, Free> {
     fn detach(&mut self) { self.detach_linked(); }
 }
 
-impl<T: Slab> Attach for SlabDescriptor<T, Free> {
+impl<T: Slab> Attach<T, Free> for SlabDescriptor<T, Free> {
     fn attach(&mut self, other: &mut SlabDescriptor<T, Free>) {
         self.attach_linked(other);
     }
 }
 
-impl<T: Slab> Attach for SlabDescriptor<T, Partial> {
+impl<T: Slab> Attach<T, Partial> for SlabDescriptor<T, Free> {
+    fn attach(&mut self, other: &mut SlabDescriptor<T, Partial>) {
+        let free = other.convert_inplace(
+            FullFreeMeta::new()
+                .partial(false)
+                .prev(SlabAddress::from_non_null(NonNull::from_mut(self))),
+        );
+
+        self.attach_linked(free);
+    }
+}
+
+impl<T: Slab> Attach<T, Partial> for SlabDescriptor<T, Partial> {
     fn attach(&mut self, other: &mut SlabDescriptor<T, Partial>) {
         other.next = self.next;
 
@@ -348,5 +368,37 @@ impl<T: Slab> SlabDescriptor<T, Used> {
         } else {
             Err(unsafe { core::mem::transmute(self) })
         }
+    }
+}
+
+impl<T: Slab> ConvertInplace<T, Free> for SlabDescriptor<T, Partial> {
+    fn convert_inplace(
+        &mut self,
+        meta: FullFreeMeta,
+    ) -> &mut SlabDescriptor<T, Free> {
+        let free: &mut SlabDescriptor<T, Free> =
+            unsafe { core::mem::transmute(self) };
+
+        assert!(!meta.is_partial());
+
+        free.state = meta;
+
+        free
+    }
+}
+
+impl<T: Slab> ConvertInplace<T, Partial> for SlabDescriptor<T, Free> {
+    fn convert_inplace(
+        &mut self,
+        meta: PartialMeta,
+    ) -> &mut SlabDescriptor<T, Partial> {
+        let partial: &mut SlabDescriptor<T, Partial> =
+            unsafe { core::mem::transmute(self) };
+
+        assert!(meta.is_partial());
+
+        partial.state = meta;
+
+        partial
     }
 }
