@@ -44,7 +44,7 @@ impl<T: Slab> SlabState<T> for Partial {
 }
 
 impl<T: Slab> SlabState<T> for PartialDetached {
-    type Meta = RawMeta;
+    type Meta = PartialMeta;
     type Next = ();
     type Detached = ();
     type DetachedState = ();
@@ -65,7 +65,7 @@ impl<T: Slab> SlabState<T> for Free {
 }
 
 impl<T: Slab> SlabState<T> for FreeDetached {
-    type Meta = RawMeta;
+    type Meta = FullFreeMeta;
     type Next = ();
     type Detached = ();
     type DetachedState = ();
@@ -85,7 +85,7 @@ impl<T: Slab> SlabState<T> for Full {
 }
 
 impl<T: Slab> SlabState<T> for FullDetached {
-    type Meta = RawMeta;
+    type Meta = FullFreeMeta;
     type Next = ();
     type Detached = ();
     type DetachedState = ();
@@ -173,12 +173,14 @@ impl<T, S> SlabDescriptor<T, S>
 where
     T: Slab,
     S: SlabState<T, Meta = FullFreeMeta, Next = Self>,
+    S::DetachedState: SlabState<T, Meta = FullFreeMeta>,
 {
     pub(crate) fn attach_linked(
         &mut self,
-        other: &mut SlabDescriptor<T, S>,
+        other: &mut SlabDescriptor<T, S::DetachedState>,
     ) {
-        other.next = self.next;
+        other.next = self.next.map(|p| p.cast());
+
         other
             .state
             .set_prev(SlabAddress::from_non_null(NonNull::from_ref(self)));
@@ -189,7 +191,9 @@ where
             );
         }
 
-        self.next = Some(NonNull::from_mut(other));
+        self.next = Some(NonNull::from_mut(unsafe {
+            core::mem::transmute(other)
+        }));
     }
 
     pub(crate) fn detach_linked(&mut self) -> &mut S::Detached {

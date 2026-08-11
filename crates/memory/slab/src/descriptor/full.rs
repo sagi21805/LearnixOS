@@ -9,6 +9,7 @@ impl<T: Slab> Attach<T> for SlabDescriptor<T, Full> {
         &mut self,
         other: &mut SlabDescriptor<T, super::FreeDetached>,
     ) {
+        unimplemented!()
     }
     fn attach_full(
         &mut self,
@@ -24,6 +25,6 @@ impl<T: Slab> Attach<T> for SlabDescriptor<T, Full> {
 
 impl<T: Slab> Detach<T, Full> for SlabDescriptor<T, Full> {
     fn detach(&mut self) -> &mut SlabDescriptor<T, FullDetached> {
-        todo!()
+        self.detach_linked()
     }
 }

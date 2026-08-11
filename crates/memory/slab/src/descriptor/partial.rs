@@ -1,5 +1,8 @@
 use super::{Free, FullFreeMeta, Partial, SlabDescriptor, SlabStateKind};
-use crate::traits::Slab;
+use crate::{
+    descriptor::{FreeDetached, FullDetached, PartialDetached},
+    traits::{Attach, ConvertInplace, Slab},
+};
 use core::ptr::NonNull;
 use nonmax::NonMaxU16;
 
@@ -64,26 +67,36 @@ impl<T: Slab> SlabDescriptor<T, Partial> {
     }
 }
 
-impl<T: Slab> Attach<T, Partial> for SlabDescriptor<T, Partial> {
-    fn attach(&mut self, other: &mut SlabDescriptor<T, Partial>) {
-        other.next = self.next;
+impl<T: Slab> Attach<T> for SlabDescriptor<T, Partial> {
+    fn attach_free(
+        &mut self,
+        other: &mut SlabDescriptor<T, FreeDetached>,
+    ) {
+        todo!()
+    }
 
-        self.next = Some(NonNull::from_mut(other));
+    fn attach_full(
+        &mut self,
+        other: &mut SlabDescriptor<T, FullDetached>,
+    ) {
+        todo!()
+    }
+
+    fn attach_partial(
+        &mut self,
+        other: &mut SlabDescriptor<T, PartialDetached>,
+    ) {
+        todo!()
     }
 }
 
-impl<T: Slab> ConvertInplace<T, Free> for SlabDescriptor<T, Partial> {
+impl<T: Slab> ConvertInplace<T, FreeDetached>
+    for SlabDescriptor<T, PartialDetached>
+{
     fn convert_inplace(
         &mut self,
         meta: FullFreeMeta,
-    ) -> &mut SlabDescriptor<T, Free> {
-        let free: &mut SlabDescriptor<T, Free> =
-            unsafe { core::mem::transmute(self) };
-
-        assert!(!meta.is_partial());
-
-        free.state = meta;
-
-        free
+    ) -> &mut SlabDescriptor<T, FreeDetached> {
+        todo!()
     }
 }
