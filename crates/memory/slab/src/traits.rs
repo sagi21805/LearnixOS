@@ -69,9 +69,7 @@ pub trait SlabState<T: Slab>: Sized {
 }
 
 /// A slabdescriptor that is detached from the slab cache.
-pub trait DetachedSlabState<T: Slab>:
-    SlabState<T, Next = (), Meta = RawMeta>
-{
+pub trait DetachedSlabState<T: Slab>: SlabState<T, Next = ()> {
     /// The attached state of this detached state.
     type Attached: SlabState<T>;
 }
@@ -138,10 +136,9 @@ pub trait Detach<T: Slab, S: SlabState<T>> {
     fn detach(&mut self) -> &mut S::Detached;
 }
 
-/// Convert from
 pub trait ConvertInplace<T: Slab, D: DetachedSlabState<T>> {
     fn convert_inplace(
         &mut self,
-        meta: D::Meta,
+        meta: <D::Attached as SlabState<T>>::Meta,
     ) -> &mut SlabDescriptor<T, D>;
 }
