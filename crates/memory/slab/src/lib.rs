@@ -7,6 +7,7 @@
 #![feature(const_default)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
+#![feature(associated_type_defaults)]
 
 pub mod cache;
 pub mod descriptor;

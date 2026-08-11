@@ -3,10 +3,7 @@ use core::{hint::unreachable_unchecked, ptr::NonNull};
 use nonmax::NonMaxU16;
 
 use crate::{
-    descriptor::{
-        Attach, Detach, Free, Full, Partial, PartialMeta, SlabState,
-        SlabStateKind, Used,
-    },
+    descriptor::{Free, Full, Partial, PartialMeta, SlabStateKind, Used},
     traits::Slab,
 };
 
@@ -159,9 +156,7 @@ impl<T: Slab> SlabCache<T> {
                     unsafe { self.remove_partial_entry(partial) };
                     match self.free {
                         Some(mut free) => unsafe {
-                            free.as_mut().attach(todo!(
-                                "Create a function partial into free"
-                            ));
+                            free.as_mut().attach(partial);
                         },
                         None => {
                             self.free = Some(NonNull::from_ref(todo!(
