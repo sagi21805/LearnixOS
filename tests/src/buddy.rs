@@ -1,9 +1,9 @@
 #![allow(static_mut_refs)]
 
-use buddy::{BuddyAllocator, meta::BuddyArena};
+use buddy::{meta::BuddyArena, BuddyAllocator};
 use common::enums::MemoryRegionType;
-use page::Page;
 use page::arena::PageMap;
+use page::Page;
 use sync::mutex::SpinMutex;
 use x86::{
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
