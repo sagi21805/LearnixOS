@@ -4,7 +4,10 @@ use common::{
 };
 use x86::structures::paging::PageEntryFlags;
 
-use crate::descriptor::{SlabDescriptor, Used};
+use crate::descriptor::{
+    FreeDetached, FullDetached, PartialDetached, RawMeta, SlabDescriptor,
+    Used,
+};
 
 /// Get the position on the slab array, for a slab of the given type.
 ///
@@ -37,6 +40,51 @@ impl<T: SlabPosition> SlabFlags for T {
         PageEntryFlags::regular_page_flags();
 
     default const PSIZE: PageSize = PageSize::Regular;
+}
+
+// TODO: Seal trait
+pub trait SlabState<T: Slab>: Sized {
+    /// Type that holds the metadata of the slab.
+    ///
+    /// This type should be the same size of u64.
+    type Meta: Sized;
+
+    const ASSERT_META_SIZE: () = assert!(
+        core::mem::size_of::<Self::Meta>() == core::mem::size_of::<u64>()
+    );
+
+    /// The type the `self.next` pointer will point to.
+    ///
+    /// This is useful because it allows to set invalid next pointer to
+    /// detached slabs.
+    type Next: Sized = SlabDescriptor<T, Self>;
+
+    /// The detached state of this state. This type should be zero sized.
+    type DetachedState: DetachedSlabState<T>;
+
+    type Detached = SlabDescriptor<T, Self::DetachedState>;
+
+    const ASSERT_DETACHED_SIZE: () =
+        assert!(core::mem::size_of::<Self::Detached>() == 0);
+}
+
+/// A slabdescriptor that is detached from the slab cache.
+pub trait DetachedSlabState<T: Slab>:
+    SlabState<T, Next = (), Meta = RawMeta>
+{
+    /// The attached state of this detached state.
+    type Attached: SlabState<T>;
+}
+
+impl<T: Slab> DetachedSlabState<T> for () {
+    type Attached = ();
+}
+
+impl<T: Slab> SlabState<T> for () {
+    type Meta = RawMeta;
+    type Next = ();
+    type Detached = ();
+    type DetachedState = ();
 }
 
 pub trait Generic {
@@ -73,4 +121,27 @@ pub trait SlabBlock {
     fn slab_descriptor_mut<T: Slab>(
         &mut self,
     ) -> &mut SlabDescriptor<T, Used>;
+}
+
+pub trait Attach<T: Slab> {
+    fn attach_free(&mut self, other: &mut SlabDescriptor<T, FreeDetached>);
+
+    fn attach_full(&mut self, other: &mut SlabDescriptor<T, FullDetached>);
+
+    fn attach_partial(
+        &mut self,
+        other: &mut SlabDescriptor<T, PartialDetached>,
+    );
+}
+
+pub trait Detach<T: Slab, S: SlabState<T>> {
+    fn detach(&mut self) -> &mut S::Detached;
+}
+
+/// Convert from
+pub trait ConvertInplace<T: Slab, D: DetachedSlabState<T>> {
+    fn convert_inplace(
+        &mut self,
+        meta: D::Meta,
+    ) -> &mut SlabDescriptor<T, D>;
 }
