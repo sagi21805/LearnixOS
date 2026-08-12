@@ -105,8 +105,8 @@ impl<T: Slab> SlabCache<T> {
                     self.partial = partial.next;
                     match self.full {
                         Some(mut full) => unsafe {
-                            full.as_mut()
-                                .attach(core::mem::transmute(partial))
+                            // full.as_mut()
+                            //     .attach(core::mem::transmute(partial))
                         },
                         None => {
                             self.full = Some(unsafe {
@@ -149,64 +149,64 @@ impl<T: Slab> SlabCache<T> {
         idx: NonMaxU16,
         slab: &mut SlabDescriptor<T, Used>,
     ) {
-        match slab.is_partial_mut() {
-            Ok(partial) => {
-                let state = unsafe { partial.dealloc(idx) };
-                if let SlabStateKind::Free = state {
-                    unsafe { self.remove_partial_entry(partial) };
-                    match self.free {
-                        Some(mut free) => unsafe {
-                            free.as_mut().attach(partial);
-                        },
-                        None => {
-                            self.free = Some(NonNull::from_ref(todo!(
-                                "create a function partial into free"
-                            )))
-                        }
-                    }
-                }
-            }
-            Err(full) => {
-                full.detach();
+        // match slab.is_partial_mut() {
+        //     Ok(partial) => {
+        //         let state = unsafe { partial.dealloc(idx) };
+        //         if let SlabStateKind::Free = state {
+        //             unsafe { self.remove_partial_entry(partial) };
+        //             match self.free {
+        //                 Some(mut free) => unsafe {
+        //                     free.as_mut().attach(partial);
+        //                 },
+        //                 None => {
+        //                     self.free = Some(NonNull::from_ref(todo!(
+        //                         "create a function partial into free"
+        //                     )))
+        //                 }
+        //             }
+        //         }
+        //     }
+        //     Err(full) => {
+        //         full.detach();
 
-                let partial: &mut SlabDescriptor<T, Partial> =
-                    unsafe { core::mem::transmute(full) };
+        //         let partial: &mut SlabDescriptor<T, Partial> =
+        //             unsafe { core::mem::transmute(full) };
 
-                partial.state = PartialMeta::new()
-                    .partial(true)
-                    .next_free_idx(u16::MAX)
-                    .total_allocated(T::OBJECT_PER_SLAB as u32);
+        //         partial.state = PartialMeta::new()
+        //             .partial(true)
+        //             .next_free_idx(u16::MAX)
+        //             .total_allocated(T::OBJECT_PER_SLAB as u32);
 
-                let state = unsafe { partial.dealloc(idx) };
+        //         let state = unsafe { partial.dealloc(idx) };
 
-                match state {
-                    SlabStateKind::Free => match self.free {
-                        Some(mut free) => unsafe {
-                            free.as_mut().attach(todo!(
-                                "Create a function partial into free"
-                            ));
-                        },
-                        None => {
-                            self.free = Some(NonNull::from_ref(todo!(
-                                "create a function partial into free"
-                            )))
-                        }
-                    },
-                    SlabStateKind::Partial => match self.partial {
-                        Some(mut partial) => unsafe {
-                            partial.as_mut().attach(todo!(
-                                "Create a function partial into free"
-                            ));
-                        },
-                        None => {
-                            self.partial = Some(NonNull::from_ref(todo!(
-                                "create a function partial into free"
-                            )))
-                        }
-                    },
-                    _ => unsafe { unreachable_unchecked() },
-                }
-            }
-        };
+        //         match state {
+        //             SlabStateKind::Free => match self.free {
+        //                 Some(mut free) => unsafe {
+        //                     free.as_mut().attach(todo!(
+        //                         "Create a function partial into free"
+        //                     ));
+        //                 },
+        //                 None => {
+        //                     self.free = Some(NonNull::from_ref(todo!(
+        //                         "create a function partial into free"
+        //                     )))
+        //                 }
+        //             },
+        //             SlabStateKind::Partial => match self.partial {
+        //                 Some(mut partial) => unsafe {
+        //                     partial.as_mut().attach(todo!(
+        //                         "Create a function partial into free"
+        //                     ));
+        //                 },
+        //                 None => {
+        //                     self.partial = Some(NonNull::from_ref(todo!(
+        //                         "create a function partial into free"
+        //                     )))
+        //                 }
+        //             },
+        //             _ => unsafe { unreachable_unchecked() },
+        //         }
+        //     }
+        // };
     }
 }
