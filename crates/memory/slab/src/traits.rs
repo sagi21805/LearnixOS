@@ -136,7 +136,15 @@ pub trait Detach<T: Slab, S: SlabState<T>> {
     fn detach(&mut self) -> &mut S::Detached;
 }
 
-pub trait ConvertInplace<T: Slab, D: DetachedSlabState<T>> {
+/// A slab descriptor that is a detached state.
+pub trait DetachedSlab<T: Slab, S: DetachedSlabState<T>> {}
+
+pub trait ConvertInplace<T, D, S>: DetachedSlab<T, S>
+where
+    T: Slab,
+    D: DetachedSlabState<T>,
+    S: DetachedSlabState<T>,
+{
     fn convert_inplace(
         &mut self,
         meta: <D::Attached as SlabState<T>>::Meta,

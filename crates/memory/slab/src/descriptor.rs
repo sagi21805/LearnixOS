@@ -6,7 +6,7 @@ pub mod partial;
 
 use crate::{
     preallocated::PreAllocated,
-    traits::{DetachedSlabState, Slab, SlabState},
+    traits::{DetachedSlab, DetachedSlabState, Slab, SlabState},
 };
 use common::address_types::{Address, VirtualAddress};
 use core::{num::NonZeroU64, ptr::NonNull};
@@ -50,6 +50,9 @@ impl<T: Slab> SlabState<T> for PartialDetached {
     type DetachedState = ();
 }
 
+#[rustfmt::skip]
+impl<T: Slab> DetachedSlab<T, PartialDetached> for SlabDescriptor<T, PartialDetached> {}
+
 /// Free slab is a slab that does not allocate any objects, and is
 /// initialized that the first allocatable index is 0.
 pub struct Free;
@@ -71,6 +74,9 @@ impl<T: Slab> SlabState<T> for FreeDetached {
     type DetachedState = ();
 }
 
+#[rustfmt::skip]
+impl<T: Slab> DetachedSlab<T, FreeDetached> for SlabDescriptor<T, FreeDetached> {}
+
 /// Full slab is a slab that is fully allocated.
 pub struct Full;
 pub struct FullDetached;
@@ -90,6 +96,9 @@ impl<T: Slab> SlabState<T> for FullDetached {
     type Detached = ();
     type DetachedState = ();
 }
+
+#[rustfmt::skip]
+impl<T: Slab> DetachedSlab<T, FullDetached> for SlabDescriptor<T, FullDetached> {}
 
 /// A used slab may be full or partial.
 ///
