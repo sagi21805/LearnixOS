@@ -125,13 +125,20 @@ impl<T: Slab> Attach<T> for SlabDescriptor<T, Free> {
 //     }
 // }
 
-impl<T: Slab> ConvertInplace<T, FreeDetached>
+impl<T: Slab> ConvertInplace<T, PartialDetached, FreeDetached>
     for SlabDescriptor<T, FreeDetached>
 {
     fn convert_inplace(
         &mut self,
-        meta: FullFreeMeta,
-    ) -> &mut SlabDescriptor<T, FreeDetached> {
-        todo!()
+        meta: PartialMeta,
+    ) -> &mut SlabDescriptor<T, PartialDetached> {
+        let partial = unsafe {
+            core::mem::transmute::<
+                &mut SlabDescriptor<T, FreeDetached>,
+                &mut SlabDescriptor<T, PartialDetached>,
+            >(self)
+        };
+        partial.state = meta;
+        partial
     }
 }
