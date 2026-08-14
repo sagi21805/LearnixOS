@@ -123,6 +123,7 @@ impl<T: Slab> SlabCache<T> {
         if let Some(free) = self.free.map(|mut p| unsafe { p.as_mut() }) {
             self.free = free.next;
             let (allocation, final_state) = free.alloc();
+            todo!("");
             let partial: &mut SlabDescriptor<T, Partial> =
                 unsafe { core::mem::transmute(free) };
             match final_state {
