@@ -150,3 +150,13 @@ where
         meta: <D::Attached as SlabState<T>>::Meta,
     ) -> &mut SlabDescriptor<T, D>;
 }
+
+/// Make a detached node an attached one.
+///
+/// In the case that the initial node on the cache list does not exist, it
+/// needs to `attach himself`
+pub(crate) unsafe trait SelfAttach<T: Slab, S: DetachedSlabState<T>>:
+    DetachedSlab<T, S>
+{
+    fn attach_self(&mut self) -> &mut SlabDescriptor<T, S::Attached>;
+}
