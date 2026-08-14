@@ -43,6 +43,7 @@ impl<T: Slab> ConvertInplace<T, PartialDetached, FullDetached>
         &mut self,
         meta: PartialMeta,
     ) -> &mut SlabDescriptor<T, PartialDetached> {
+        debug_assert!(meta.is_partial());
         let partial = unsafe {
             core::mem::transmute::<
                 &mut SlabDescriptor<T, FullDetached>,
