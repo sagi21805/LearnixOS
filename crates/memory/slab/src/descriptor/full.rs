@@ -2,31 +2,34 @@ use super::{Full, SlabDescriptor};
 use crate::{
     descriptor::{
         FreeDetached, FullDetached, FullFreeMeta, PartialDetached,
-        PartialMeta,
+        PartialMeta, SlabAddress,
     },
     traits::{Attach, ConvertInplace, Detach, Slab},
 };
 
-impl<T: Slab> Attach<T> for SlabDescriptor<T, Full> {
+impl<T: Slab> Attach<T, Full> for SlabDescriptor<T, Full> {
     fn attach_free(
         &mut self,
         _other: &mut SlabDescriptor<T, FreeDetached>,
-    ) {
+    ) -> &mut SlabDescriptor<T, Full> {
         unimplemented!()
     }
     fn attach_full(
         &mut self,
         other: &mut SlabDescriptor<T, FullDetached>,
-    ) {
-        self.attach_linked(other);
+    ) -> &mut SlabDescriptor<T, Full> {
+        self.attach_linked(other)
     }
     fn attach_partial(
         &mut self,
         other: &mut SlabDescriptor<T, PartialDetached>,
-    ) {
-        let full =
-            other.convert_inplace(FullFreeMeta::new().partial(false));
-        self.attach_linked(full);
+    ) -> &mut SlabDescriptor<T, Full> {
+        let full = other.convert_inplace(
+            FullFreeMeta::new()
+                .partial(false)
+                .prev(SlabAddress::default()),
+        );
+        self.attach_linked(full)
     }
 }
 

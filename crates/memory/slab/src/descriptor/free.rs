@@ -5,9 +5,9 @@ use super::{
     SlabStateKind,
 };
 use crate::{
-    descriptor::{FreeDetached, FullDetached, PartialDetached, RawMeta},
+    descriptor::{FreeDetached, Full, FullDetached, PartialDetached},
     preallocated::PreAllocated,
-    traits::{Attach, ConvertInplace, Detach, Slab},
+    traits::{Attach, ConvertInplace, Detach, SelfAttach, Slab},
 };
 use alloc::alloc::{Layout, alloc};
 use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
@@ -17,6 +17,7 @@ use nonmax::NonMaxU16;
 impl<T: Slab> SlabDescriptor<T, FreeDetached> {
     /// Create a new, free slab descriptor.
     pub fn new(order: usize) -> SlabDescriptor<T, FreeDetached> {
+        todo!("Use direct call on buddy allocator for certain page size.");
         let address = unsafe {
             NonNull::new_unchecked(alloc(
                 Layout::from_size_alignment_unchecked(
@@ -64,16 +65,22 @@ impl<T> SlabDescriptor<T, Free>
 where
     T: Slab,
 {
-    pub fn alloc(&mut self) -> (NonNull<T>, SlabStateKind) {
-        self.detach();
+    pub fn alloc(
+        &mut self,
+        head: &mut Option<&mut SlabDescriptor<T, Partial>>,
+    ) -> (NonNull<T>, SlabStateKind) {
+        let detached = self.detach();
 
-        let partial: &mut SlabDescriptor<T, Partial> =
-            unsafe { core::mem::transmute(self) };
+        let partial = detached.convert_inplace(PartialMeta::default());
 
-        partial.state = PartialMeta::new()
-            .partial(true)
-            .next_free_idx(0)
-            .total_allocated(0);
+        match *head {
+            Some(head) => {
+                head.attach_partial(partial);
+            }
+            None => {
+                *head = Some(partial.attach_self());
+            }
+        }
 
         partial.alloc()
     }
@@ -85,31 +92,27 @@ impl<T: Slab> Detach<T, Free> for SlabDescriptor<T, Free> {
     }
 }
 
-impl<T: Slab> Attach<T> for SlabDescriptor<T, Free> {
+impl<T: Slab> Attach<T, Free> for SlabDescriptor<T, Free> {
     fn attach_free(
         &mut self,
         other: &mut SlabDescriptor<T, FreeDetached>,
-    ) {
-        self.attach_linked(other);
+    ) -> &mut SlabDescriptor<T, Free> {
+        self.attach_linked(other)
     }
 
     fn attach_full(
         &mut self,
-        other: &mut SlabDescriptor<T, FullDetached>,
-    ) {
+        _other: &mut SlabDescriptor<T, FullDetached>,
+    ) -> &mut SlabDescriptor<T, Free> {
         unimplemented!()
     }
 
     fn attach_partial(
         &mut self,
         other: &mut SlabDescriptor<T, PartialDetached>,
-    ) {
-        let free = other.convert_inplace(
-            FullFreeMeta::new()
-                .partial(false)
-                .prev(SlabAddress::from_non_null(NonNull::from_mut(self))),
-        );
-        self.attach_linked(free);
+    ) -> &mut SlabDescriptor<T, Free> {
+        let free = other.convert_inplace(FullFreeMeta::default());
+        self.attach_linked(free)
     }
 }
 
@@ -132,7 +135,7 @@ impl<T: Slab> ConvertInplace<T, PartialDetached, FreeDetached>
         &mut self,
         meta: PartialMeta,
     ) -> &mut SlabDescriptor<T, PartialDetached> {
-        debug_assert!(meta.is_partial());
+        debug_assert!(meta == PartialMeta::default());
         let partial = unsafe {
             core::mem::transmute::<
                 &mut SlabDescriptor<T, FreeDetached>,

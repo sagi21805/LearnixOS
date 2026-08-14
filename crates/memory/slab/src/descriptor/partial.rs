@@ -1,7 +1,9 @@
-use super::{Free, FullFreeMeta, Partial, SlabDescriptor, SlabStateKind};
+use super::{FullFreeMeta, Partial, SlabDescriptor, SlabStateKind};
 use crate::{
-    descriptor::{FreeDetached, FullDetached, PartialDetached},
-    traits::{Attach, ConvertInplace, Slab},
+    descriptor::{
+        FreeDetached, FullDetached, PartialDetached, PartialMeta,
+    },
+    traits::{Attach, ConvertInplace, SelfAttach, Slab},
 };
 use core::ptr::NonNull;
 use nonmax::NonMaxU16;
@@ -15,10 +17,7 @@ impl<T: Slab> SlabDescriptor<T, Partial> {
     /// * `head` - The head of the full slab descriptor. This slab will be
     ///   attached to it, if the allocation will make this slab full.
     pub fn alloc(&mut self) -> (NonNull<T>, SlabStateKind) {
-        debug_assert!(
-            self.state.is_partial(),
-            "Compiletime state does not match runtime state"
-        );
+        debug_assert!(self.state.is_partial(),);
 
         let idx = self.state.get_next_free_idx() as usize;
         let preallocated =
@@ -49,6 +48,8 @@ impl<T: Slab> SlabDescriptor<T, Partial> {
     ///
     /// * `idx` - The index of the object to deallocate.
     pub unsafe fn dealloc(&mut self, idx: NonMaxU16) -> SlabStateKind {
+        debug_assert!(self.state.is_partial());
+
         unsafe {
             self.objects.add(idx.get() as usize).as_mut().next_free_idx =
                 NonMaxU16::new(self.state.get_next_free_idx());
@@ -67,28 +68,30 @@ impl<T: Slab> SlabDescriptor<T, Partial> {
     }
 }
 
-impl<T: Slab> Attach<T> for SlabDescriptor<T, Partial> {
+impl<T: Slab> Attach<T, Partial> for SlabDescriptor<T, Partial> {
     fn attach_free(
         &mut self,
-        other: &mut SlabDescriptor<T, FreeDetached>,
-    ) {
-        todo!()
+        _other: &mut SlabDescriptor<T, FreeDetached>,
+    ) -> &mut SlabDescriptor<T, Partial> {
+        unimplemented!()
     }
 
     fn attach_full(
         &mut self,
-        other: &mut SlabDescriptor<T, FullDetached>,
-    ) {
-        todo!()
+        _other: &mut SlabDescriptor<T, FullDetached>,
+    ) -> &mut SlabDescriptor<T, Partial> {
+        unimplemented!()
     }
 
     fn attach_partial(
         &mut self,
         other: &mut SlabDescriptor<T, PartialDetached>,
-    ) {
+    ) -> &mut SlabDescriptor<T, Partial> {
         other.next = self.next.map(|p| p.cast());
 
-        self.next = Some(NonNull::from_mut(other).cast())
+        self.next = Some(NonNull::from_mut(other).cast());
+
+        unsafe { core::mem::transmute(other) }
     }
 }
 
@@ -127,5 +130,16 @@ impl<T: Slab> ConvertInplace<T, FullDetached, PartialDetached>
         };
         full.state = meta;
         full
+    }
+}
+
+unsafe impl<T: Slab> SelfAttach<T, PartialDetached>
+    for SlabDescriptor<T, PartialDetached>
+{
+    fn attach_self(&mut self) -> &mut SlabDescriptor<T, Partial> {
+        debug_assert!(self.next == None);
+        debug_assert!(self.state.is_partial());
+        debug_assert!(self.state == PartialMeta::default());
+        unsafe { core::mem::transmute(self) }
     }
 }
