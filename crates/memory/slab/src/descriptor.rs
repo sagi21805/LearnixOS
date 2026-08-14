@@ -6,7 +6,10 @@ pub mod partial;
 
 use crate::{
     preallocated::PreAllocated,
-    traits::{DetachedSlab, DetachedSlabState, Slab, SlabState},
+    traits::{
+        Attach, AttachedSlab, DetachedSlab, DetachedSlabState, Slab,
+        SlabState,
+    },
 };
 use common::address_types::{Address, VirtualAddress};
 use core::{num::NonZeroU64, ptr::NonNull};
@@ -38,6 +41,9 @@ impl<T: Slab> DetachedSlabState<T> for PartialDetached {
     type Attached = Partial;
 }
 
+#[rustfmt::skip]
+unsafe impl<T: Slab> AttachedSlab<T, Partial> for SlabDescriptor<T, Partial> {}
+
 impl<T: Slab> SlabState<T> for Partial {
     type Meta = PartialMeta;
     type DetachedState = PartialDetached;
@@ -67,6 +73,9 @@ impl<T: Slab> SlabState<T> for Free {
     type DetachedState = FreeDetached;
 }
 
+#[rustfmt::skip]
+unsafe impl<T: Slab> AttachedSlab<T, Free> for SlabDescriptor<T, Free> {}
+
 impl<T: Slab> SlabState<T> for FreeDetached {
     type Meta = FullFreeMeta;
     type Next = ();
@@ -89,6 +98,9 @@ impl<T: Slab> SlabState<T> for Full {
     type Meta = FullFreeMeta;
     type DetachedState = FullDetached;
 }
+
+#[rustfmt::skip]
+unsafe impl<T: Slab> AttachedSlab<T, Full> for SlabDescriptor<T, Full> {}
 
 impl<T: Slab> SlabState<T> for FullDetached {
     type Meta = FullFreeMeta;
@@ -119,10 +131,20 @@ pub enum SlabStateKind {
 }
 
 #[bitfields]
+#[derive(PartialEq, Eq)]
 pub struct PartialMeta {
     pub next_free_idx: B16,
     pub total_allocated: B31,
     pub partial: B1,
+}
+
+const impl Default for PartialMeta {
+    fn default() -> Self {
+        PartialMeta::new()
+            .next_free_idx(0)
+            .total_allocated(0)
+            .partial(true)
+    }
 }
 
 #[bitfields]
@@ -134,6 +156,10 @@ pub struct RawMeta {
 
 #[derive(Debug, Clone, Copy)]
 pub struct SlabAddress(Option<NonZeroU64>);
+
+const impl Default for SlabAddress {
+    fn default() -> Self { Self(None) }
+}
 
 const impl From<u64> for SlabAddress {
     fn from(value: u64) -> Self { Self(NonZeroU64::new(value)) }
@@ -176,6 +202,12 @@ pub struct FullFreeMeta {
     pub partial: B1,
 }
 
+const impl Default for FullFreeMeta {
+    fn default() -> Self {
+        Self::new().prev(SlabAddress::default()).partial(false)
+    }
+}
+
 /// Shared linked-list attach/detach logic for the two state kinds
 /// (`Free` and `Full`) that use `FullFreeMeta` as their metadata.
 impl<T, S> SlabDescriptor<T, S>
@@ -187,7 +219,7 @@ where
     pub(crate) fn attach_linked(
         &mut self,
         other: &mut SlabDescriptor<T, S::DetachedState>,
-    ) {
+    ) -> &mut SlabDescriptor<T, S> {
         other.next = self.next.map(|p| p.cast());
 
         other
@@ -200,9 +232,12 @@ where
             );
         }
 
-        self.next = Some(NonNull::from_mut(unsafe {
-            core::mem::transmute(other)
-        }));
+        let mut attached =
+            NonNull::from_mut(unsafe { core::mem::transmute(other) });
+
+        self.next = Some(attached);
+
+        unsafe { attached.as_mut() }
     }
 
     pub(crate) fn detach_linked(&mut self) -> &mut S::Detached {
@@ -228,8 +263,10 @@ impl<T: Slab> SlabDescriptor<T, Used> {
     ) -> Result<&SlabDescriptor<T, Partial>, &SlabDescriptor<T, Full>>
     {
         if self.state.is_partial() {
+            todo!("");
             Ok(unsafe { core::mem::transmute(self) })
         } else {
+            todo!("");
             Err(unsafe { core::mem::transmute(self) })
         }
     }
@@ -241,8 +278,10 @@ impl<T: Slab> SlabDescriptor<T, Used> {
         &mut SlabDescriptor<T, Full>,
     > {
         if self.state.is_partial() {
+            todo!("");
             Ok(unsafe { core::mem::transmute(self) })
         } else {
+            todo!("");
             Err(unsafe { core::mem::transmute(self) })
         }
     }
