@@ -5,8 +5,8 @@ use common::{
 use x86::structures::paging::PageEntryFlags;
 
 use crate::descriptor::{
-    FreeDetached, FullDetached, PartialDetached, RawMeta, SlabDescriptor,
-    Used,
+    Free, FreeDetached, Full, FullDetached, Partial, PartialDetached,
+    RawMeta, SlabDescriptor, Used,
 };
 
 /// Get the position on the slab array, for a slab of the given type.
@@ -78,6 +78,8 @@ impl<T: Slab> DetachedSlabState<T> for () {
     type Attached = ();
 }
 
+pub(crate) unsafe trait AttachedSlab<T: Slab, S: SlabState<T>> {}
+
 impl<T: Slab> SlabState<T> for () {
     type Meta = RawMeta;
     type Next = ();
@@ -121,15 +123,24 @@ pub trait SlabBlock {
     ) -> &mut SlabDescriptor<T, Used>;
 }
 
-pub trait Attach<T: Slab> {
-    fn attach_free(&mut self, other: &mut SlabDescriptor<T, FreeDetached>);
+pub trait Attach<T: Slab, S: SlabState<T>>: AttachedSlab<T, S> {
+    /// Attach a slab in the free state to this slab.
+    fn attach_free(
+        &mut self,
+        other: &mut SlabDescriptor<T, FreeDetached>,
+    ) -> &mut SlabDescriptor<T, S>;
 
-    fn attach_full(&mut self, other: &mut SlabDescriptor<T, FullDetached>);
+    /// Attach a slab in the full state to this slab.
+    fn attach_full(
+        &mut self,
+        other: &mut SlabDescriptor<T, FullDetached>,
+    ) -> &mut SlabDescriptor<T, S>;
 
+    /// Attach a slab in the partial state into this slab.
     fn attach_partial(
         &mut self,
         other: &mut SlabDescriptor<T, PartialDetached>,
-    );
+    ) -> &mut SlabDescriptor<T, S>;
 }
 
 pub trait Detach<T: Slab, S: SlabState<T>> {
