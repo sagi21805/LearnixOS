@@ -48,6 +48,44 @@ macro_rules! define_slab_system {
     }
 }
 
+#[macro_export]
+macro_rules! new_state {
+    (
+        $attached: ident => $detached: ident,
+        $meta: ty
+    ) => {
+        pub struct $attached;
+
+        impl<T: Slab> $crate::traits::SlabState<T> for $attached {
+            type Meta = $meta;
+            type DetachedState = $detached;
+        }
+
+        pub struct $detached;
+
+        impl<T: Slab> $crate::traits::SlabState<T> for $detached {
+            type Meta = $meta;
+            type Next = ();
+            type Detached = ();
+            type DetachedState = ();
+        }
+
+        impl<T: Slab> $crate::traits::DetachedSlabState<T> for $detached {
+            type Attached = $attached;
+        }
+
+        unsafe impl<T: Slab> $crate::traits::AttachedSlab<T, $attached>
+            for SlabDescriptor<T, $attached>
+        {
+        }
+
+        impl<T: Slab> $crate::traits::DetachedSlab<T, $detached>
+            for SlabDescriptor<T, $detached>
+        {
+        }
+    };
+}
+
 // TODO implement reverse lookup with an enum that will automatically be
 // generated and check the code generated on compiler explorer. if
 // interesting, write on it on the book

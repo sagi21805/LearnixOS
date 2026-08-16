@@ -5,11 +5,9 @@ pub mod full;
 pub mod partial;
 
 use crate::{
+    new_state,
     preallocated::PreAllocated,
-    traits::{
-        Attach, AttachedSlab, DetachedSlab, DetachedSlabState, Slab,
-        SlabState,
-    },
+    traits::{Slab, SlabState},
 };
 use common::address_types::{Address, VirtualAddress};
 use core::{num::NonZeroU64, ptr::NonNull};
@@ -30,39 +28,6 @@ where
     // the array so the size can always be calculated.
     pub objects: NonNull<PreAllocated<T>>,
     pub next: Option<NonNull<S::Next>>,
-}
-
-macro_rules! new_state {
-    (
-        $attached: ident => $detached: ident,
-        $meta: ty
-    ) => {
-        pub struct $attached;
-
-        impl<T: Slab> SlabState<T> for $attached {
-            type Meta = $meta;
-            type DetachedState = $detached;
-        }
-
-        pub struct $detached;
-
-        impl<T: Slab> SlabState<T> for $detached {
-            type Meta = $meta;
-            type Next = ();
-            type Detached = ();
-            type DetachedState = ();
-        }
-
-        impl<T: Slab> DetachedSlabState<T> for $detached {
-            type Attached = $attached;
-        }
-
-        #[rustfmt::skip]
-        unsafe impl<T: Slab> AttachedSlab<T, $attached> for SlabDescriptor<T, $attached> {}
-
-        #[rustfmt::skip]
-        impl<T: Slab> DetachedSlab<T, $detached> for SlabDescriptor<T, $detached> {}
-    };
 }
 
 // Partial slab is a slab that has some allocated objects, and some free
