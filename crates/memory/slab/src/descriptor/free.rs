@@ -65,24 +65,26 @@ impl<T> SlabDescriptor<T, Free>
 where
     T: Slab,
 {
-    pub fn alloc(
-        &mut self,
-        head: &mut Option<&mut SlabDescriptor<T, Partial>>,
+    pub fn alloc<'a>(
+        &'a mut self,
+        head: &'a mut Option<&'a mut SlabDescriptor<T, Partial>>,
     ) -> (NonNull<T>, SlabStateKind) {
         let detached = self.detach();
 
         let partial = detached.convert_inplace(PartialMeta::default());
 
-        match *head {
+        match head {
             Some(head) => {
-                head.attach_partial(partial);
+                let attached = head.attach_partial(partial);
+                attached.alloc()
             }
             None => {
-                *head = Some(partial.attach_self());
+                let attached = partial.attach_self();
+                let allocation = attached.alloc();
+                *head = Some(attached);
+                allocation
             }
         }
-
-        partial.alloc()
     }
 }
 
