@@ -32,85 +32,49 @@ where
     pub next: Option<NonNull<S::Next>>,
 }
 
-/// Partial slab is a slab that has some allocated objects, and some free
-/// objects.
-pub struct Partial;
-pub struct PartialDetached;
+macro_rules! new_state {
+    (
+        $attached: ident => $detached: ident,
+        $meta: ty
+    ) => {
+        pub struct $attached;
 
-impl<T: Slab> DetachedSlabState<T> for PartialDetached {
-    type Attached = Partial;
+        impl<T: Slab> SlabState<T> for $attached {
+            type Meta = $meta;
+            type DetachedState = $detached;
+        }
+
+        pub struct $detached;
+
+        impl<T: Slab> SlabState<T> for $detached {
+            type Meta = $meta;
+            type Next = ();
+            type Detached = ();
+            type DetachedState = ();
+        }
+
+        impl<T: Slab> DetachedSlabState<T> for $detached {
+            type Attached = $attached;
+        }
+
+        #[rustfmt::skip]
+        unsafe impl<T: Slab> AttachedSlab<T, $attached> for SlabDescriptor<T, $attached> {}
+
+        #[rustfmt::skip]
+        impl<T: Slab> DetachedSlab<T, $detached> for SlabDescriptor<T, $detached> {}
+    };
 }
 
-#[rustfmt::skip]
-unsafe impl<T: Slab> AttachedSlab<T, Partial> for SlabDescriptor<T, Partial> {}
+// Partial slab is a slab that has some allocated objects, and some free
+// objects.
+new_state!(Partial => PartialDetached, PartialMeta);
 
-impl<T: Slab> SlabState<T> for Partial {
-    type Meta = PartialMeta;
-    type DetachedState = PartialDetached;
-}
+// Free slab is a slab that does not allocate any objects, and is
+// initialized that the first allocatable index is 0.
+new_state!(Free => FreeDetached, FullFreeMeta);
 
-impl<T: Slab> SlabState<T> for PartialDetached {
-    type Meta = PartialMeta;
-    type Next = ();
-    type Detached = ();
-    type DetachedState = ();
-}
-
-#[rustfmt::skip]
-impl<T: Slab> DetachedSlab<T, PartialDetached> for SlabDescriptor<T, PartialDetached> {}
-
-/// Free slab is a slab that does not allocate any objects, and is
-/// initialized that the first allocatable index is 0.
-pub struct Free;
-pub struct FreeDetached;
-
-impl<T: Slab> DetachedSlabState<T> for FreeDetached {
-    type Attached = Free;
-}
-
-impl<T: Slab> SlabState<T> for Free {
-    type Meta = FullFreeMeta;
-    type DetachedState = FreeDetached;
-}
-
-#[rustfmt::skip]
-unsafe impl<T: Slab> AttachedSlab<T, Free> for SlabDescriptor<T, Free> {}
-
-impl<T: Slab> SlabState<T> for FreeDetached {
-    type Meta = FullFreeMeta;
-    type Next = ();
-    type Detached = ();
-    type DetachedState = ();
-}
-
-#[rustfmt::skip]
-impl<T: Slab> DetachedSlab<T, FreeDetached> for SlabDescriptor<T, FreeDetached> {}
-
-/// Full slab is a slab that is fully allocated.
-pub struct Full;
-pub struct FullDetached;
-
-impl<T: Slab> DetachedSlabState<T> for FullDetached {
-    type Attached = Full;
-}
-
-impl<T: Slab> SlabState<T> for Full {
-    type Meta = FullFreeMeta;
-    type DetachedState = FullDetached;
-}
-
-#[rustfmt::skip]
-unsafe impl<T: Slab> AttachedSlab<T, Full> for SlabDescriptor<T, Full> {}
-
-impl<T: Slab> SlabState<T> for FullDetached {
-    type Meta = FullFreeMeta;
-    type Next = ();
-    type Detached = ();
-    type DetachedState = ();
-}
-
-#[rustfmt::skip]
-impl<T: Slab> DetachedSlab<T, FullDetached> for SlabDescriptor<T, FullDetached> {}
+// Full slab is a slab that is fully allocated.
+new_state!(Full => FullDetached, FullFreeMeta);
 
 /// A used slab may be full or partial.
 ///
