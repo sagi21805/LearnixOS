@@ -3,7 +3,7 @@ use core::{hint::unreachable_unchecked, ptr::NonNull};
 use nonmax::NonMaxU16;
 
 use crate::{
-    descriptor::{Free, Full, Partial, PartialMeta, SlabStateKind, Used},
+    descriptor::{Free, Full, Partial, SlabStateKind, Used},
     traits::Slab,
 };
 
@@ -31,7 +31,7 @@ const impl Default for SlabCache<()> {
 }
 
 impl SlabCache<()> {
-    pub unsafe fn with<T: Slab>(&mut self) -> &mut SlabCache<T> {
+    pub unsafe fn assign<T: Slab>(&mut self) -> &mut SlabCache<T> {
         unsafe { core::mem::transmute(self) }
     }
 }
@@ -115,14 +115,16 @@ impl<T: Slab> SlabCache<T> {
                         }
                     }
                 }
-                _ => debug_assert!(false, "unreachable!"),
+                _ => unsafe { unreachable_unchecked() },
             }
             return allocation;
         }
 
         if let Some(free) = self.free.map(|mut p| unsafe { p.as_mut() }) {
             self.free = free.next;
-            let (allocation, final_state) = free.alloc();
+            let (allocation, final_state) = free.alloc(
+                &mut self.partial.map(|mut p| unsafe { p.as_mut() }),
+            );
             todo!("");
             let partial: &mut SlabDescriptor<T, Partial> =
                 unsafe { core::mem::transmute(free) };

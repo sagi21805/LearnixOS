@@ -5,15 +5,15 @@ use common::{
 use x86::structures::paging::PageEntryFlags;
 
 use crate::descriptor::{
-    Free, FreeDetached, Full, FullDetached, Partial, PartialDetached,
-    RawMeta, SlabDescriptor, Used,
+    FreeDetached, FullDetached, PartialDetached, SlabDescriptor, Used,
+    meta::RawMeta,
 };
 
 /// Get the position on the slab array, for a slab of the given type.
 ///
 /// Shouldn't implement this trait manually; it is implemented
 /// via the `define_slab_system` macro.
-pub trait Slab: SlabPosition + SlabFlags {}
+pub trait Slab: SlabPosition + SlabFlags + 'static {}
 
 impl Slab for () {}
 

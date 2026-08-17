@@ -1,8 +1,7 @@
-use super::{Full, SlabDescriptor};
 use crate::{
     descriptor::{
-        FreeDetached, FullDetached, FullFreeMeta, PartialDetached,
-        PartialMeta, SlabAddress,
+        FreeDetached, Full, FullDetached, PartialDetached, PartialMeta,
+        SlabAddress, SlabDescriptor, meta::FullFreeMeta,
     },
     traits::{Attach, ConvertInplace, Detach, Slab},
 };
