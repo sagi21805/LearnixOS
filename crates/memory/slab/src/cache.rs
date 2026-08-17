@@ -3,8 +3,11 @@ use core::{hint::unreachable_unchecked, ptr::NonNull};
 use nonmax::NonMaxU16;
 
 use crate::{
-    descriptor::{Free, Full, Partial, SlabStateKind, Used},
-    traits::Slab,
+    descriptor::{
+        Free, FreeDetached, Full, FullDetached, Partial, PartialDetached,
+        SlabStateKind, Used,
+    },
+    traits::{Attach, DetachedSlabState, SelfAttach, Slab},
 };
 
 use super::descriptor::SlabDescriptor;
@@ -44,6 +47,49 @@ impl<T: Slab> SlabCache<T> {
             partial: None,
             full: None,
         }
+    }
+
+    fn attach_or_set_full(
+        &mut self,
+        other: &mut SlabDescriptor<T, FullDetached>,
+    ) {
+        match self.full.map(|mut p| unsafe { p.as_mut() }) {
+            Some(full) => {
+                full.attach_full(other);
+            }
+            None => {
+                self.full = Some(NonNull::from_mut(other.attach_self()));
+            }
+        };
+    }
+
+    fn attach_or_set_free(
+        &mut self,
+        other: &mut SlabDescriptor<T, FreeDetached>,
+    ) {
+        match self.free.map(|mut p| unsafe { p.as_mut() }) {
+            Some(free) => {
+                free.attach_free(other);
+            }
+            None => {
+                self.free = Some(NonNull::from_mut(other.attach_self()));
+            }
+        };
+    }
+
+    fn attach_or_set_partial(
+        &mut self,
+        other: &mut SlabDescriptor<T, PartialDetached>,
+    ) {
+        match self.partial.map(|mut p| unsafe { p.as_mut() }) {
+            Some(partial) => {
+                partial.attach_partial(other);
+            }
+            None => {
+                self.partial =
+                    Some(NonNull::from_mut(other.attach_self()));
+            }
+        };
     }
 
     /// Remove partial slab entry from the cache.
@@ -102,6 +148,7 @@ impl<T: Slab> SlabCache<T> {
             let (allocation, final_state) = partial.alloc();
             match final_state {
                 SlabStateKind::Full => {
+                    // detach current partial node.
                     self.partial = partial.next;
                     match self.full {
                         Some(mut full) => unsafe {
