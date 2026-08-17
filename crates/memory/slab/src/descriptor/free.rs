@@ -1,12 +1,13 @@
 extern crate alloc;
 
-use super::{
-    Free, FullFreeMeta, Partial, PartialMeta, SlabAddress, SlabDescriptor,
-    SlabStateKind,
-};
 use crate::{
-    descriptor::{FreeDetached, Full, FullDetached, PartialDetached},
+    descriptor::{
+        Free, FreeDetached, FullDetached, Partial, PartialDetached,
+        SlabDescriptor, SlabStateKind,
+        meta::{FullFreeMeta, PartialMeta},
+    },
     preallocated::PreAllocated,
+    slab_address::SlabAddress,
     traits::{Attach, ConvertInplace, Detach, SelfAttach, Slab},
 };
 use alloc::alloc::{Layout, alloc};
@@ -52,7 +53,7 @@ impl<T: Slab> SlabDescriptor<T, FreeDetached> {
 
             SlabDescriptor {
                 state: FullFreeMeta::new()
-                    .prev(SlabAddress(None))
+                    .prev(SlabAddress::default())
                     .partial(false),
                 objects: objects.cast(),
                 next: None,

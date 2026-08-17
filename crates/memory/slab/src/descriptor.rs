@@ -2,16 +2,17 @@ extern crate alloc;
 
 pub mod free;
 pub mod full;
+pub mod meta;
 pub mod partial;
 
 use crate::{
+    descriptor::meta::{FullFreeMeta, PartialMeta, RawMeta},
     new_state,
     preallocated::PreAllocated,
+    slab_address::SlabAddress,
     traits::{Slab, SlabState},
 };
-use common::address_types::{Address, VirtualAddress};
-use core::{num::NonZeroU64, ptr::NonNull};
-use macros::bitfields;
+use core::ptr::NonNull;
 
 #[repr(C)]
 pub struct SlabDescriptor<T, S>
@@ -57,84 +58,6 @@ pub enum SlabStateKind {
     Partial,
     Free,
     Full,
-}
-
-#[bitfields]
-#[derive(PartialEq, Eq)]
-pub struct PartialMeta {
-    pub next_free_idx: B16,
-    pub total_allocated: B31,
-    pub partial: B1,
-}
-
-const impl Default for PartialMeta {
-    fn default() -> Self {
-        PartialMeta::new()
-            .next_free_idx(0)
-            .total_allocated(0)
-            .partial(true)
-    }
-}
-
-#[bitfields]
-pub struct RawMeta {
-    #[flag(r)]
-    pub reserved: B63,
-    pub partial: B1,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct SlabAddress(Option<NonZeroU64>);
-
-const impl Default for SlabAddress {
-    fn default() -> Self { Self(None) }
-}
-
-const impl From<u64> for SlabAddress {
-    fn from(value: u64) -> Self { Self(NonZeroU64::new(value)) }
-}
-
-const impl From<SlabAddress> for u64 {
-    fn from(value: SlabAddress) -> Self {
-        match value.0 {
-            Some(v) => v.get(),
-            None => 0,
-        }
-    }
-}
-
-impl SlabAddress {
-    pub unsafe fn as_non_null<T: Slab, S: SlabState<T>>(
-        &self,
-    ) -> Option<NonNull<SlabDescriptor<T, S>>> {
-        unsafe {
-            Some(
-                VirtualAddress::new_unchecked(self.0?.get() as usize)
-                    .as_non_null(),
-            )
-        }
-    }
-
-    pub fn from_non_null<T: Slab, S: SlabState<T>>(
-        ptr: NonNull<SlabDescriptor<T, S>>,
-    ) -> Self {
-        Self(NonZeroU64::try_from(ptr.addr()).ok())
-    }
-}
-
-#[bitfields]
-pub struct FullFreeMeta {
-    #[flag(flag_type = SlabAddress)]
-    pub prev: B48,
-    #[flag(r)]
-    pub reserved: B15,
-    pub partial: B1,
-}
-
-const impl Default for FullFreeMeta {
-    fn default() -> Self {
-        Self::new().prev(SlabAddress::default()).partial(false)
-    }
 }
 
 /// Shared linked-list attach/detach logic for the two state kinds

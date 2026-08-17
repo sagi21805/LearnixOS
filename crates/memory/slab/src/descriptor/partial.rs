@@ -1,7 +1,7 @@
-use super::{FullFreeMeta, Partial, SlabDescriptor, SlabStateKind};
 use crate::{
     descriptor::{
-        FreeDetached, FullDetached, PartialDetached, PartialMeta,
+        FreeDetached, FullDetached, Partial, PartialDetached, PartialMeta,
+        SlabDescriptor, SlabStateKind, meta::FullFreeMeta,
     },
     traits::{Attach, ConvertInplace, SelfAttach, Slab},
 };
@@ -136,7 +136,9 @@ impl<T: Slab> ConvertInplace<T, FullDetached, PartialDetached>
 unsafe impl<T: Slab> SelfAttach<T, PartialDetached>
     for SlabDescriptor<T, PartialDetached>
 {
-    fn attach_self(&mut self) -> &mut SlabDescriptor<T, Partial> {
+    fn attach_self<'a>(
+        &'a mut self,
+    ) -> &'a mut SlabDescriptor<T, Partial> {
         debug_assert!(self.next == None);
         debug_assert!(self.state.is_partial());
         debug_assert!(self.state == PartialMeta::default());

@@ -8,12 +8,12 @@
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
 #![feature(associated_type_defaults)]
-#![feature(impl_restriction)]
 
 pub mod cache;
 pub mod descriptor;
 pub mod local_macros;
 pub mod preallocated;
+pub mod slab_address;
 pub mod traits;
 
 use crate::{
@@ -81,7 +81,9 @@ where
 
     pub fn kmalloc<T: Slab>(&self) -> NonNull<T> {
         unsafe {
-            self.slab_arena.lock()[T::SLAB_POSITION].with::<T>().alloc()
+            self.slab_arena.lock()[T::SLAB_POSITION]
+                .assign::<T>()
+                .alloc()
         }
     }
 
@@ -111,7 +113,7 @@ where
             }
         };
 
-        let cache = unsafe { slab_lock[T::SLAB_POSITION].with::<T>() };
+        let cache = unsafe { slab_lock[T::SLAB_POSITION].assign::<T>() };
 
         cache.dealloc(idx_in_slab, descriptor);
 
