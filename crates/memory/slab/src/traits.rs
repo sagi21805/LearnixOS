@@ -5,7 +5,8 @@ use common::{
 use x86::structures::paging::PageEntryFlags;
 
 use crate::descriptor::{
-    FreeDetached, PartialDetached, SlabDescriptor, Used, meta::RawMeta,
+    FreeDetached, Full, FullDetached, PartialDetached, SlabDescriptor,
+    Used, meta::RawMeta,
 };
 
 /// Get the position on the slab array, for a slab of the given type.
@@ -169,7 +170,7 @@ pub(crate) trait Attach<T: Slab, S: AttachedSlabState<T>>:
     /// Attach a slab in the full state to this slab.
     fn attach_full(
         &mut self,
-        other: &mut SlabDescriptor<T, FreeDetached>,
+        other: &mut SlabDescriptor<T, FullDetached>,
     ) -> &mut SlabDescriptor<T, S>;
 
     /// Attach a slab in the partial state into this slab.
