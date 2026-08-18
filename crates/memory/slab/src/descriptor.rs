@@ -10,7 +10,7 @@ use crate::{
     new_state,
     preallocated::PreAllocated,
     slab_address::SlabAddress,
-    traits::{Slab, SlabState},
+    traits::{AttachedSlabState, Slab, SlabState},
 };
 use core::ptr::NonNull;
 
@@ -33,25 +33,45 @@ where
 
 // Partial slab is a slab that has some allocated objects, and some free
 // objects.
-new_state!(Partial => PartialDetached, PartialMeta);
+new_state!(
+    head => PartialHead,
+    attached => Partial,
+    detached => PartialDetached,
+    meta => PartialMeta,
+);
 
 // Free slab is a slab that does not allocate any objects, and is
 // initialized that the first allocatable index is 0.
-new_state!(Free => FreeDetached, FullFreeMeta);
+new_state!(
+    head => FreeHead,
+    attached => Free,
+    detached => FreeDetached,
+    meta => FullFreeMeta
+);
 
 // Full slab is a slab that is fully allocated.
-new_state!(Full => FullDetached, FullFreeMeta);
+new_state!(
+    head => FullHead,
+    attached => Full,
+    detached => FullDetached,
+    meta => FullFreeMeta
+);
 
 /// A used slab may be full or partial.
 ///
 /// This state is ment to be when trying to free an object and trying to
 /// figure out the state of the slab.
 pub struct Used;
-impl<T: Slab> SlabState<T> for Used {
+
+unsafe impl<T: Slab> SlabState<T> for Used {
     type Meta = RawMeta;
     type Next = ();
-    type Detached = ();
+}
+
+unsafe impl<T: Slab> AttachedSlabState<T> for Used {
     type DetachedState = ();
+
+    type HeadState = ();
 }
 
 pub enum SlabStateKind {
@@ -65,8 +85,8 @@ pub enum SlabStateKind {
 impl<T, S> SlabDescriptor<T, S>
 where
     T: Slab,
-    S: SlabState<T, Meta = FullFreeMeta, Next = Self>,
-    S::DetachedState: SlabState<T, Meta = FullFreeMeta>,
+    S: AttachedSlabState<T, Meta = FullFreeMeta, Next = Self>,
+    S::DetachedState: AttachedSlabState<T, Meta = FullFreeMeta>,
 {
     pub(crate) fn attach_linked(
         &mut self,
@@ -92,7 +112,9 @@ where
         unsafe { attached.as_mut() }
     }
 
-    pub(crate) fn detach_linked(&mut self) -> &mut S::Detached {
+    pub(crate) fn detach_linked(
+        &mut self,
+    ) -> &mut SlabDescriptor<T, S::DetachedState> {
         if let Some(mut next) = self.next {
             unsafe { next.as_mut().state = self.state };
         }

@@ -4,10 +4,10 @@ use nonmax::NonMaxU16;
 
 use crate::{
     descriptor::{
-        Free, FreeDetached, Full, FullDetached, Partial, PartialDetached,
-        SlabStateKind, Used,
+        FreeDetached, FreeHead, FullDetached, FullHead, Partial,
+        PartialDetached, PartialHead, SlabStateKind, Used,
     },
-    traits::{Attach, DetachedSlabState, SelfAttach, Slab},
+    traits::{Attach, SelfAttach, Slab},
 };
 
 use super::descriptor::SlabDescriptor;
@@ -15,9 +15,9 @@ use super::descriptor::SlabDescriptor;
 #[derive(Debug)]
 pub struct SlabCache<T: Slab> {
     pub buddy_order: usize,
-    pub free: Option<NonNull<SlabDescriptor<T, Free>>>,
-    pub partial: Option<NonNull<SlabDescriptor<T, Partial>>>,
-    pub full: Option<NonNull<SlabDescriptor<T, Full>>>,
+    pub free: Option<NonNull<SlabDescriptor<T, FreeHead>>>,
+    pub partial: Option<NonNull<SlabDescriptor<T, PartialHead>>>,
+    pub full: Option<NonNull<SlabDescriptor<T, FullHead>>>,
 }
 
 unsafe impl<T: Slab> Send for SlabCache<T> {}
