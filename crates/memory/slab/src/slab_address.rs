@@ -4,7 +4,7 @@ use common::address_types::{Address, VirtualAddress};
 
 use crate::{
     descriptor::SlabDescriptor,
-    traits::{Slab, SlabState},
+    traits::{Slab, AttachedSlabState},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -28,7 +28,7 @@ const impl From<SlabAddress> for u64 {
 }
 
 impl SlabAddress {
-    pub unsafe fn as_non_null<T: Slab, S: SlabState<T>>(
+    pub unsafe fn as_non_null<T: Slab, S: AttachedSlabState<T>>(
         &self,
     ) -> Option<NonNull<SlabDescriptor<T, S>>> {
         unsafe {
@@ -39,7 +39,7 @@ impl SlabAddress {
         }
     }
 
-    pub fn from_non_null<T: Slab, S: SlabState<T>>(
+    pub fn from_non_null<T: Slab, S: AttachedSlabState<T>>(
         ptr: NonNull<SlabDescriptor<T, S>>,
     ) -> Self {
         Self(NonZeroU64::try_from(ptr.addr()).ok())

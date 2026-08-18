@@ -5,8 +5,7 @@ use common::{
 use x86::structures::paging::PageEntryFlags;
 
 use crate::descriptor::{
-    FreeDetached, FullDetached, PartialDetached, SlabDescriptor, Used,
-    meta::RawMeta,
+    FreeDetached, PartialDetached, SlabDescriptor, Used, meta::RawMeta,
 };
 
 /// Get the position on the slab array, for a slab of the given type.
@@ -42,49 +41,84 @@ impl<T: SlabPosition> SlabFlags for T {
     default const PSIZE: PageSize = PageSize::Regular;
 }
 
-// TODO: Seal trait
-pub trait SlabState<T: Slab>: Sized {
-    /// Type that holds the metadata of the slab.
-    ///
-    /// This type should be the same size of u64.
-    type Meta: Sized;
-
-    const ASSERT_META_SIZE: () = assert!(
-        core::mem::size_of::<Self::Meta>() == core::mem::size_of::<u64>()
-    );
-
+pub(crate) unsafe trait SlabState<T: Slab>: Sized {
     /// The type the `self.next` pointer will point to.
     ///
     /// This is useful because it allows to set invalid next pointer to
     /// detached slabs.
     type Next: Sized = SlabDescriptor<T, Self>;
 
+    /// Type that holds the metadata of the slab.
+    ///
+    /// This type should be the same size of u64.
+    type Meta: Sized;
+
+    const _ASSERT_META_SIZE: () = assert!(
+        core::mem::size_of::<Self::Meta>() == core::mem::size_of::<u64>()
+    );
+}
+
+unsafe impl<T: Slab> SlabState<T> for () {
+    type Meta = RawMeta;
+    type Next = ();
+}
+
+// TODO: Seal trait
+pub(crate) unsafe trait AttachedSlabState<T: Slab>:
+    SlabState<T>
+{
     /// The detached state of this state. This type should be zero sized.
     type DetachedState: DetachedSlabState<T>;
 
-    type Detached = SlabDescriptor<T, Self::DetachedState>;
+    type HeadState: HeadSlabState<T>;
 
-    const ASSERT_DETACHED_SIZE: () =
-        assert!(core::mem::size_of::<Self::Detached>() == 0);
+    const _ASSERT_DETACHED_SIZE: () =
+        assert!(core::mem::size_of::<Self::DetachedState>() == 0);
 }
 
 /// A slabdescriptor that is detached from the slab cache.
-pub trait DetachedSlabState<T: Slab>: SlabState<T, Next = ()> {
+pub(crate) unsafe trait DetachedSlabState<T: Slab>:
+    SlabState<T>
+{
     /// The attached state of this detached state.
-    type Attached: SlabState<T>;
+    type AttachedState: AttachedSlabState<T>;
+
+    type HeadState: HeadSlabState<T>;
 }
 
-impl<T: Slab> DetachedSlabState<T> for () {
-    type Attached = ();
+pub(crate) unsafe trait HeadSlabState<T: Slab>:
+    SlabState<T>
+{
+    type AttachedState: AttachedSlabState<T>;
+
+    type Attached = SlabDescriptor<T, Self::AttachedState>;
+
+    type DetachedState: DetachedSlabState<T>;
+
+    type Detached = SlabDescriptor<T, Self::DetachedState>;
 }
 
-pub(crate) unsafe trait AttachedSlab<T: Slab, S: SlabState<T>> {}
+unsafe impl<T: Slab> HeadSlabState<T> for () {
+    type AttachedState = ();
 
-impl<T: Slab> SlabState<T> for () {
-    type Meta = RawMeta;
-    type Next = ();
-    type Detached = ();
     type DetachedState = ();
+}
+
+unsafe impl<T: Slab> DetachedSlabState<T> for () {
+    type AttachedState = ();
+    type HeadState = ();
+}
+
+pub(crate) unsafe trait AttachedSlab<T: Slab, S: AttachedSlabState<T>> {
+    type Head: HeadSlab<T, S::HeadState> = SlabDescriptor<T, S::HeadState>;
+
+    type Detached: DetachedSlab<T, S::DetachedState> =
+        SlabDescriptor<T, S::DetachedState>;
+}
+
+unsafe impl<T: Slab> AttachedSlabState<T> for () {
+    type DetachedState = ();
+    type HeadState = ();
 }
 
 pub trait Generic {
@@ -123,7 +157,9 @@ pub trait SlabBlock {
     ) -> &mut SlabDescriptor<T, Used>;
 }
 
-pub trait Attach<T: Slab, S: SlabState<T>>: AttachedSlab<T, S> {
+pub(crate) trait Attach<T: Slab, S: AttachedSlabState<T>>:
+    AttachedSlab<T, S>
+{
     /// Attach a slab in the free state to this slab.
     fn attach_free(
         &mut self,
@@ -133,7 +169,7 @@ pub trait Attach<T: Slab, S: SlabState<T>>: AttachedSlab<T, S> {
     /// Attach a slab in the full state to this slab.
     fn attach_full(
         &mut self,
-        other: &mut SlabDescriptor<T, FullDetached>,
+        other: &mut SlabDescriptor<T, FreeDetached>,
     ) -> &mut SlabDescriptor<T, S>;
 
     /// Attach a slab in the partial state into this slab.
@@ -143,22 +179,53 @@ pub trait Attach<T: Slab, S: SlabState<T>>: AttachedSlab<T, S> {
     ) -> &mut SlabDescriptor<T, S>;
 }
 
-pub trait Detach<T: Slab, S: SlabState<T>> {
-    fn detach(&mut self) -> &mut S::Detached;
+pub(crate) trait Detach<T: Slab, S: AttachedSlabState<T>>:
+    AttachedSlab<T, S>
+{
+    fn detach(&mut self) -> &mut Self::Detached;
 }
 
 /// A slab descriptor that is a detached state.
-pub trait DetachedSlab<T: Slab, S: DetachedSlabState<T>> {}
+pub(crate) unsafe trait DetachedSlab<T: Slab, S: DetachedSlabState<T>> {
+    type Attached: AttachedSlab<T, S::AttachedState> =
+        SlabDescriptor<T, S::AttachedState>;
+    type Head: HeadSlab<T, S::HeadState> = SlabDescriptor<T, S::HeadState>;
+}
 
-pub trait ConvertInplace<T, D, S>: DetachedSlab<T, S>
+unsafe impl<T: Slab, S: DetachedSlabState<T>> DetachedSlab<T, S>
+    for SlabDescriptor<T, S>
+{
+    type Attached = SlabDescriptor<T, S::AttachedState>;
+    type Head = SlabDescriptor<T, S::HeadState>;
+}
+
+pub(crate) unsafe trait HeadSlab<T: Slab, S: HeadSlabState<T>> {
+    type Attached: AttachedSlab<T, S::AttachedState> =
+        SlabDescriptor<T, S::AttachedState>;
+}
+
+unsafe impl<T: Slab, S: HeadSlabState<T>> HeadSlab<T, S>
+    for SlabDescriptor<T, S>
+{
+}
+
+unsafe impl<T: Slab, S: AttachedSlabState<T>> AttachedSlab<T, S>
+    for SlabDescriptor<T, S>
+{
+    type Detached = SlabDescriptor<T, S::DetachedState>;
+    type Head = SlabDescriptor<T, S::HeadState>;
+}
+
+pub(crate) trait ConvertInplace<T, D, S>:
+    DetachedSlab<T, S>
 where
     T: Slab,
-    D: DetachedSlabState<T>,
+    D: HeadSlabState<T>,
     S: DetachedSlabState<T>,
 {
     fn convert_inplace(
         &mut self,
-        meta: <D::Attached as SlabState<T>>::Meta,
+        meta: <D::AttachedState as SlabState<T>>::Meta,
     ) -> &mut SlabDescriptor<T, D>;
 }
 
@@ -169,5 +236,5 @@ where
 pub(crate) unsafe trait SelfAttach<T: Slab, S: DetachedSlabState<T>>:
     DetachedSlab<T, S>
 {
-    fn attach_self(&mut self) -> &mut SlabDescriptor<T, S::Attached>;
+    fn attach_self(&mut self) -> &mut SlabDescriptor<T, S::HeadState>;
 }
