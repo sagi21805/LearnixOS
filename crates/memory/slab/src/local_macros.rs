@@ -63,6 +63,18 @@ macro_rules! new_state {
             type Meta = $meta;
         }
 
+        unsafe impl<T: Slab> $crate::traits::HeadSlabState<T> for $head {
+            type AttachedState = $attached;
+            type DetachedState = $detached;
+        }
+
+        unsafe impl<T: Slab> $crate::traits::AttachedSlabState<T>
+            for $head
+        {
+            type DetachedState = $detached;
+            type HeadState = $head;
+        }
+
         pub struct $attached;
 
         unsafe impl<T: Slab> $crate::traits::SlabState<T> for $attached {
@@ -97,11 +109,6 @@ macro_rules! new_state {
         unsafe impl<T: Slab> $crate::traits::DetachedSlab<T, $detached>
             for SlabDescriptor<T, $detached>
         {
-        }
-
-        unsafe impl<T: Slab> $crate::traits::HeadSlabState<T> for $head {
-            type AttachedState = $attached;
-            type DetachedState = $detached;
         }
     };
 }
