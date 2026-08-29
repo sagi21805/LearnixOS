@@ -1,7 +1,7 @@
 use crate::{
     descriptor::{
-        FreeDetached, FullDetached, Partial, PartialDetached, PartialMeta,
-        SlabDescriptor, SlabStateKind, meta::FullFreeMeta,
+        FreeDetached, FullDetached, FullHead, Partial, PartialDetached,
+        PartialMeta, SlabDescriptor, SlabStateKind, meta::FullFreeMeta,
     },
     traits::{Attach, ConvertInplace, SelfAttach, Slab},
 };
@@ -87,11 +87,7 @@ impl<T: Slab> Attach<T, Partial> for SlabDescriptor<T, Partial> {
         &mut self,
         other: &mut SlabDescriptor<T, PartialDetached>,
     ) -> &mut SlabDescriptor<T, Partial> {
-        other.next = self.next.map(|p| p.cast());
-
-        self.next = Some(NonNull::from_mut(other).cast());
-
-        unsafe { core::mem::transmute(other) }
+        self.attach_single(other)
     }
 }
 
@@ -114,34 +110,34 @@ impl<T: Slab> ConvertInplace<T, FreeDetached, PartialDetached>
     }
 }
 
-impl<T: Slab> ConvertInplace<T, FullDetached, PartialDetached>
-    for SlabDescriptor<T, PartialDetached>
-{
-    fn convert_inplace(
-        &mut self,
-        meta: FullFreeMeta,
-    ) -> &mut SlabDescriptor<T, FullDetached> {
-        debug_assert!(!meta.is_partial());
-        let full = unsafe {
-            core::mem::transmute::<
-                &mut SlabDescriptor<T, PartialDetached>,
-                &mut SlabDescriptor<T, FullDetached>,
-            >(self)
-        };
-        full.state = meta;
-        full
-    }
-}
+// mpl<T: Slab> ConvertInplace<T, FullHead, PartialDetached>
+//     for SlabDescriptor<T, PartialDetached>
+// {
+//     fn convert_inplace(
+//         &mut self,
+//         meta: FullFreeMeta,
+//     ) -> &mut SlabDescriptor<T, FullHead> {
+//         debug_assert!(!meta.is_partial());
+//         let full = unsafe {
+//             core::mem::transmute::<
+//                 &mut SlabDescriptor<T, PartialDetached>,
+//                 &mut SlabDescriptor<T, FullHead>,
+//             >(self)
+//         };
+//         full.state = meta;
+//         full
+//     }
+// }
 
-unsafe impl<T: Slab> SelfAttach<T, PartialDetached>
-    for SlabDescriptor<T, PartialDetached>
-{
-    fn attach_self<'a>(
-        &'a mut self,
-    ) -> &'a mut SlabDescriptor<T, Partial> {
-        debug_assert!(self.next == None);
-        debug_assert!(self.state.is_partial());
-        debug_assert!(self.state == PartialMeta::default());
-        unsafe { core::mem::transmute(self) }
-    }
-}
+// unsafe impl<T: Slab> SelfAttach<T, PartialDetached>
+//     for SlabDescriptor<T, PartialDetached>
+// {
+//     fn attach_self<'a>(
+//         &'a mut self,
+//     ) -> &'a mut SlabDescriptor<T, Partial> {
+//         debug_assert!(self.next == None);
+//         debug_assert!(self.state.is_partial());
+//         debug_assert!(self.state == PartialMeta::default());
+//         unsafe { core::mem::transmute(self) }
+//     }
+// }
