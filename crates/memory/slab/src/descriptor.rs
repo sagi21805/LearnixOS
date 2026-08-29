@@ -1,160 +1,179 @@
+extern crate alloc;
+
+pub mod free;
+pub mod full;
+pub mod meta;
+pub mod partial;
+
 use crate::{
-    alloc_pages,
-    memory::{
-        allocators::slab::traits::Slab,
-        unassigned::{AssignSlab, UnassignSlab},
-    },
+    descriptor::meta::{FullFreeMeta, PartialMeta, RawMeta},
+    new_state,
+    preallocated::PreAllocated,
+    slab_address::SlabAddress,
+    traits::{AttachedSlabState, DetachedSlabState, Slab, SlabState},
 };
-use common::constants::REGULAR_PAGE_SIZE;
-use core::{
-    fmt::Debug,
-    mem::{ManuallyDrop, size_of},
-    ptr::NonNull,
-};
-use nonmax::NonMaxU16;
+use core::ptr::NonNull;
 
-/// Preallocated object in the slab allocator.
-pub union PreallocatedObject<T: 'static + Sized> {
-    pub allocated: ManuallyDrop<T>,
-    pub next_free_idx: Option<NonMaxU16>,
+#[repr(C)]
+pub struct SlabDescriptor<T, S>
+where
+    T: Slab,
+    S: SlabState<T>,
+{
+    pub state: S::Meta,
+
+    // TODO: Check the possibility to not save the length here because it
+    // is already managed by a freelist so the len may not be needed.
+    //
+    // Moreover the local T holds the const order in which we allocate for
+    // the array so the size can always be calculated.
+    pub objects: NonNull<PreAllocated<T>>,
+    pub next: Option<NonNull<S::Next>>,
 }
 
-impl<T> Debug for PreallocatedObject<T> {
-    fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Ok(())
-    }
+// Partial slab is a slab that has some allocated objects, and some free
+// objects.
+new_state!(
+    head => PartialHead,
+    attached => Partial,
+    detached => PartialDetached,
+    meta => PartialMeta,
+);
+
+// Free slab is a slab that does not allocate any objects, and is
+// initialized that the first allocatable index is 0.
+new_state!(
+    head => FreeHead,
+    attached => Free,
+    detached => FreeDetached,
+    meta => FullFreeMeta
+);
+
+// Full slab is a slab that is fully allocated.
+new_state!(
+    head => FullHead,
+    attached => Full,
+    detached => FullDetached,
+    meta => FullFreeMeta
+);
+
+/// A used slab may be full or partial.
+///
+/// This state is ment to be when trying to free an object and trying to
+/// figure out the state of the slab.
+pub struct Used;
+
+unsafe impl<T: Slab> SlabState<T> for Used {
+    type Meta = RawMeta;
+    type Next = ();
 }
 
-#[derive(Debug, Clone)]
-pub struct SlabDescriptor<T: Slab> {
-    pub next_free_idx: Option<NonMaxU16>,
-    pub total_allocated: u16,
-    pub objects: NonNull<[PreallocatedObject<T>]>,
-    pub next: Option<NonNull<SlabDescriptor<T>>>,
+unsafe impl<T: Slab> AttachedSlabState<T> for Used {
+    type DetachedState = ();
+
+    type HeadState = ();
 }
 
-impl AssignSlab for NonNull<SlabDescriptor<()>> {
-    type Target<Unassigned: Slab> = NonNull<SlabDescriptor<Unassigned>>;
+pub enum SlabStateKind {
+    Partial,
+    Free,
+    Full,
+}
 
-    fn assign<T: Slab>(&self) -> NonNull<SlabDescriptor<T>> {
-        unsafe {
-            NonNull::new_unchecked(self.as_ptr() as *mut SlabDescriptor<T>)
+/// Shared linked-list attach/detach logic for the two state kinds
+/// (`Free` and `Full`) that use `FullFreeMeta` as their metadata.
+impl<T, S> SlabDescriptor<T, S>
+where
+    T: Slab,
+    S: AttachedSlabState<T, Meta = FullFreeMeta, Next = Self>,
+    S::DetachedState: DetachedSlabState<T, Meta = FullFreeMeta>,
+{
+    pub(crate) fn attach_linked(
+        &mut self,
+        other: &mut SlabDescriptor<T, S::DetachedState>,
+    ) -> &mut SlabDescriptor<T, S> {
+        other.next = self.next.map(|p| p.cast());
+
+        other
+            .state
+            .set_prev(SlabAddress::from_non_null(NonNull::from_ref(self)));
+
+        if let Some(next) = self.next.map(|mut p| unsafe { p.as_mut() }) {
+            next.state.set_prev(SlabAddress::from_non_null::<T, S>(
+                NonNull::from_mut(other).cast(),
+            ));
         }
+
+        let mut attached = NonNull::from_mut(other).cast();
+
+        self.next = Some(attached);
+
+        unsafe { attached.as_mut() }
     }
-}
 
-impl<T: Slab> UnassignSlab for NonNull<SlabDescriptor<T>> {
-    type Target = NonNull<SlabDescriptor<()>>;
-
-    fn as_unassigned(&self) -> Self::Target {
-        unsafe {
-            NonNull::new_unchecked(self.as_ptr() as *mut SlabDescriptor<()>)
+    pub(crate) fn detach_linked(
+        &mut self,
+    ) -> &mut SlabDescriptor<T, S::DetachedState> {
+        if let Some(mut next) = self.next {
+            unsafe { next.as_mut().state = self.state };
         }
-    }
-}
 
-impl<T: Slab> SlabDescriptor<T> {
-    /// Create a new slab descriptor.
-    ///
-    /// # Safety
-    /// This function is marked as unsafe because it does not initialize
-    /// the page that the allocation is on.
-    ///
-    /// This function is meant to be called from the [`grow`]
-    /// function inside slab cache. (Which is safe and do initialize
-    /// the page)
-    pub unsafe fn new(
-        order: usize,
-        next: Option<NonNull<SlabDescriptor<T>>>,
-    ) -> SlabDescriptor<T> {
-        let address = unsafe { alloc_pages!(1 << order).translate() };
-
-        let mut objects = NonNull::slice_from_raw_parts(
-            address.as_non_null::<PreallocatedObject<T>>(),
-            ((1 << order) * REGULAR_PAGE_SIZE)
-                / size_of::<PreallocatedObject<T>>(),
-        );
-
-        for (i, object) in
-            unsafe { objects.as_mut() }.iter_mut().enumerate()
+        if let Some(mut prev) =
+            unsafe { self.state.get_prev().as_non_null::<T, S>() }
         {
-            *object = PreallocatedObject {
-                next_free_idx: Some(unsafe {
-                    NonMaxU16::new_unchecked(i as u16 + 1)
-                }),
-            }
+            unsafe { prev.as_mut() }.next = self.next;
         }
 
-        unsafe {
-            objects.as_mut().last_mut().unwrap().next_free_idx = None
-        };
+        self.next = None;
 
-        SlabDescriptor {
-            next_free_idx: Some(unsafe { NonMaxU16::new_unchecked(0) }),
-            total_allocated: 0,
-            objects,
-            next,
-        }
-    }
-
-    pub fn alloc(&mut self) -> NonNull<T> {
-        debug_assert!(
-            self.next_free_idx.is_some(),
-            "Called allocate on a full slab"
-        );
-
-        let idx = self.next_free_idx.unwrap().get() as usize;
-        let preallocated = unsafe { &mut self.objects.as_mut()[idx] };
-
-        self.next_free_idx = unsafe { preallocated.next_free_idx };
-
-        self.total_allocated += 1;
-
-        unsafe { NonNull::from_mut(&mut preallocated.allocated) }
-    }
-
-    // TODO: In tests rembmber to implement something on T that implement
-    // drop and see that when freeing the memory it is called
-    pub unsafe fn dealloc(&mut self, ptr: NonNull<T>) {
-        todo!("Remember to call drop on the item");
-
-        let freed_index = (ptr.as_ptr().addr()
-            - self.objects.as_ptr().addr())
-            / size_of::<PreallocatedObject<T>>();
-
-        unsafe {
-            self.objects.as_mut()[freed_index].next_free_idx =
-                self.next_free_idx;
-        };
-        self.next_free_idx =
-            unsafe { Some(NonMaxU16::new_unchecked(freed_index as u16)) };
-
-        self.total_allocated -= 1;
+        unsafe { core::mem::transmute(self) }
     }
 }
 
-impl SlabDescriptor<SlabDescriptor<()>> {
-    /// Return a pointer to the initial descriptor after it allocated
-    /// himself.
-    ///
-    /// The pointer the is returned by this function contains an already
-    /// initialized descriptor that allocates itself.
-    pub fn initial_descriptor(
-        order: usize,
-    ) -> NonNull<SlabDescriptor<SlabDescriptor<()>>> {
-        let mut descriptor = unsafe {
-            SlabDescriptor::<SlabDescriptor<()>>::new(order, None)
-        };
+impl<T, S> SlabDescriptor<T, S>
+where
+    T: Slab,
+    S: AttachedSlabState<T, Meta = PartialMeta, Next = Self>,
+    S::DetachedState: DetachedSlabState<T, Meta = PartialMeta>,
+{
+    pub(crate) fn attach_single(
+        &mut self,
+        other: &mut SlabDescriptor<T, S::DetachedState>,
+    ) -> &mut SlabDescriptor<T, S> {
+        other.next = self.next.map(|p| p.cast());
 
-        let mut self_allocation = descriptor.alloc();
+        self.next = Some(NonNull::from_mut(other).cast());
 
-        unsafe {
-            *self_allocation.as_mut() = NonNull::from_ref(&descriptor)
-                .as_unassigned()
-                .as_ref()
-                .clone()
+        unsafe { core::mem::transmute(other) }
+    }
+}
+
+impl<T: Slab> SlabDescriptor<T, Used> {
+    pub fn is_partial(
+        &self,
+    ) -> Result<&SlabDescriptor<T, Partial>, &SlabDescriptor<T, Full>>
+    {
+        if self.state.is_partial() {
+            todo!("");
+            Ok(unsafe { core::mem::transmute(self) })
+        } else {
+            todo!("");
+            Err(unsafe { core::mem::transmute(self) })
         }
+    }
 
-        self_allocation.assign::<SlabDescriptor<()>>()
+    pub fn is_partial_mut(
+        &mut self,
+    ) -> Result<
+        &mut SlabDescriptor<T, Partial>,
+        &mut SlabDescriptor<T, Full>,
+    > {
+        if self.state.is_partial() {
+            todo!("");
+            Ok(unsafe { core::mem::transmute(self) })
+        } else {
+            todo!("");
+            Err(unsafe { core::mem::transmute(self) })
+        }
     }
 }

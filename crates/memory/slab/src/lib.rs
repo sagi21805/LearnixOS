@@ -1,30 +1,56 @@
+#![no_std]
+#![allow(incomplete_features)]
 #![feature(specialization)]
+#![feature(allocator_api)]
+#![feature(ptr_alignment_type)]
+#![feature(const_trait_impl)]
+#![feature(const_default)]
+#![feature(const_convert)]
+#![feature(const_result_trait_fn)]
+#![feature(associated_type_defaults)]
 
 pub mod cache;
 pub mod descriptor;
-pub mod macros;
+pub mod local_macros;
+pub mod preallocated;
+pub mod slab_address;
 pub mod traits;
-pub mod unassigned;
-
-use ::macros::generate_generics;
 
 use crate::{
     cache::SlabCache,
-    define_slab_system,
-    descriptor::SlabDescriptor,
-    traits::{Generic, Slab, SlabPosition},
+    traits::{Generic, Slab, SlabBlock, SlabPosition},
 };
 use core::{
     alloc::{AllocError, Allocator},
+    marker::PhantomData,
     ptr::NonNull,
 };
+
+use common::address_types::{Address, VirtualAddress};
+use nonmax::NonMaxU16;
+use sync::mutex::SpinMutex;
+
+use buddy::meta::{BuddyArena, BuddyBlock};
+
+use macros::generate_generics;
+use x86::structures::paging::VirtualAddressExt;
 
 generate_generics!(
     8, 16, 32, 64, 96, 128, 192, 256, 512, 1024, 2048, 4096, 8192
 );
 
+pub struct SlabAllocator<Block, Arena>
+where
+    Block: BuddyBlock + SlabBlock,
+    Arena: BuddyArena<Block> + 'static,
+{
+    slab_arena: &'static SpinMutex<[SlabCache<()>; COUNT]>,
+    buddy_arena: &'static SpinMutex<Arena>,
+    // Wrap in a mutex to automatically implement Sync and Send.
+    _block: PhantomData<SpinMutex<Block>>,
+}
+
 define_slab_system!(
-    SlabDescriptor<()>,
     Generic8,
     Generic16,
     Generic32,
@@ -40,22 +66,59 @@ define_slab_system!(
     Generic8192,
 );
 
-impl SlabAllocator {
-    pub fn slab_of<T: Slab>(&self) -> NonNull<SlabCache<T>> {
-        self.slabs[T::SLAB_POSITION].assign::<T>()
+impl<Block, Arena> SlabAllocator<Block, Arena>
+where
+    Block: BuddyBlock + SlabBlock,
+    Arena: BuddyArena<Block> + 'static,
+{
+    pub const fn new(buddy_arena: &'static SpinMutex<Arena>) -> Self {
+        Self {
+            slab_arena: &SLAB_ARENA,
+            buddy_arena,
+            _block: PhantomData,
+        }
     }
 
     pub fn kmalloc<T: Slab>(&self) -> NonNull<T> {
-        let mut slab = self.slab_of::<T>();
-        unsafe { slab.as_mut().alloc() }
+        unsafe {
+            self.slab_arena.lock()[T::SLAB_POSITION]
+                .assign::<T>()
+                .alloc()
+        }
     }
 
     pub fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
-        let page = unsafe { Page::<T>::from_virt(ptr.into()).as_ref() };
+        let arena_lock = self.buddy_arena.lock();
+        let mut slab_lock = self.slab_arena.lock();
 
-        let descriptor = unsafe { page.meta.slab.freelist };
+        let mut page = arena_lock
+            .page_with_address(unsafe {
+                VirtualAddress::new_unchecked(ptr.addr().get())
+                    .translate()
+                    .unwrap()
+            })
+            .unwrap();
 
-        unsafe { descriptor.assign::<T>().as_mut().dealloc(ptr) };
+        let descriptor =
+            unsafe { page.as_mut().slab_descriptor_mut::<T>() };
+
+        let idx_in_slab = unsafe {
+            match NonMaxU16::new(
+                ptr.offset_from_unsigned(descriptor.objects.cast()) as u16,
+            ) {
+                Some(idx) => idx,
+                None => unreachable!(
+                    "Object is not allocated inside the given page."
+                ),
+            }
+        };
+
+        let cache = unsafe { slab_lock[T::SLAB_POSITION].assign::<T>() };
+
+        cache.dealloc(idx_in_slab, descriptor);
+
+        drop(arena_lock);
+        drop(slab_lock)
     }
 }
 
@@ -74,7 +137,11 @@ pub impl<T: Generic> NonNull<T> {
     }
 }
 
-unsafe impl Allocator for SlabAllocator {
+unsafe impl<Block, Arena> Allocator for SlabAllocator<Block, Arena>
+where
+    Block: BuddyBlock + SlabBlock,
+    Arena: BuddyArena<Block> + 'static,
+{
     fn allocate(
         &self,
         layout: core::alloc::Layout,
@@ -176,7 +243,3 @@ unsafe impl Allocator for SlabAllocator {
         }
     }
 }
-unsafe impl<T: Slab> Send for SlabDescriptor<T> {}
-unsafe impl<T: Slab> Sync for SlabDescriptor<T> {}
-unsafe impl<T: Slab> Send for SlabCache<T> {}
-unsafe impl<T: Slab> Sync for SlabCache<T> {}
