@@ -1,3 +1,5 @@
+use core::ptr::NonNull;
+
 use common::{
     address_types::VirtualAddress, constants::REGULAR_PAGE_SIZE,
     enums::PageSize,
@@ -5,8 +7,8 @@ use common::{
 use x86::structures::paging::PageEntryFlags;
 
 use crate::descriptor::{
-    FreeDetached, Full, FullDetached, PartialDetached, SlabDescriptor,
-    Used, meta::RawMeta,
+    FreeDetached, FullDetached, PartialDetached, SlabDescriptor, Used,
+    meta::RawMeta,
 };
 
 /// Get the position on the slab array, for a slab of the given type.
@@ -88,7 +90,7 @@ pub(crate) unsafe trait DetachedSlabState<T: Slab>:
 }
 
 pub(crate) unsafe trait HeadSlabState<T: Slab>:
-    SlabState<T>
+    AttachedSlabState<T>
 {
     type AttachedState: AttachedSlabState<T>;
 
@@ -96,7 +98,8 @@ pub(crate) unsafe trait HeadSlabState<T: Slab>:
 
     type DetachedState: DetachedSlabState<T>;
 
-    type Detached = SlabDescriptor<T, Self::DetachedState>;
+    type Detached =
+        SlabDescriptor<T, <Self as HeadSlabState<T>>::DetachedState>;
 }
 
 unsafe impl<T: Slab> HeadSlabState<T> for () {
@@ -196,8 +199,6 @@ pub(crate) unsafe trait DetachedSlab<T: Slab, S: DetachedSlabState<T>> {
 unsafe impl<T: Slab, S: DetachedSlabState<T>> DetachedSlab<T, S>
     for SlabDescriptor<T, S>
 {
-    type Attached = SlabDescriptor<T, S::AttachedState>;
-    type Head = SlabDescriptor<T, S::HeadState>;
 }
 
 pub(crate) unsafe trait HeadSlab<T: Slab, S: HeadSlabState<T>> {
@@ -217,25 +218,71 @@ unsafe impl<T: Slab, S: AttachedSlabState<T>> AttachedSlab<T, S>
     type Head = SlabDescriptor<T, S::HeadState>;
 }
 
-pub(crate) trait ConvertInplace<T, D, S>:
+/// Convert from one detached state into another.
+pub(crate) unsafe trait ConvertInplace<T, S, D>:
     DetachedSlab<T, S>
 where
     T: Slab,
-    D: HeadSlabState<T>,
     S: DetachedSlabState<T>,
+    D: DetachedSlabState<T>,
 {
-    fn convert_inplace(
+    fn convert_to(
         &mut self,
-        meta: <D::AttachedState as SlabState<T>>::Meta,
+        meta: <D as SlabState<T>>::Meta,
     ) -> &mut SlabDescriptor<T, D>;
 }
 
-/// Make a detached node an attached one.
+unsafe impl<T, S, D> ConvertInplace<T, S, D> for SlabDescriptor<T, S>
+where
+    T: Slab,
+    S: DetachedSlabState<T, Meta = D::Meta>,
+    D: DetachedSlabState<T>,
+{
+    fn convert_to(
+        &mut self,
+        meta: <D as SlabState<T>>::Meta,
+    ) -> &mut SlabDescriptor<T, D> {
+        // TODO: maybe add function to ensure runtime state with compile
+        // time state.
+        self.state = meta;
+        unsafe { core::mem::transmute(self) }
+    }
+}
+
+unsafe impl<T, S, D> ConvertInplace<T, S, D> for SlabDescriptor<T, S>
+where
+    T: Slab,
+    S: DetachedSlabState<T>,
+    D: DetachedSlabState<T>,
+{
+    fn convert_to(
+        &mut self,
+        meta: <D as SlabState<T>>::Meta,
+    ) -> &mut SlabDescriptor<T, D> {
+        let transmuted = unsafe {
+            core::mem::transmute::<
+                &mut SlabDescriptor<T, S>,
+                &mut SlabDescriptor<T, D>,
+            >(self)
+        };
+        transmuted.state = meta;
+        transmuted
+    }
+}
+
+/// Make a detached node the head of a list of his head type.
 ///
 /// In the case that the initial node on the cache list does not exist, it
-/// needs to `attach himself`
-pub(crate) unsafe trait SelfAttach<T: Slab, S: DetachedSlabState<T>>:
+/// needs to `attach himself` by making himself the head of the list.
+pub(crate) unsafe trait IntoHead<T: Slab, S: DetachedSlabState<T>>:
     DetachedSlab<T, S>
 {
-    fn attach_self(&mut self) -> &mut SlabDescriptor<T, S::HeadState>;
+    fn into_head(&mut self) -> &mut SlabDescriptor<T, S::HeadState> {
+        unsafe { NonNull::from_mut(self).cast().as_mut() }
+    }
+}
+
+unsafe impl<T: Slab, S: DetachedSlabState<T>, U: DetachedSlab<T, S>>
+    IntoHead<T, S> for U
+{
 }
