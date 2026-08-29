@@ -8,7 +8,7 @@ use crate::{
     },
     preallocated::PreAllocated,
     slab_address::SlabAddress,
-    traits::{Attach, ConvertInplace, Detach, SelfAttach, Slab},
+    traits::{Attach, ConvertInplace, Detach, Slab},
 };
 use alloc::alloc::{Layout, alloc};
 use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
@@ -72,7 +72,7 @@ where
     ) -> (NonNull<T>, SlabStateKind) {
         let detached = self.detach();
 
-        let partial = detached.convert_inplace(PartialMeta::default());
+        let partial = detached.convert_to(PartialMeta::default());
 
         match head {
             Some(head) => {
@@ -80,7 +80,7 @@ where
                 attached.alloc()
             }
             None => {
-                let attached = partial.attach_self();
+                let attached = partial.into_head();
                 let allocation = attached.alloc();
                 *head = Some(attached);
                 allocation
@@ -116,36 +116,5 @@ impl<T: Slab> Attach<T, Free> for SlabDescriptor<T, Free> {
     ) -> &mut SlabDescriptor<T, Free> {
         let free = other.convert_inplace(FullFreeMeta::default());
         self.attach_linked(free)
-    }
-}
-
-// impl<T: Slab> Attach<T> for SlabDescriptor<T, Free> {
-//     fn attach(&mut self, other: &mut SlabDescriptor<T, Partial>) {
-//         let free = other.convert_inplace(
-//             FullFreeMeta::new()
-//                 .partial(false)
-//
-// .prev(SlabAddress::from_non_null(NonNull::from_mut(self))),         );
-
-//         self.attach_linked(free);
-//     }
-// }
-
-impl<T: Slab> ConvertInplace<T, PartialDetached, FreeDetached>
-    for SlabDescriptor<T, FreeDetached>
-{
-    fn convert_inplace(
-        &mut self,
-        meta: PartialMeta,
-    ) -> &mut SlabDescriptor<T, PartialDetached> {
-        debug_assert!(meta == PartialMeta::default());
-        let partial = unsafe {
-            core::mem::transmute::<
-                &mut SlabDescriptor<T, FreeDetached>,
-                &mut SlabDescriptor<T, PartialDetached>,
-            >(self)
-        };
-        partial.state = meta;
-        partial
     }
 }

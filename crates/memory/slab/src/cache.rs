@@ -55,7 +55,7 @@ impl<T: Slab> SlabCache<T> {
     ) {
         match self.full.map(|mut p| unsafe { p.as_mut() }) {
             Some(full) => {
-                full.attach_full(other);
+                full.attach_linked(other);
             }
             None => {
                 self.full = Some(NonNull::from_mut(other.attach_self()));
@@ -69,7 +69,7 @@ impl<T: Slab> SlabCache<T> {
     ) {
         match self.free.map(|mut p| unsafe { p.as_mut() }) {
             Some(free) => {
-                free.attach_free(other);
+                free.attach_linked(other);
             }
             None => {
                 self.free = Some(NonNull::from_mut(other.attach_self()));
@@ -83,7 +83,7 @@ impl<T: Slab> SlabCache<T> {
     ) {
         match self.partial.map(|mut p| unsafe { p.as_mut() }) {
             Some(partial) => {
-                partial.attach_partial(other);
+                partial.attach_single(other);
             }
             None => {
                 self.partial =

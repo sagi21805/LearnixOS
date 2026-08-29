@@ -1,7 +1,7 @@
 use crate::{
     descriptor::{
-        FreeDetached, Full, FullDetached, PartialDetached, PartialMeta,
-        SlabAddress, SlabDescriptor, meta::FullFreeMeta,
+        FreeDetached, Full, FullDetached, PartialDetached, SlabAddress,
+        SlabDescriptor, meta::FullFreeMeta,
     },
     traits::{Attach, ConvertInplace, Detach, Slab},
 };
@@ -23,7 +23,7 @@ impl<T: Slab> Attach<T, Full> for SlabDescriptor<T, Full> {
         &mut self,
         other: &mut SlabDescriptor<T, PartialDetached>,
     ) -> &mut SlabDescriptor<T, Full> {
-        let full = other.convert_inplace(
+        let full = other.convert_to(
             FullFreeMeta::new()
                 .partial(false)
                 .prev(SlabAddress::default()),
@@ -35,24 +35,5 @@ impl<T: Slab> Attach<T, Full> for SlabDescriptor<T, Full> {
 impl<T: Slab> Detach<T, Full> for SlabDescriptor<T, Full> {
     fn detach(&mut self) -> &mut SlabDescriptor<T, FullDetached> {
         self.detach_linked()
-    }
-}
-
-impl<T: Slab> ConvertInplace<T, PartialDetached, FullDetached>
-    for SlabDescriptor<T, FullDetached>
-{
-    fn convert_inplace(
-        &mut self,
-        meta: PartialMeta,
-    ) -> &mut SlabDescriptor<T, PartialDetached> {
-        debug_assert!(meta.is_partial());
-        let partial = unsafe {
-            core::mem::transmute::<
-                &mut SlabDescriptor<T, FullDetached>,
-                &mut SlabDescriptor<T, PartialDetached>,
-            >(self)
-        };
-        partial.state = meta;
-        partial
     }
 }

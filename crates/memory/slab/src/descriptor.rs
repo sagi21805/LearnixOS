@@ -10,7 +10,7 @@ use crate::{
     new_state,
     preallocated::PreAllocated,
     slab_address::SlabAddress,
-    traits::{AttachedSlabState, Slab, SlabState},
+    traits::{AttachedSlabState, DetachedSlabState, Slab, SlabState},
 };
 use core::ptr::NonNull;
 
@@ -86,7 +86,7 @@ impl<T, S> SlabDescriptor<T, S>
 where
     T: Slab,
     S: AttachedSlabState<T, Meta = FullFreeMeta, Next = Self>,
-    S::DetachedState: AttachedSlabState<T, Meta = FullFreeMeta>,
+    S::DetachedState: DetachedSlabState<T, Meta = FullFreeMeta>,
 {
     pub(crate) fn attach_linked(
         &mut self,
@@ -98,14 +98,13 @@ where
             .state
             .set_prev(SlabAddress::from_non_null(NonNull::from_ref(self)));
 
-        if let Some(mut next) = self.next {
-            unsafe { next.as_mut() }.state.set_prev(
-                SlabAddress::from_non_null(NonNull::from_mut(other)),
-            );
+        if let Some(next) = self.next.map(|mut p| unsafe { p.as_mut() }) {
+            next.state.set_prev(SlabAddress::from_non_null::<T, S>(
+                NonNull::from_mut(other).cast(),
+            ));
         }
 
-        let mut attached =
-            NonNull::from_mut(unsafe { core::mem::transmute(other) });
+        let mut attached = NonNull::from_mut(other).cast();
 
         self.next = Some(attached);
 
@@ -128,6 +127,24 @@ where
         self.next = None;
 
         unsafe { core::mem::transmute(self) }
+    }
+}
+
+impl<T, S> SlabDescriptor<T, S>
+where
+    T: Slab,
+    S: AttachedSlabState<T, Meta = PartialMeta, Next = Self>,
+    S::DetachedState: DetachedSlabState<T, Meta = PartialMeta>,
+{
+    pub(crate) fn attach_single(
+        &mut self,
+        other: &mut SlabDescriptor<T, S::DetachedState>,
+    ) -> &mut SlabDescriptor<T, S> {
+        other.next = self.next.map(|p| p.cast());
+
+        self.next = Some(NonNull::from_mut(other).cast());
+
+        unsafe { core::mem::transmute(other) }
     }
 }
 
