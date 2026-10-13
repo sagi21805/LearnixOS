@@ -1,5 +1,5 @@
 use crate::error::ConversionError;
-use macros::bitfields;
+use bitfields::bitfields;
 use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
 
 #[repr(u8)]
@@ -57,7 +57,7 @@ pub enum InterruptType {
 mod page_fault {
 
     use crate::error::ConversionError;
-    use macros::bitfields;
+    use bitfields::bitfields;
     use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
 
     #[repr(u8)]

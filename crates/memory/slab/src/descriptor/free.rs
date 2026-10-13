@@ -2,18 +2,18 @@ extern crate alloc;
 
 use crate::{
     descriptor::{
-        Free, FreeDetached, FullDetached, Partial, PartialDetached,
-        SlabDescriptor, SlabStateKind,
-        meta::{FullFreeMeta, PartialMeta},
+        Attach, Free, FreeDetached, PartialDetached, PartialHead,
+        SlabDescriptor, SlabStateKind, meta::FullFreeMeta,
     },
     preallocated::PreAllocated,
     slab_address::SlabAddress,
-    traits::{Attach, ConvertInplace, Detach, Slab},
+    traits::Slab,
 };
 use alloc::alloc::{Layout, alloc};
 use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
 use core::{mem::size_of, ptr::NonNull};
 use nonmax::NonMaxU16;
+use typestate_groups::Morphic;
 
 impl<T: Slab> SlabDescriptor<T, FreeDetached> {
     /// Create a new, free slab descriptor.
@@ -62,59 +62,27 @@ impl<T: Slab> SlabDescriptor<T, FreeDetached> {
     }
 }
 
-impl<T> SlabDescriptor<T, Free>
-where
-    T: Slab,
-{
+impl<T: Slab> SlabDescriptor<T, Free> {
+    /// Allocates an object, moving this slab to the partial list.
+    ///
+    /// # Parameters
+    ///
+    /// * `head` - The head of the partial list, which this slab becomes
+    ///   when the list is empty.
     pub fn alloc<'a>(
         &'a mut self,
-        head: &'a mut Option<&'a mut SlabDescriptor<T, Partial>>,
+        head: &'a mut Option<&'a mut SlabDescriptor<T, PartialHead>>,
     ) -> (NonNull<T>, SlabStateKind) {
-        let detached = self.detach();
-
-        let partial = detached.convert_to(PartialMeta::default());
+        let partial = self.detach().morph_mut::<PartialDetached>();
 
         match head {
-            Some(head) => {
-                let attached = head.attach_partial(partial);
-                attached.alloc()
-            }
+            Some(head) => head.attach(partial).alloc(),
             None => {
-                let attached = partial.into_head();
+                let attached = partial.as_head();
                 let allocation = attached.alloc();
                 *head = Some(attached);
                 allocation
             }
         }
-    }
-}
-
-impl<T: Slab> Detach<T, Free> for SlabDescriptor<T, Free> {
-    fn detach(&mut self) -> &mut SlabDescriptor<T, FreeDetached> {
-        self.detach_linked()
-    }
-}
-
-impl<T: Slab> Attach<T, Free> for SlabDescriptor<T, Free> {
-    fn attach_free(
-        &mut self,
-        other: &mut SlabDescriptor<T, FreeDetached>,
-    ) -> &mut SlabDescriptor<T, Free> {
-        self.attach_linked(other)
-    }
-
-    fn attach_full(
-        &mut self,
-        _other: &mut SlabDescriptor<T, FullDetached>,
-    ) -> &mut SlabDescriptor<T, Free> {
-        unimplemented!()
-    }
-
-    fn attach_partial(
-        &mut self,
-        other: &mut SlabDescriptor<T, PartialDetached>,
-    ) -> &mut SlabDescriptor<T, Free> {
-        let free = other.convert_inplace(FullFreeMeta::default());
-        self.attach_linked(free)
     }
 }

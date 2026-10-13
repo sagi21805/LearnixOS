@@ -1,25 +1,25 @@
 extern crate alloc;
 
 pub mod free;
-pub mod full;
 pub mod meta;
 pub mod partial;
+pub mod state;
+
+pub use state::*;
 
 use crate::{
-    descriptor::meta::{FullFreeMeta, PartialMeta, RawMeta},
-    new_state,
-    preallocated::PreAllocated,
-    slab_address::SlabAddress,
-    traits::{AttachedSlabState, DetachedSlabState, Slab, SlabState},
+    descriptor::meta::FullFreeMeta, preallocated::PreAllocated,
+    slab_address::SlabAddress, traits::Slab,
 };
 use core::ptr::NonNull;
+use extend::ext;
+use typestate_groups::{
+    ByMut, CastableState, Isomorphic, MorphFrom, Morphic, WithState,
+    group_impl, group_trait, typestate,
+};
 
-#[repr(C)]
-pub struct SlabDescriptor<T, S>
-where
-    T: Slab,
-    S: SlabState<T>,
-{
+#[typestate(state = S, unsafe_transmute = true)]
+pub struct SlabDescriptor<T: Slab, S: SlabState> {
     pub state: S::Meta,
 
     // TODO: Check the possibility to not save the length here because it
@@ -28,50 +28,7 @@ where
     // Moreover the local T holds the const order in which we allocate for
     // the array so the size can always be calculated.
     pub objects: NonNull<PreAllocated<T>>,
-    pub next: Option<NonNull<S::Next>>,
-}
-
-// Partial slab is a slab that has some allocated objects, and some free
-// objects.
-new_state!(
-    head => PartialHead,
-    attached => Partial,
-    detached => PartialDetached,
-    meta => PartialMeta,
-);
-
-// Free slab is a slab that does not allocate any objects, and is
-// initialized that the first allocatable index is 0.
-new_state!(
-    head => FreeHead,
-    attached => Free,
-    detached => FreeDetached,
-    meta => FullFreeMeta
-);
-
-// Full slab is a slab that is fully allocated.
-new_state!(
-    head => FullHead,
-    attached => Full,
-    detached => FullDetached,
-    meta => FullFreeMeta
-);
-
-/// A used slab may be full or partial.
-///
-/// This state is ment to be when trying to free an object and trying to
-/// figure out the state of the slab.
-pub struct Used;
-
-unsafe impl<T: Slab> SlabState<T> for Used {
-    type Meta = RawMeta;
-    type Next = ();
-}
-
-unsafe impl<T: Slab> AttachedSlabState<T> for Used {
-    type DetachedState = ();
-
-    type HeadState = ();
+    pub next: Option<NonNull<SlabDescriptor<T, Erased>>>,
 }
 
 pub enum SlabStateKind {
@@ -80,71 +37,196 @@ pub enum SlabStateKind {
     Full,
 }
 
-/// Shared linked-list attach/detach logic for the two state kinds
-/// (`Free` and `Full`) that use `FullFreeMeta` as their metadata.
-impl<T, S> SlabDescriptor<T, S>
-where
-    T: Slab,
-    S: AttachedSlabState<T, Meta = FullFreeMeta, Next = Self>,
-    S::DetachedState: DetachedSlabState<T, Meta = FullFreeMeta>,
-{
-    pub(crate) fn attach_linked(
-        &mut self,
-        other: &mut SlabDescriptor<T, S::DetachedState>,
-    ) -> &mut SlabDescriptor<T, S> {
-        other.next = self.next.map(|p| p.cast());
-
-        other
-            .state
-            .set_prev(SlabAddress::from_non_null(NonNull::from_ref(self)));
-
-        if let Some(next) = self.next.map(|mut p| unsafe { p.as_mut() }) {
-            next.state.set_prev(SlabAddress::from_non_null::<T, S>(
-                NonNull::from_mut(other).cast(),
-            ));
-        }
-
-        let mut attached = NonNull::from_mut(other).cast();
-
-        self.next = Some(attached);
-
-        unsafe { attached.as_mut() }
-    }
-
-    pub(crate) fn detach_linked(
-        &mut self,
-    ) -> &mut SlabDescriptor<T, S::DetachedState> {
-        if let Some(mut next) = self.next {
-            unsafe { next.as_mut().state = self.state };
-        }
-
-        if let Some(mut prev) =
-            unsafe { self.state.get_prev().as_non_null::<T, S>() }
-        {
-            unsafe { prev.as_mut() }.next = self.next;
-        }
-
-        self.next = None;
-
-        unsafe { core::mem::transmute(self) }
+impl<T: Slab, S: SlabState> SlabDescriptor<T, S> {
+    /// A link to this descriptor, for another descriptor's `next`.
+    pub(crate) fn as_link(&mut self) -> NonNull<SlabDescriptor<T, Erased>>
+    where
+        Self: CastableState<
+                Erased,
+                ByMut,
+                Target = SlabDescriptor<T, Erased>,
+            >,
+    {
+        NonNull::from_mut(self.cast_state_mut::<Erased>())
     }
 }
 
-impl<T, S> SlabDescriptor<T, S>
+#[ext(name = ErasedLink)]
+pub(crate) impl<T: Slab> NonNull<SlabDescriptor<T, Erased>> {
+    /// The descriptor this link points at, in state `S`.
+    ///
+    /// # Safety
+    ///
+    /// The descriptor must be live, and no other reference to it may be
+    /// used while the returned one is.
+    unsafe fn as_state_mut<'a, S: SlabState>(
+        mut self,
+    ) -> &'a mut SlabDescriptor<T, S>
+    where
+        SlabDescriptor<T, Erased>:
+            CastableState<S, ByMut, Target = SlabDescriptor<T, S>>,
+    {
+        // SAFETY: the caller guarantees the descriptor is live and
+        // unaliased.
+        unsafe { self.as_mut() }.cast_state_mut::<S>()
+    }
+}
+
+/// A descriptor leaving its list starts the detached state with that
+/// state's default metadata and no link.
+impl<T: Slab, S: SlabState, D> MorphFrom<SlabDescriptor<T, S>>
+    for SlabDescriptor<T, D>
 where
-    T: Slab,
-    S: AttachedSlabState<T, Meta = PartialMeta, Next = Self>,
-    S::DetachedState: DetachedSlabState<T, Meta = PartialMeta>,
+    D: SlabState + SlabRoleGroupMember<DetachedRole>,
+    D::Meta: Default,
 {
-    pub(crate) fn attach_single(
+    fn morph_from(src: SlabDescriptor<T, S>) -> Self {
+        SlabDescriptor {
+            state: D::Meta::default(),
+            objects: src.objects,
+            next: None,
+        }
+    }
+}
+
+impl<T: Slab, S> SlabDescriptor<T, S>
+where
+    S: SlabState + SlabList + SlabRoleGroupMember<DetachedRole>,
+{
+    /// Makes this descriptor the head of its list, for a list that has
+    /// none.
+    pub(crate) fn as_head(&mut self) -> &mut SlabDescriptor<T, S::Head>
+    where
+        Self: CastableState<
+                S::Head,
+                ByMut,
+                Target = SlabDescriptor<T, S::Head>,
+            >,
+    {
+        debug_assert!(self.next.is_none());
+        self.cast_state_mut::<S::Head>()
+    }
+}
+
+impl<T: Slab, S> SlabDescriptor<T, S>
+where
+    S: SlabState<Meta = FullFreeMeta>
+        + SlabList
+        + SlabRoleGroupMember<AttachedRole>,
+{
+    /// Unlinks this descriptor from its list.
+    pub(crate) fn detach(&mut self) -> &mut SlabDescriptor<T, S::Detached>
+    where
+        Self: CastableState<
+                S::Detached,
+                ByMut,
+                Target = SlabDescriptor<T, S::Detached>,
+            >,
+        SlabDescriptor<T, S::Detached>: MorphFrom<Self>,
+        SlabDescriptor<T, Erased>:
+            CastableState<S, ByMut, Target = SlabDescriptor<T, S>>,
+    {
+        if let Some(next) = self.next {
+            // SAFETY: `next` points at a live node of this list, which
+            // nothing else borrows while the list is locked.
+            unsafe { next.as_state_mut::<S>() }.state = self.state;
+        }
+
+        // SAFETY: `prev` is zero or the address of a live descriptor.
+        if let Some(mut prev) =
+            unsafe { self.state.get_prev().as_non_null() }
+        {
+            // SAFETY: `prev` points at a live node of this list, which
+            // nothing else borrows while the list is locked.
+            unsafe { prev.as_mut() }.next = self.next;
+        }
+
+        self.morph_mut::<S::Detached>()
+    }
+}
+
+/// Links a detached descriptor of the same list after this head.
+#[group_trait(by = SlabState)]
+pub(crate) trait Attach<T: Slab>:
+    WithState<State: SlabList>
+{
+    fn attach<'a>(
         &mut self,
-        other: &mut SlabDescriptor<T, S::DetachedState>,
-    ) -> &mut SlabDescriptor<T, S> {
-        other.next = self.next.map(|p| p.cast());
+        other: &'a mut SlabDescriptor<
+            T,
+            <Self::State as SlabList>::Detached,
+        >,
+    ) -> &'a mut SlabDescriptor<T, <Self::State as SlabList>::Attached>;
+}
 
-        self.next = Some(NonNull::from_mut(other).cast());
+#[group_impl(LinkedStates, state = S)]
+impl<T: Slab, S: SlabState + SlabList + SlabRoleGroupMember<HeadRole>>
+    Attach<T> for SlabDescriptor<T, S>
+where
+    S::Attached: SlabState<Meta = FullFreeMeta>,
+    Self: CastableState<
+            Erased,
+            ByMut,
+            State = S,
+            Target = SlabDescriptor<T, Erased>,
+        >,
+    SlabDescriptor<T, S::Detached>: CastableState<
+            S::Attached,
+            ByMut,
+            Target = SlabDescriptor<T, S::Attached>,
+        >,
+    SlabDescriptor<T, S::Attached>:
+        CastableState<Erased, ByMut, Target = SlabDescriptor<T, Erased>>,
+    SlabDescriptor<T, Erased>: CastableState<
+            S::Attached,
+            ByMut,
+            Target = SlabDescriptor<T, S::Attached>,
+        >,
+{
+    fn attach<'a>(
+        &mut self,
+        other: &'a mut SlabDescriptor<T, S::Detached>,
+    ) -> &'a mut SlabDescriptor<T, S::Attached> {
+        let attached = other.cast_state_mut::<S::Attached>();
+        attached.next = self.next;
+        attached
+            .state
+            .set_prev(SlabAddress::from_non_null(self.as_link()));
 
-        unsafe { core::mem::transmute(other) }
+        let link = attached.as_link();
+        if let Some(next) = self.next {
+            // SAFETY: `next` points at a live node of this list, which
+            // nothing else borrows while the list is locked.
+            unsafe { next.as_state_mut::<S::Attached>() }
+                .state
+                .set_prev(SlabAddress::from_non_null(link));
+        }
+
+        self.next = Some(link);
+        attached
+    }
+}
+
+#[group_impl(PartialStates, state = S)]
+impl<T: Slab, S: SlabState + SlabList + SlabRoleGroupMember<HeadRole>>
+    Attach<T> for SlabDescriptor<T, S>
+where
+    SlabDescriptor<T, S::Detached>: CastableState<
+            S::Attached,
+            ByMut,
+            Target = SlabDescriptor<T, S::Attached>,
+        >,
+    SlabDescriptor<T, S::Attached>:
+        CastableState<Erased, ByMut, Target = SlabDescriptor<T, Erased>>,
+{
+    fn attach<'a>(
+        &mut self,
+        other: &'a mut SlabDescriptor<T, S::Detached>,
+    ) -> &'a mut SlabDescriptor<T, S::Attached> {
+        let attached = other.cast_state_mut::<S::Attached>();
+        attached.next = self.next;
+        self.next = Some(attached.as_link());
+        attached
     }
 }
 
@@ -155,10 +237,10 @@ impl<T: Slab> SlabDescriptor<T, Used> {
     {
         if self.state.is_partial() {
             todo!("");
-            Ok(unsafe { core::mem::transmute(self) })
+            Ok(self.cast_state_ref::<Partial>())
         } else {
             todo!("");
-            Err(unsafe { core::mem::transmute(self) })
+            Err(self.cast_state_ref::<Full>())
         }
     }
 
@@ -170,10 +252,10 @@ impl<T: Slab> SlabDescriptor<T, Used> {
     > {
         if self.state.is_partial() {
             todo!("");
-            Ok(unsafe { core::mem::transmute(self) })
+            Ok(self.cast_state_mut::<Partial>())
         } else {
             todo!("");
-            Err(unsafe { core::mem::transmute(self) })
+            Err(self.cast_state_mut::<Full>())
         }
     }
 }

@@ -3,8 +3,8 @@ use core::{num::NonZeroU64, ptr::NonNull};
 use common::address_types::{Address, VirtualAddress};
 
 use crate::{
-    descriptor::SlabDescriptor,
-    traits::{Slab, AttachedSlabState},
+    descriptor::{Erased, SlabDescriptor},
+    traits::Slab,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -28,9 +28,9 @@ const impl From<SlabAddress> for u64 {
 }
 
 impl SlabAddress {
-    pub unsafe fn as_non_null<T: Slab, S: AttachedSlabState<T>>(
+    pub unsafe fn as_non_null<T: Slab>(
         &self,
-    ) -> Option<NonNull<SlabDescriptor<T, S>>> {
+    ) -> Option<NonNull<SlabDescriptor<T, Erased>>> {
         unsafe {
             Some(
                 VirtualAddress::new_unchecked(self.0?.get() as usize)
@@ -39,8 +39,8 @@ impl SlabAddress {
         }
     }
 
-    pub fn from_non_null<T: Slab, S: AttachedSlabState<T>>(
-        ptr: NonNull<SlabDescriptor<T, S>>,
+    pub fn from_non_null<T: Slab>(
+        ptr: NonNull<SlabDescriptor<T, Erased>>,
     ) -> Self {
         Self(NonZeroU64::try_from(ptr.addr()).ok())
     }

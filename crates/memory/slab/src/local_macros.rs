@@ -1,3 +1,30 @@
+/// Declares a [`Generic`](crate::traits::Generic) size class for each
+/// `Name = size`, covering the sizes above the previous class up to its
+/// own.
+///
+/// `define_generics!(Generic8 = 8, Generic16 = 16)` -> `Generic8` covers
+/// `0..=8` and `Generic16` covers `9..=16`.
+#[macro_export]
+macro_rules! define_generics {
+    ($($name:ident = $size:literal),* $(,)?) => {
+        $crate::define_generics!(@step 0; $($name = $size),*);
+    };
+    (@step $start:expr; $name:ident = $size:literal $(, $rest:ident = $rest_size:literal)*) => {
+        #[derive(Debug, Clone, Copy)]
+        pub struct $name(pub [usize; $size / 8]);
+
+        impl $crate::traits::Generic for $name {
+            const START: usize = $start;
+            const END: usize = $size;
+
+            fn size(&self) -> usize { $size }
+        }
+
+        $crate::define_generics!(@step $size + 1; $($rest = $rest_size),*);
+    };
+    (@step $start:expr;) => {};
+}
+
 #[macro_export]
 macro_rules! register_slabs {
     ($($t:ty),* $(,)?) => {
@@ -46,71 +73,6 @@ macro_rules! define_slab_system {
             }
         }
     }
-}
-
-#[macro_export]
-macro_rules! new_state {
-    (
-        head => $head: ident,
-        attached => $attached: ident,
-        detached => $detached: ident,
-        meta => $meta: ty
-        $(,)?
-    ) => {
-        pub struct $head;
-
-        unsafe impl<T: Slab> $crate::traits::SlabState<T> for $head {
-            type Meta = $meta;
-        }
-
-        unsafe impl<T: Slab> $crate::traits::HeadSlabState<T> for $head {
-            type AttachedState = $attached;
-            type DetachedState = $detached;
-        }
-
-        unsafe impl<T: Slab> $crate::traits::AttachedSlabState<T>
-            for $head
-        {
-            type DetachedState = $detached;
-            type HeadState = $head;
-        }
-
-        pub struct $attached;
-
-        unsafe impl<T: Slab> $crate::traits::SlabState<T> for $attached {
-            type Meta = $meta;
-        }
-
-        unsafe impl<T: Slab> $crate::traits::AttachedSlabState<T>
-            for $attached
-        {
-            type DetachedState = $detached;
-            type HeadState = $head;
-        }
-
-        pub struct $detached;
-
-        unsafe impl<T: Slab> $crate::traits::SlabState<T> for $detached {
-            type Meta = $meta;
-        }
-
-        unsafe impl<T: Slab> $crate::traits::DetachedSlabState<T>
-            for $detached
-        {
-            type AttachedState = $attached;
-            type HeadState = $head;
-        }
-
-        unsafe impl<T: Slab> $crate::traits::AttachedSlab<T, $attached>
-            for SlabDescriptor<T, $attached>
-        {
-        }
-
-        unsafe impl<T: Slab> $crate::traits::DetachedSlab<T, $detached>
-            for SlabDescriptor<T, $detached>
-        {
-        }
-    };
 }
 
 // TODO implement reverse lookup with an enum that will automatically be

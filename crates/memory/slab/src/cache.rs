@@ -4,11 +4,14 @@ use nonmax::NonMaxU16;
 
 use crate::{
     descriptor::{
-        FreeDetached, FreeHead, FullDetached, FullHead, Partial,
-        PartialDetached, PartialHead, SlabStateKind, Used,
+        Attach, ErasedLink, FreeDetached, FreeHead, FullDetached,
+        FullHead, Partial, PartialDetached, PartialHead, SlabStateKind,
+        Used,
     },
-    traits::{Attach, SelfAttach, Slab},
+    slab_address::SlabAddress,
+    traits::Slab,
 };
+use typestate_groups::Morphic;
 
 use super::descriptor::SlabDescriptor;
 
@@ -55,10 +58,10 @@ impl<T: Slab> SlabCache<T> {
     ) {
         match self.full.map(|mut p| unsafe { p.as_mut() }) {
             Some(full) => {
-                full.attach_linked(other);
+                full.attach(other);
             }
             None => {
-                self.full = Some(NonNull::from_mut(other.attach_self()));
+                self.full = Some(NonNull::from_mut(other.as_head()));
             }
         };
     }
@@ -69,10 +72,10 @@ impl<T: Slab> SlabCache<T> {
     ) {
         match self.free.map(|mut p| unsafe { p.as_mut() }) {
             Some(free) => {
-                free.attach_linked(other);
+                free.attach(other);
             }
             None => {
-                self.free = Some(NonNull::from_mut(other.attach_self()));
+                self.free = Some(NonNull::from_mut(other.as_head()));
             }
         };
     }
@@ -83,11 +86,10 @@ impl<T: Slab> SlabCache<T> {
     ) {
         match self.partial.map(|mut p| unsafe { p.as_mut() }) {
             Some(partial) => {
-                partial.attach_single(other);
+                partial.attach(other);
             }
             None => {
-                self.partial =
-                    Some(NonNull::from_mut(other.attach_self()));
+                self.partial = Some(NonNull::from_mut(other.as_head()));
             }
         };
     }
@@ -102,17 +104,21 @@ impl<T: Slab> SlabCache<T> {
         &mut self,
         partial: &SlabDescriptor<T, Partial>,
     ) {
-        let mut current = NonNull::from_ref(&self.partial);
-        unsafe {
-            while current.as_ref().unwrap_unchecked()
-                != NonNull::from_ref(partial)
-            {
-                current = NonNull::from_ref(
-                    &current.as_ref().unwrap_unchecked().as_ref().next,
-                )
-            }
+        let target = NonNull::from_ref(partial).addr();
+        // SAFETY: the caller guarantees `partial` is in the partial list,
+        // so the list has a head.
+        let head = unsafe { self.partial.unwrap_unchecked().as_mut() };
+        let mut current = head.as_link();
 
-            *current.as_mut() = partial.next;
+        // SAFETY: every link of the list points at a live node, which
+        // nothing else borrows while the cache is locked.
+        while let Some(next) = unsafe { current.as_ref() }.next {
+            if next.addr() == target {
+                // SAFETY: as above.
+                unsafe { current.as_mut() }.next = partial.next;
+                return;
+            }
+            current = next;
         }
     }
 
@@ -147,44 +153,46 @@ impl<T: Slab> SlabCache<T> {
         {
             let (allocation, final_state) = partial.alloc();
             match final_state {
+                SlabStateKind::Partial => {}
                 SlabStateKind::Full => {
-                    // detach current partial node.
-                    self.partial = partial.next;
-                    match self.full {
-                        Some(mut full) => unsafe {
-                            // full.as_mut()
-                            //     .attach(core::mem::transmute(partial))
-                        },
-                        None => {
-                            self.full = Some(unsafe {
-                                core::mem::transmute(partial)
-                            });
-                        }
-                    }
+                    self.partial = partial.next.map(|next| {
+                        // SAFETY: `next` points at a live node of the
+                        // partial list, which nothing else borrows while
+                        // the cache is locked.
+                        NonNull::from_mut(unsafe {
+                            next.as_state_mut::<PartialHead>()
+                        })
+                    });
+                    self.attach_or_set_full(
+                        partial.morph_mut::<FullDetached>(),
+                    );
                 }
-                _ => unsafe { unreachable_unchecked() },
+                // SAFETY: allocating never frees a slab.
+                SlabStateKind::Free => unsafe { unreachable_unchecked() },
             }
             return allocation;
         }
 
         if let Some(free) = self.free.map(|mut p| unsafe { p.as_mut() }) {
-            self.free = free.next;
-            let (allocation, final_state) = free.alloc(
-                &mut self.partial.map(|mut p| unsafe { p.as_mut() }),
-            );
-            todo!("");
-            let partial: &mut SlabDescriptor<T, Partial> =
-                unsafe { core::mem::transmute(free) };
+            self.free = free.next.map(|next| {
+                // SAFETY: `next` points at a live node of the free list,
+                // which nothing else borrows while the cache is locked.
+                let head = unsafe { next.as_state_mut::<FreeHead>() };
+                head.state.set_prev(SlabAddress::default());
+                NonNull::from_mut(head)
+            });
+            let partial = free.morph_mut::<PartialDetached>();
+            let (allocation, final_state) = partial.alloc();
             match final_state {
-                SlabStateKind::Partial => match self.partial {
-                    Some(current_partial) => {
-                        partial.next = Some(current_partial);
-                    }
-                    None => {}
-                },
-                _ => unsafe { unreachable_unchecked() },
+                SlabStateKind::Partial => {
+                    self.attach_or_set_partial(partial)
+                }
+                SlabStateKind::Full => self.attach_or_set_full(
+                    partial.morph_mut::<FullDetached>(),
+                ),
+                // SAFETY: allocating never frees a slab.
+                SlabStateKind::Free => unsafe { unreachable_unchecked() },
             }
-            self.partial = Some(NonNull::from_mut(partial));
             return allocation;
         }
 
