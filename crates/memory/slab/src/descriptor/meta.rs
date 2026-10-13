@@ -1,9 +1,10 @@
-use macros::bitfields;
+use bitfields::bitfields;
+use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 use crate::descriptor::SlabAddress;
 
 #[bitfields]
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable)]
 pub struct PartialMeta {
     pub next_free_idx: B16,
     pub total_allocated: B31,
@@ -20,6 +21,7 @@ const impl Default for PartialMeta {
 }
 
 #[bitfields]
+#[derive(FromBytes, IntoBytes, Immutable)]
 pub struct FullFreeMeta {
     #[flag(flag_type = SlabAddress)]
     pub prev: B48,
@@ -35,6 +37,7 @@ const impl Default for FullFreeMeta {
 }
 
 #[bitfields]
+#[derive(FromBytes, IntoBytes, Immutable)]
 pub struct RawMeta {
     #[flag(r)]
     pub reserved: B63,

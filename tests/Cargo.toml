@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-macros = { path = "../crates/macros" }
+bitfields = { path = "../crates/macros/bitfields" }
 num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = [
     "complex-expressions",
 ] }

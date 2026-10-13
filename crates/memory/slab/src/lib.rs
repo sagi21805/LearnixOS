@@ -7,7 +7,6 @@
 #![feature(const_default)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
-#![feature(associated_type_defaults)]
 
 pub mod cache;
 pub mod descriptor;
@@ -32,11 +31,22 @@ use sync::mutex::SpinMutex;
 
 use buddy::meta::{BuddyArena, BuddyBlock};
 
-use macros::generate_generics;
 use x86::structures::paging::VirtualAddressExt;
 
-generate_generics!(
-    8, 16, 32, 64, 96, 128, 192, 256, 512, 1024, 2048, 4096, 8192
+define_generics!(
+    Generic8 = 8,
+    Generic16 = 16,
+    Generic32 = 32,
+    Generic64 = 64,
+    Generic96 = 96,
+    Generic128 = 128,
+    Generic192 = 192,
+    Generic256 = 256,
+    Generic512 = 512,
+    Generic1024 = 1024,
+    Generic2048 = 2048,
+    Generic4096 = 4096,
+    Generic8192 = 8192,
 );
 
 pub struct SlabAllocator<Block, Arena>

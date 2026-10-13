@@ -11,7 +11,7 @@ use common::{
     late_init::LateInit,
 };
 
-use macros::bitfields;
+use bitfields::bitfields;
 
 use alloc::boxed::Box;
 use sync::mutex::SpinMutex;

@@ -3,7 +3,7 @@
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
 
-use macros::bitfields;
+use bitfields::bitfields;
 
 mod buddy;
 mod test;

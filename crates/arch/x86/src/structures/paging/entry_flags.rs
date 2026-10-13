@@ -1,4 +1,4 @@
-use macros::bitfields;
+use bitfields::bitfields;
 
 /// A wrapper for `PageTableEntry` flags for easier use
 #[bitfields]

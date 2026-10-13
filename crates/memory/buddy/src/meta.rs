@@ -4,7 +4,7 @@ use common::{
     address_types::PhysicalAddress, enums::BuddyOrder, volatile::Volatile,
 };
 
-use macros::bitfields;
+use bitfields::bitfields;
 use thiserror::Error;
 use x86::memory_map::MemoryMap;
 

@@ -7,7 +7,7 @@ use common::{
     constants::REGULAR_PAGE_ALIGNMENT,
     error::EntryError,
 };
-use macros::bitfields;
+use bitfields::bitfields;
 
 #[bitfields]
 pub struct PageTableEntry {

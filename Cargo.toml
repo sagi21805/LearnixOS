@@ -5,7 +5,7 @@ members = [
     "bootloader/second_stage",
     "crates/arch/x86",
     "crates/common",
-    "crates/macros",
+    "crates/macros/bitfields",
     # "crates/drivers/ahci",
     "crates/drivers/keyboard",
     # "crates/drivers/pci",
@@ -18,9 +18,13 @@ members = [
     "crates/libk",
     "kernel",
     # "tests",
-    "xtask",
     # "snippets",
 ]
+
+# xtask runs on the host and has its own workspace, so the bare-metal
+# build target in `.cargo/config.toml` doesn't apply to it.
+# typestate-groups is a submodule with its own workspace.
+exclude = ["xtask", "crates/macros/typestate-groups"]
 
 resolver = "2"
 

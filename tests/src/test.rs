@@ -1,4 +1,4 @@
-use macros::bitfields;
+use bitfields::bitfields;
 use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
 
 #[bitfields]
