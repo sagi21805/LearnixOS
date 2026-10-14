@@ -9,8 +9,8 @@ pub mod state;
 pub use state::*;
 
 use crate::{
-    descriptor::meta::FullFreeMeta, preallocated::PreAllocated,
-    slab_address::SlabAddress, traits::Slab,
+    descriptor::meta::FullFreeMeta, slab_address::SlabAddress,
+    slab_objects::SlabObjects, traits::Slab,
 };
 use core::ptr::NonNull;
 use typestate_groups::{Isomorphic, typestate};
@@ -24,7 +24,7 @@ pub struct SlabDescriptor<T: Slab, S: SlabState> {
     //
     // Moreover the local T holds the const order in which we allocate for
     // the array so the size can always be calculated.
-    pub objects: NonNull<PreAllocated<T>>,
+    pub objects: SlabObjects<T>,
     pub next: SlabAddress,
 }
 
