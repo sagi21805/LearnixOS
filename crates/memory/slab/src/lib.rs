@@ -9,6 +9,7 @@
 #![feature(const_result_trait_fn)]
 
 pub mod cache;
+pub mod cache_allocator;
 pub mod descriptor;
 pub mod local_macros;
 pub mod preallocated;
@@ -18,21 +19,18 @@ pub mod traits;
 
 use crate::{
     cache::SlabCache,
+    cache_allocator::CacheAllocator,
     traits::{Generic, Slab, SlabBlock, SlabPosition},
 };
 use core::{
-    alloc::{AllocError, Allocator},
+    alloc::{AllocError, Allocator, Layout},
     marker::PhantomData,
     ptr::NonNull,
 };
 
-use common::address_types::{Address, VirtualAddress};
-use nonmax::NonMaxU16;
 use sync::mutex::SpinMutex;
 
 use buddy::meta::{BuddyArena, BuddyBlock};
-
-use x86::structures::paging::VirtualAddressExt;
 
 define_generics!(
     Generic8 = 8,
@@ -90,12 +88,18 @@ where
         }
     }
 
-    pub fn kmalloc<T: Slab>(&self) -> NonNull<T> {
-        unsafe {
-            self.slab_arena.lock()[T::SLAB_POSITION]
-                .assign::<T>()
-                .take_object()
-        }
+    /// The allocator for `T`s, from `T`'s slab cache.
+    pub const fn cache<T: Slab>(
+        &self,
+    ) -> CacheAllocator<'_, T, Block, Arena> {
+        CacheAllocator::new(self)
+    }
+
+    /// Allocates one `T`.
+    pub fn kmalloc<T: Slab>(&self) -> Result<NonNull<T>, AllocError> {
+        self.cache::<T>()
+            .allocate(Layout::new::<T>())
+            .map(NonNull::cast)
     }
 
     /// Frees `ptr`, returning its object to its slab.
@@ -104,33 +108,11 @@ where
     ///
     /// `ptr` must come from `kmalloc::<T>` and not be freed since.
     pub unsafe fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
-        let arena_lock = self.buddy_arena.lock();
-        let mut slab_lock = self.slab_arena.lock();
-
-        let mut page = arena_lock
-            .page_with_address(unsafe {
-                VirtualAddress::new_unchecked(ptr.addr().get())
-                    .translate()
-                    .unwrap()
-            })
-            .unwrap();
-
-        let descriptor =
-            unsafe { page.as_mut().slab_descriptor_mut::<T>() };
-
-        let idx_in_slab = descriptor
-            .objects
-            .index_of(ptr)
-            .expect("`ptr` is a slot of the slab its page belongs to");
-
-        let cache = unsafe { slab_lock[T::SLAB_POSITION].assign::<T>() };
-
-        // SAFETY: the caller guarantees `ptr` is an allocated object of
-        // this slab, which sits in one of the cache's lists.
-        unsafe { cache.return_object(idx_in_slab, descriptor) };
-
-        drop(arena_lock);
-        drop(slab_lock)
+        // SAFETY: the caller guarantees `ptr` is a live object from this
+        // cache, allocated with `Layout::new::<T>()`.
+        unsafe {
+            self.cache::<T>().deallocate(ptr.cast(), Layout::new::<T>())
+        }
     }
 }
 
@@ -164,44 +146,44 @@ where
 
         match layout.size() {
             Generic8::START..=Generic8::END => {
-                Ok(self.kmalloc::<Generic8>().into_u8())
+                self.kmalloc::<Generic8>().map(|object| object.into_u8())
             }
             Generic16::START..=Generic16::END => {
-                Ok(self.kmalloc::<Generic16>().into_u8())
+                self.kmalloc::<Generic16>().map(|object| object.into_u8())
             }
             Generic32::START..=Generic32::END => {
-                Ok(self.kmalloc::<Generic32>().into_u8())
+                self.kmalloc::<Generic32>().map(|object| object.into_u8())
             }
             Generic64::START..=Generic64::END => {
-                Ok(self.kmalloc::<Generic64>().into_u8())
+                self.kmalloc::<Generic64>().map(|object| object.into_u8())
             }
             Generic96::START..=Generic96::END => {
-                Ok(self.kmalloc::<Generic96>().into_u8())
+                self.kmalloc::<Generic96>().map(|object| object.into_u8())
             }
             Generic128::START..=Generic128::END => {
-                Ok(self.kmalloc::<Generic128>().into_u8())
+                self.kmalloc::<Generic128>().map(|object| object.into_u8())
             }
             Generic192::START..=Generic192::END => {
-                Ok(self.kmalloc::<Generic192>().into_u8())
+                self.kmalloc::<Generic192>().map(|object| object.into_u8())
             }
             Generic256::START..=Generic256::END => {
-                Ok(self.kmalloc::<Generic256>().into_u8())
+                self.kmalloc::<Generic256>().map(|object| object.into_u8())
             }
             Generic512::START..=Generic512::END => {
-                Ok(self.kmalloc::<Generic512>().into_u8())
+                self.kmalloc::<Generic512>().map(|object| object.into_u8())
             }
-            Generic1024::START..=Generic1024::END => {
-                Ok(self.kmalloc::<Generic1024>().into_u8())
-            }
-            Generic2048::START..=Generic2048::END => {
-                Ok(self.kmalloc::<Generic2048>().into_u8())
-            }
-            Generic4096::START..=Generic4096::END => {
-                Ok(self.kmalloc::<Generic4096>().into_u8())
-            }
-            Generic8192::START..=Generic8192::END => {
-                Ok(self.kmalloc::<Generic8192>().into_u8())
-            }
+            Generic1024::START..=Generic1024::END => self
+                .kmalloc::<Generic1024>()
+                .map(|object| object.into_u8()),
+            Generic2048::START..=Generic2048::END => self
+                .kmalloc::<Generic2048>()
+                .map(|object| object.into_u8()),
+            Generic4096::START..=Generic4096::END => self
+                .kmalloc::<Generic4096>()
+                .map(|object| object.into_u8()),
+            Generic8192::START..=Generic8192::END => self
+                .kmalloc::<Generic8192>()
+                .map(|object| object.into_u8()),
             _ => Err(AllocError),
         }
     }
