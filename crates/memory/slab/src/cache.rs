@@ -186,12 +186,14 @@ impl<T: Slab> SlabCache<T> {
         // self.free = Some(slab);
     }
 
-    pub fn alloc(&mut self) -> NonNull<T> {
+    /// Takes a free object, and moves its slab to the list of its new
+    /// state.
+    pub(crate) fn take_object(&mut self) -> NonNull<T> {
         if let Some(mut head) = self.partial {
             // SAFETY: the head is live, and nothing else borrows it while
             // the cache is locked.
             let (allocation, final_state) =
-                unsafe { head.as_mut() }.alloc();
+                unsafe { head.as_mut() }.take_object();
             match final_state {
                 SlabStateKind::Partial => {}
                 SlabStateKind::Full => {
@@ -211,7 +213,7 @@ impl<T: Slab> SlabCache<T> {
         // cache is locked.
         if let Some(free) = unsafe { self.pop_free() } {
             let partial = free.morph_mut::<PartialDetached>();
-            let (allocation, final_state) = partial.alloc();
+            let (allocation, final_state) = partial.take_object();
             match final_state {
                 SlabStateKind::Partial => {
                     self.attach_or_set_partial(partial)
@@ -231,14 +233,14 @@ impl<T: Slab> SlabCache<T> {
         )
     }
 
-    /// Frees object `idx` of `slab`, and moves `slab` to the list of its
-    /// new state.
+    /// Returns object `idx` of `slab`, and moves `slab` to the list of
+    /// its new state.
     ///
     /// # Safety
     ///
     /// `idx` must be an allocated object of `slab`, and `slab` must be in
     /// one of this cache's lists.
-    pub unsafe fn dealloc(
+    pub(crate) unsafe fn return_object(
         &mut self,
         idx: NonMaxU16,
         slab: &mut SlabDescriptor<T, Used>,
@@ -246,24 +248,24 @@ impl<T: Slab> SlabCache<T> {
         // SAFETY: the caller's guarantees carry over.
         unsafe {
             match slab.is_partial_mut() {
-                Ok(partial) => self.dealloc_partial(idx, partial),
-                Err(full) => self.dealloc_full(idx, full),
+                Ok(partial) => self.return_to_partial(idx, partial),
+                Err(full) => self.return_to_full(idx, full),
             }
         }
     }
 
-    /// Frees object `idx` of a slab in the partial list.
+    /// Returns object `idx` of a slab in the partial list.
     ///
     /// # Safety
     ///
     /// `idx` must be an allocated object of `partial`.
-    unsafe fn dealloc_partial(
+    unsafe fn return_to_partial(
         &mut self,
         idx: NonMaxU16,
         partial: &mut SlabDescriptor<T, Partial>,
     ) {
         // SAFETY: the caller guarantees `idx` is allocated.
-        match unsafe { partial.dealloc(idx) } {
+        match unsafe { partial.return_object(idx) } {
             SlabStateKind::Partial => {}
             SlabStateKind::Free => {
                 let free = self
@@ -276,12 +278,12 @@ impl<T: Slab> SlabCache<T> {
         }
     }
 
-    /// Frees object `idx` of a slab in the full list.
+    /// Returns object `idx` of a slab in the full list.
     ///
     /// # Safety
     ///
     /// `idx` must be an allocated object of `full`.
-    unsafe fn dealloc_full(
+    unsafe fn return_to_full(
         &mut self,
         idx: NonMaxU16,
         full: &mut SlabDescriptor<T, Full>,
@@ -291,7 +293,7 @@ impl<T: Slab> SlabCache<T> {
             .remove::<FullDetached, _>(full)
             .morph_mut::<PartialDetached>();
         // SAFETY: the caller guarantees `idx` is allocated.
-        match unsafe { partial.dealloc(idx) } {
+        match unsafe { partial.return_object(idx) } {
             SlabStateKind::Partial => self.attach_or_set_partial(partial),
             SlabStateKind::Free => {
                 self.free.push(partial.morph_mut::<FreeDetached>())
