@@ -53,8 +53,9 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
         debug_assert!(self.state.is_partial(),);
 
         let idx = self.state.get_next_free_idx() as usize;
-        let preallocated =
-            unsafe { self.objects.add(idx as usize).as_mut() };
+        // SAFETY: `idx` heads this slab's free list, so nothing else
+        // references its slot.
+        let preallocated = unsafe { self.objects.slot(idx).as_mut() };
 
         let mut final_state = SlabStateKind::Partial;
 
@@ -87,10 +88,11 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     pub unsafe fn dealloc(&mut self, idx: NonMaxU16) -> SlabStateKind {
         debug_assert!(self.state.is_partial());
 
-        unsafe {
-            self.objects.add(idx.get() as usize).as_mut().next_free_idx =
-                NonMaxU16::new(self.state.get_next_free_idx());
-        }
+        // SAFETY: the caller guarantees `idx` is allocated, and its owner
+        // is done with it, so nothing else references its slot.
+        unsafe { self.objects.slot(idx.get() as usize).as_mut() }
+            .next_free_idx =
+            NonMaxU16::new(self.state.get_next_free_idx());
 
         self.state.set_next_free_idx(idx.get());
 

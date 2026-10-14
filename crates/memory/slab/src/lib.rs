@@ -13,6 +13,7 @@ pub mod descriptor;
 pub mod local_macros;
 pub mod preallocated;
 pub mod slab_address;
+pub mod slab_objects;
 pub mod traits;
 
 use crate::{
@@ -117,16 +118,10 @@ where
         let descriptor =
             unsafe { page.as_mut().slab_descriptor_mut::<T>() };
 
-        let idx_in_slab = unsafe {
-            match NonMaxU16::new(
-                ptr.offset_from_unsigned(descriptor.objects.cast()) as u16,
-            ) {
-                Some(idx) => idx,
-                None => unreachable!(
-                    "Object is not allocated inside the given page."
-                ),
-            }
-        };
+        let idx_in_slab = descriptor
+            .objects
+            .index_of(ptr)
+            .expect("`ptr` is a slot of the slab its page belongs to");
 
         let cache = unsafe { slab_lock[T::SLAB_POSITION].assign::<T>() };
 
