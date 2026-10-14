@@ -28,6 +28,13 @@ pub trait SlabPosition: Sized {
     const OBJECT_PER_SLAB: usize = Self::PAGES_PER_SLAB
         * REGULAR_PAGE_SIZE
         / size_of::<PreAllocated<Self>>();
+    /// The alignment of every object, the largest power of two that
+    /// divides both the slot size and the page size the slab starts on.
+    /// As the page size is a power of two, that is the lowest set bit of
+    /// their OR.
+    const OBJECT_ALIGNMENT: usize = (size_of::<PreAllocated<Self>>()
+        | REGULAR_PAGE_SIZE)
+        .isolate_lowest_one();
 }
 
 impl SlabPosition for () {
@@ -49,8 +56,6 @@ impl<T: SlabPosition> SlabFlags for T {
 pub trait Generic {
     const START: usize;
     const END: usize;
-
-    fn size(&self) -> usize;
 }
 
 pub trait DmaGeneric {
