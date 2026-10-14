@@ -46,8 +46,6 @@ macro_rules! register_slabs {
 #[macro_export]
 macro_rules! define_slab_system {
     ($($t:ty),* $(,)?) => {
-        use common::constants::REGULAR_PAGE_SIZE;
-
         $crate::register_slabs!($($t),*);
 
         const COUNT: usize = [$(stringify!($t)),*].len();
@@ -66,7 +64,7 @@ macro_rules! define_slab_system {
                 $(
                     let index = <$t>::SLAB_POSITION;
 
-                    let slab_cache = SlabCache::<$t>::new(size_of::<$t>().div_ceil(REGULAR_PAGE_SIZE));
+                    let slab_cache = SlabCache::<$t>::new();
 
                     self.slab_arena.lock()[index] = unsafe { slab_cache.as_unit() };
                 )*

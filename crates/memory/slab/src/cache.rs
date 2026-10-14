@@ -18,7 +18,6 @@ use super::descriptor::SlabDescriptor;
 
 #[derive(Debug)]
 pub struct SlabCache<T: Slab> {
-    pub buddy_order: usize,
     pub free: Option<NonNull<SlabDescriptor<T, FreeHead>>>,
     pub partial: Option<NonNull<SlabDescriptor<T, PartialHead>>>,
     pub full: Option<NonNull<SlabDescriptor<T, FullHead>>>,
@@ -29,7 +28,6 @@ unsafe impl<T: Slab> Send for SlabCache<T> {}
 const impl Default for SlabCache<()> {
     fn default() -> Self {
         SlabCache {
-            buddy_order: 0,
             free: None,
             partial: None,
             full: None,
@@ -44,9 +42,8 @@ impl SlabCache<()> {
 }
 
 impl<T: Slab> SlabCache<T> {
-    pub fn new(buddy_order: usize) -> SlabCache<T> {
+    pub fn new() -> SlabCache<T> {
         SlabCache {
-            buddy_order,
             free: None,
             partial: None,
             full: None,
