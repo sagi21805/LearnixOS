@@ -42,14 +42,9 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, FullDetached>>
 }
 
 impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
-    /// Allocate an object from this slab returning the allocated object
-    /// and state of the slab.
-    ///
-    /// # Parameters
-    ///
-    /// * `head` - The head of the full slab descriptor. This slab will be
-    ///   attached to it, if the allocation will make this slab full.
-    pub fn alloc(&mut self) -> (NonNull<T>, SlabStateKind) {
+    /// Takes the first free object, and returns it with the slab's state
+    /// afterwards.
+    pub(crate) fn take_object(&mut self) -> (NonNull<T>, SlabStateKind) {
         debug_assert!(self.state.is_partial(),);
 
         let idx = self.state.get_next_free_idx() as usize;
@@ -76,16 +71,16 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
         }
     }
 
-    /// Deallocate an object  from this slab.
-    ///
-    /// # Parameters
-    ///
-    /// * `idx` - The index of the object to deallocate.
+    /// Puts object `idx` back on the free list, and returns the slab's
+    /// state afterwards.
     ///
     /// # Safety
     ///
     /// `idx` must be an allocated object of this slab.
-    pub unsafe fn dealloc(&mut self, idx: NonMaxU16) -> SlabStateKind {
+    pub(crate) unsafe fn return_object(
+        &mut self,
+        idx: NonMaxU16,
+    ) -> SlabStateKind {
         debug_assert!(self.state.is_partial());
 
         // SAFETY: the caller guarantees `idx` is allocated, and its owner

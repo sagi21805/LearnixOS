@@ -94,7 +94,7 @@ where
         unsafe {
             self.slab_arena.lock()[T::SLAB_POSITION]
                 .assign::<T>()
-                .alloc()
+                .take_object()
         }
     }
 
@@ -127,7 +127,7 @@ where
 
         // SAFETY: the caller guarantees `ptr` is an allocated object of
         // this slab, which sits in one of the cache's lists.
-        unsafe { cache.dealloc(idx_in_slab, descriptor) };
+        unsafe { cache.return_object(idx_in_slab, descriptor) };
 
         drop(arena_lock);
         drop(slab_lock)
