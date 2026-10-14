@@ -47,7 +47,7 @@ where
     /// Whether objects of this cache can hold `layout`.
     fn fits(layout: Layout) -> bool {
         layout.size() <= size_of::<T>()
-            && layout.align() <= align_of::<T>()
+            && layout.align() <= T::OBJECT_ALIGNMENT
     }
 }
 
