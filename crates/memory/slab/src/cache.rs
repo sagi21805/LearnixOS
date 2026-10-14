@@ -76,17 +76,39 @@ impl<T: Slab> SlabCache<T> {
     }
 
     /// Removes the head of the free list.
-    fn pop_free<'a>(
+    ///
+    /// # Safety
+    ///
+    /// The returned descriptor must not outlive its page, and no other
+    /// reference to it may be used while this one is.
+    unsafe fn pop_free<'a>(
         &mut self,
     ) -> Option<&'a mut SlabDescriptor<T, FreeDetached>> {
         // SAFETY: the head is live, and nothing else borrows it while the
         // cache is locked.
         let head = unsafe { self.free?.as_mut() };
-        Some(self.free.remove(head))
+        let free = self.free.remove::<FreeDetached, _>(head);
+
+        let address = SlabAddress::from_non_null(NonNull::from_mut(free));
+        debug_assert!(
+            free.next == SlabAddress::default()
+                && free.state.get_prev() == SlabAddress::default(),
+            "a popped slab is unlinked"
+        );
+        debug_assert!(
+            self.free.map(SlabAddress::from_non_null) != Some(address),
+            "a popped slab isn't the head"
+        );
+        Some(free)
     }
 
     /// Removes the head of the partial list.
-    fn pop_partial<'a>(
+    ///
+    /// # Safety
+    ///
+    /// The returned descriptor must not outlive its page, and no other
+    /// reference to it may be used while this one is.
+    unsafe fn pop_partial<'a>(
         &mut self,
     ) -> &'a mut SlabDescriptor<T, PartialDetached> {
         let mut head = self.partial.expect("the partial list has a head");
@@ -97,6 +119,14 @@ impl<T: Slab> SlabCache<T> {
         self.partial =
             unsafe { head.next.as_non_null::<T, PartialHead>() };
         head.next = SlabAddress::default();
+
+        debug_assert!(
+            self.partial.map(SlabAddress::from_non_null)
+                != Some(SlabAddress::from_non_null(NonNull::from_mut(
+                    head
+                ))),
+            "a popped slab isn't the head"
+        );
         head.cast_state_mut::<PartialDetached>()
     }
 
@@ -168,8 +198,10 @@ impl<T: Slab> SlabCache<T> {
             match final_state {
                 SlabStateKind::Partial => {}
                 SlabStateKind::Full => {
-                    let full =
-                        self.pop_partial().morph_mut::<FullDetached>();
+                    // SAFETY: the slab is used only inside this call,
+                    // while the cache is locked.
+                    let full = unsafe { self.pop_partial() }
+                        .morph_mut::<FullDetached>();
                     self.full.push(full);
                 }
                 // SAFETY: allocating never frees a slab.
@@ -178,7 +210,9 @@ impl<T: Slab> SlabCache<T> {
             return allocation;
         }
 
-        if let Some(free) = self.pop_free() {
+        // SAFETY: the slab is used only inside this call, while the
+        // cache is locked.
+        if let Some(free) = unsafe { self.pop_free() } {
             let partial = free.morph_mut::<PartialDetached>();
             let (allocation, final_state) = partial.alloc();
             match final_state {
