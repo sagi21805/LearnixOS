@@ -110,6 +110,8 @@ pub unsafe extern "C" fn _start() -> ! {
 
         BUMP_ALLOCATOR.init(BumpAllocator::new(MMAP.assume_init_ref()));
 
+        // SAFETY: nothing has been allocated yet, so there are no blocks
+        // to hand over.
         #[allow(static_mut_refs)]
         GLOBAL_ALLOCATOR.set(BUMP_ALLOCATOR.assume_init_ref());
     }
@@ -123,8 +125,12 @@ pub unsafe extern "C" fn _start() -> ! {
         MMAP.assume_init_ref(),
     );
 
+    // SAFETY: `initialize` marked every bump allocation as allocated in
+    // the buddy arena, so the buddy allocator owns those blocks now.
     #[allow(static_mut_refs)]
-    GLOBAL_ALLOCATOR.set(BUDDY_ALLOCATOR.assume_init_ref());
+    unsafe {
+        GLOBAL_ALLOCATOR.set(BUDDY_ALLOCATOR.assume_init_ref())
+    };
 
     okprintln!("Initialized Buddy Allocator");
     unsafe {
