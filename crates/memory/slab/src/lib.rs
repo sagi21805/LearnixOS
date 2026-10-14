@@ -1,7 +1,7 @@
 #![no_std]
 #![allow(incomplete_features)]
 #![feature(specialization)]
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 #![feature(ptr_alignment_type)]
 #![feature(const_trait_impl)]
 #![feature(const_default)]
@@ -97,7 +97,12 @@ where
         }
     }
 
-    pub fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
+    /// Frees `ptr`, returning its object to its slab.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must come from `kmalloc::<T>` and not be freed since.
+    pub unsafe fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
         let arena_lock = self.buddy_arena.lock();
         let mut slab_lock = self.slab_arena.lock();
 
@@ -125,7 +130,9 @@ where
 
         let cache = unsafe { slab_lock[T::SLAB_POSITION].assign::<T>() };
 
-        cache.dealloc(idx_in_slab, descriptor);
+        // SAFETY: the caller guarantees `ptr` is an allocated object of
+        // this slab, which sits in one of the cache's lists.
+        unsafe { cache.dealloc(idx_in_slab, descriptor) };
 
         drop(arena_lock);
         drop(slab_lock)
@@ -209,47 +216,51 @@ where
         ptr: core::ptr::NonNull<u8>,
         layout: core::alloc::Layout,
     ) {
-        match layout.size() {
-            Generic8::START..=Generic8::END => {
-                self.kfree::<Generic8>(NonNull::from_u8(ptr))
+        // SAFETY: the caller guarantees `ptr` came from `allocate` with
+        // this layout, which picked the same size class.
+        unsafe {
+            match layout.size() {
+                Generic8::START..=Generic8::END => {
+                    self.kfree::<Generic8>(NonNull::from_u8(ptr))
+                }
+                Generic16::START..=Generic16::END => {
+                    self.kfree::<Generic16>(NonNull::from_u8(ptr))
+                }
+                Generic32::START..=Generic32::END => {
+                    self.kfree::<Generic32>(NonNull::from_u8(ptr))
+                }
+                Generic64::START..=Generic64::END => {
+                    self.kfree::<Generic64>(NonNull::from_u8(ptr))
+                }
+                Generic96::START..=Generic96::END => {
+                    self.kfree::<Generic96>(NonNull::from_u8(ptr))
+                }
+                Generic128::START..=Generic128::END => {
+                    self.kfree::<Generic128>(NonNull::from_u8(ptr))
+                }
+                Generic192::START..=Generic192::END => {
+                    self.kfree::<Generic192>(NonNull::from_u8(ptr))
+                }
+                Generic256::START..=Generic256::END => {
+                    self.kfree::<Generic256>(NonNull::from_u8(ptr))
+                }
+                Generic512::START..=Generic512::END => {
+                    self.kfree::<Generic512>(NonNull::from_u8(ptr))
+                }
+                Generic1024::START..=Generic1024::END => {
+                    self.kfree::<Generic1024>(NonNull::from_u8(ptr))
+                }
+                Generic2048::START..=Generic2048::END => {
+                    self.kfree::<Generic2048>(NonNull::from_u8(ptr))
+                }
+                Generic4096::START..=Generic4096::END => {
+                    self.kfree::<Generic4096>(NonNull::from_u8(ptr))
+                }
+                Generic8192::START..=Generic8192::END => {
+                    self.kfree::<Generic8192>(NonNull::from_u8(ptr))
+                }
+                _ => unreachable!(),
             }
-            Generic16::START..=Generic16::END => {
-                self.kfree::<Generic16>(NonNull::from_u8(ptr))
-            }
-            Generic32::START..=Generic32::END => {
-                self.kfree::<Generic32>(NonNull::from_u8(ptr))
-            }
-            Generic64::START..=Generic64::END => {
-                self.kfree::<Generic64>(NonNull::from_u8(ptr))
-            }
-            Generic96::START..=Generic96::END => {
-                self.kfree::<Generic96>(NonNull::from_u8(ptr))
-            }
-            Generic128::START..=Generic128::END => {
-                self.kfree::<Generic128>(NonNull::from_u8(ptr))
-            }
-            Generic192::START..=Generic192::END => {
-                self.kfree::<Generic192>(NonNull::from_u8(ptr))
-            }
-            Generic256::START..=Generic256::END => {
-                self.kfree::<Generic256>(NonNull::from_u8(ptr))
-            }
-            Generic512::START..=Generic512::END => {
-                self.kfree::<Generic512>(NonNull::from_u8(ptr))
-            }
-            Generic1024::START..=Generic1024::END => {
-                self.kfree::<Generic1024>(NonNull::from_u8(ptr))
-            }
-            Generic2048::START..=Generic2048::END => {
-                self.kfree::<Generic2048>(NonNull::from_u8(ptr))
-            }
-            Generic4096::START..=Generic4096::END => {
-                self.kfree::<Generic4096>(NonNull::from_u8(ptr))
-            }
-            Generic8192::START..=Generic8192::END => {
-                self.kfree::<Generic8192>(NonNull::from_u8(ptr))
-            }
-            _ => unreachable!(),
         }
     }
 }

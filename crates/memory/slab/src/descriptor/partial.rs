@@ -1,11 +1,45 @@
 use crate::{
     descriptor::{
-        SlabDescriptor, SlabState, SlabStateKind, meta::PartialMeta,
+        FreeDetached, FullDetached, PartialDetached, SlabDescriptor,
+        SlabState, SlabStateKind, meta::PartialMeta,
     },
+    slab_address::SlabAddress,
     traits::Slab,
 };
 use core::ptr::NonNull;
 use nonmax::NonMaxU16;
+use typestate_groups::MorphFrom;
+
+/// A free slab allocating its first object becomes partial, starting at
+/// index 0 with nothing allocated.
+impl<T: Slab> MorphFrom<SlabDescriptor<T, FreeDetached>>
+    for SlabDescriptor<T, PartialDetached>
+{
+    fn morph_from(src: SlabDescriptor<T, FreeDetached>) -> Self {
+        SlabDescriptor {
+            state: PartialMeta::default(),
+            objects: src.objects,
+            next: SlabAddress::default(),
+        }
+    }
+}
+
+/// A full slab freeing an object becomes partial, starting with every
+/// object allocated and an empty free list.
+impl<T: Slab> MorphFrom<SlabDescriptor<T, FullDetached>>
+    for SlabDescriptor<T, PartialDetached>
+{
+    fn morph_from(src: SlabDescriptor<T, FullDetached>) -> Self {
+        SlabDescriptor {
+            state: PartialMeta::new()
+                .next_free_idx(u16::MAX)
+                .total_allocated(T::OBJECT_PER_SLAB as u32)
+                .partial(true),
+            objects: src.objects,
+            next: SlabAddress::default(),
+        }
+    }
+}
 
 impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     /// Allocate an object from this slab returning the allocated object
@@ -46,6 +80,10 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     /// # Parameters
     ///
     /// * `idx` - The index of the object to deallocate.
+    ///
+    /// # Safety
+    ///
+    /// `idx` must be an allocated object of this slab.
     pub unsafe fn dealloc(&mut self, idx: NonMaxU16) -> SlabStateKind {
         debug_assert!(self.state.is_partial());
 

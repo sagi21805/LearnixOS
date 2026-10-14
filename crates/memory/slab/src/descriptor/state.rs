@@ -12,19 +12,6 @@ pub trait SlabState {
     type Meta;
 }
 
-/// The list a slab descriptor belongs to, and the states it takes as the
-/// list's head, as a node after the head, and outside the list.
-#[state_types]
-pub trait SlabList {
-    type Head: SlabState;
-    type Attached: SlabState;
-    type Detached: SlabState;
-}
-
-/// Where a slab descriptor sits relative to its list.
-#[state_types]
-pub trait SlabRole {}
-
 /// The first node of the partial list.
 #[state]
 pub struct PartialHead;
@@ -65,10 +52,6 @@ pub struct FullDetached;
 #[state]
 pub struct Used;
 
-/// A slab reached through a link, whose state the link doesn't record.
-#[state]
-pub struct Erased;
-
 #[group(PartialStates)]
 impl SlabState for (PartialHead, Partial, PartialDetached) {
     #[size(8)]
@@ -84,37 +67,7 @@ impl SlabState
 }
 
 #[group(RawStates)]
-impl SlabState for (Used, Erased) {
+impl SlabState for (Used,) {
     #[size(8)]
     type Meta = RawMeta;
 }
-
-#[group(PartialList)]
-impl SlabList for (PartialHead, Partial, PartialDetached) {
-    type Head = PartialHead;
-    type Attached = Partial;
-    type Detached = PartialDetached;
-}
-
-#[group(FreeList)]
-impl SlabList for (FreeHead, Free, FreeDetached) {
-    type Head = FreeHead;
-    type Attached = Free;
-    type Detached = FreeDetached;
-}
-
-#[group(FullList)]
-impl SlabList for (FullHead, Full, FullDetached) {
-    type Head = FullHead;
-    type Attached = Full;
-    type Detached = FullDetached;
-}
-
-#[group(HeadRole)]
-impl SlabRole for (PartialHead, FreeHead, FullHead) {}
-
-#[group(AttachedRole)]
-impl SlabRole for (Partial, Free, Full) {}
-
-#[group(DetachedRole)]
-impl SlabRole for (PartialDetached, FreeDetached, FullDetached) {}
