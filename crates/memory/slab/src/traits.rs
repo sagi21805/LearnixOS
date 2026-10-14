@@ -20,7 +20,7 @@ pub trait SlabPosition: Sized {
         .next_multiple_of(REGULAR_PAGE_SIZE)
         / REGULAR_PAGE_SIZE;
     const OBJECT_PER_SLAB: usize =
-        Self::PAGES_PER_SLAB / size_of::<Self>();
+        Self::PAGES_PER_SLAB * REGULAR_PAGE_SIZE / size_of::<Self>();
 }
 
 impl SlabPosition for () {

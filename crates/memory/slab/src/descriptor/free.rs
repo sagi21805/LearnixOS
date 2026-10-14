@@ -2,8 +2,7 @@ extern crate alloc;
 
 use crate::{
     descriptor::{
-        Attach, Free, FreeDetached, PartialDetached, PartialHead,
-        SlabDescriptor, SlabStateKind, meta::FullFreeMeta,
+        FreeDetached, PartialDetached, SlabDescriptor, meta::FullFreeMeta,
     },
     preallocated::PreAllocated,
     slab_address::SlabAddress,
@@ -13,7 +12,7 @@ use alloc::alloc::{Layout, alloc};
 use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
 use core::{mem::size_of, ptr::NonNull};
 use nonmax::NonMaxU16;
-use typestate_groups::Morphic;
+use typestate_groups::MorphFrom;
 
 impl<T: Slab> SlabDescriptor<T, FreeDetached> {
     /// Create a new, free slab descriptor.
@@ -56,33 +55,46 @@ impl<T: Slab> SlabDescriptor<T, FreeDetached> {
                     .prev(SlabAddress::default())
                     .partial(false),
                 objects: objects.cast(),
-                next: None,
+                next: SlabAddress::default(),
             }
         }
     }
 }
 
-impl<T: Slab> SlabDescriptor<T, Free> {
-    /// Allocates an object, moving this slab to the partial list.
-    ///
-    /// # Parameters
-    ///
-    /// * `head` - The head of the partial list, which this slab becomes
-    ///   when the list is empty.
-    pub fn alloc<'a>(
-        &'a mut self,
-        head: &'a mut Option<&'a mut SlabDescriptor<T, PartialHead>>,
-    ) -> (NonNull<T>, SlabStateKind) {
-        let partial = self.detach().morph_mut::<PartialDetached>();
+/// A partial slab whose last object was freed becomes free, with its
+/// free list starting at index 0 again.
+impl<T: Slab> MorphFrom<SlabDescriptor<T, PartialDetached>>
+    for SlabDescriptor<T, FreeDetached>
+{
+    fn morph_from(src: SlabDescriptor<T, PartialDetached>) -> Self {
+        debug_assert_eq!(src.state.get_total_allocated(), 0);
 
-        match head {
-            Some(head) => head.attach(partial).alloc(),
-            None => {
-                let attached = partial.as_head();
-                let allocation = attached.alloc();
-                *head = Some(attached);
-                allocation
-            }
+        let mut free = SlabDescriptor {
+            state: FullFreeMeta::default(),
+            objects: src.objects,
+            next: SlabAddress::default(),
+        };
+        free.link_objects();
+        free
+    }
+}
+
+impl<T: Slab> SlabDescriptor<T, FreeDetached> {
+    /// Links each object to the one after it, and the last to none.
+    fn link_objects(&mut self) {
+        let mut objects = NonNull::slice_from_raw_parts(
+            self.objects,
+            T::OBJECT_PER_SLAB,
+        );
+        // SAFETY: `objects` covers this slab's objects, which are all
+        // free, so nothing else references them.
+        let objects = unsafe { objects.as_mut() };
+
+        for (object, next) in objects.iter_mut().zip(1..) {
+            object.next_free_idx = NonMaxU16::new(next);
+        }
+        if let Some(last) = objects.last_mut() {
+            last.next_free_idx = None;
         }
     }
 }
