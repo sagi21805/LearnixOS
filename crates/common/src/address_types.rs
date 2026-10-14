@@ -149,22 +149,15 @@ pub struct VirtualAddress(usize);
 
 const impl Address for VirtualAddress {
     unsafe fn new_unchecked(address: usize) -> Self {
-        Self(((address << 16) as isize >> 16) as usize)
+        Self(Self::canonical(address))
     }
 
+    /// `address`, when it is already canonical.
     fn new(address: usize) -> Option<Self> {
-        #[cfg(not(target_arch = "x86"))]
-        {
-            if address < (1 << 48) {
-                return Some(unsafe { Self::new_unchecked(address) });
-            } else {
-                None
-            }
-        }
-
-        #[cfg(target_arch = "x86")]
-        {
-            unsafe { Some(Self::new_unchecked(address)) }
+        if Self::canonical(address) == address {
+            Some(Self(address))
+        } else {
+            None
         }
     }
 
@@ -184,6 +177,17 @@ const impl From<usize> for VirtualAddress {
 }
 
 impl VirtualAddress {
+    /// `address` in the canonical form x86-64 requires, with bits 63..48
+    /// copied from bit 47.
+    #[cfg(not(target_arch = "x86"))]
+    const fn canonical(address: usize) -> usize {
+        ((address << 16) as isize >> 16) as usize
+    }
+
+    /// `address` unchanged, as 32-bit addresses have no canonical form.
+    #[cfg(target_arch = "x86")]
+    const fn canonical(address: usize) -> usize { address }
+
     #[allow(arithmetic_overflow)]
     pub const fn from_indexes(
         i4: usize,
