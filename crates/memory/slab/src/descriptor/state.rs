@@ -72,14 +72,14 @@ impl SlabState for (Used,) {
     type Meta = RawMeta;
 }
 
-/// The states of the list a state belongs to.
+/// The states of the list a state belongs to, all in its group.
 pub trait ListState: SlabState {
     /// The state of the list's first node.
-    type Head: SlabState<Meta = Self::Meta>;
+    type Head: SlabStateGroupMember<Self::Marker>;
     /// The state of a node in the list.
-    type Linked: SlabState<Meta = Self::Meta>;
+    type Linked: SlabStateGroupMember<Self::Marker>;
     /// The state of a node outside the list.
-    type Detached: SlabState<Meta = Self::Meta>;
+    type Detached: SlabStateGroupMember<Self::Marker>;
 }
 
 /// Implements [`ListState`] for the head, linked and detached states of
