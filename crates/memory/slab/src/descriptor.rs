@@ -150,9 +150,8 @@ impl<T: Slab, S: ListState> Link<T> for SlabDescriptor<T, S> {
                 // `S`, so it is neither the head nor this descriptor,
                 // and nothing else references it while the list is
                 // locked.
-                if let Some(next) =
-                    unsafe { first.next.node_mut::<T, S>() }
-                {
+                let next = unsafe { first.next.node_mut::<T, S>() };
+                if let Some(next) = next {
                     next.state.set_prev(address);
                 }
 
