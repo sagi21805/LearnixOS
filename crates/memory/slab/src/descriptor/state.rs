@@ -71,3 +71,34 @@ impl SlabState for (Used,) {
     #[size(8)]
     type Meta = RawMeta;
 }
+
+/// The states of the list a state belongs to.
+pub trait ListState: SlabState {
+    /// The state of the list's first node.
+    type Head: SlabState<Meta = Self::Meta>;
+    /// The state of a node in the list.
+    type Linked: SlabState<Meta = Self::Meta>;
+    /// The state of a node outside the list.
+    type Detached: SlabState<Meta = Self::Meta>;
+}
+
+/// Implements [`ListState`] for the head, linked and detached states of
+/// one list.
+macro_rules! list_states {
+    ($head:ident, $linked:ident, $detached:ident) => {
+        list_states!(@each ($head, $linked, $detached) $head $linked $detached);
+    };
+    (@each ($head:ident, $linked:ident, $detached:ident) $($state:ident)+) => {
+        $(
+            impl ListState for $state {
+                type Head = $head;
+                type Linked = $linked;
+                type Detached = $detached;
+            }
+        )+
+    };
+}
+
+list_states!(PartialHead, Partial, PartialDetached);
+list_states!(FreeHead, Free, FreeDetached);
+list_states!(FullHead, Full, FullDetached);
