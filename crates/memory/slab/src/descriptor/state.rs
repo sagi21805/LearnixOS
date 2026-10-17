@@ -102,16 +102,21 @@ pub trait ListState: SlabState {
 /// one list.
 macro_rules! list_states {
     ($head:ident, $attached:ident, $detached:ident) => {
-        list_states!(@each ($head, $attached, $detached) $head $attached $detached);
-    };
-    (@each ($head:ident, $attached:ident, $detached:ident) $($state:ident)+) => {
-        $(
-            impl ListState for $state {
-                type Head = $head;
-                type Attached = $attached;
-                type Detached = $detached;
-            }
-        )+
+        impl ListState for $head {
+            type Head = $head;
+            type Attached = $attached;
+            type Detached = $detached;
+        }
+        impl ListState for $attached {
+            type Head = $head;
+            type Attached = $attached;
+            type Detached = $detached;
+        }
+        impl ListState for $detached {
+            type Head = $head;
+            type Attached = $attached;
+            type Detached = $detached;
+        }
     };
 }
 
