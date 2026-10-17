@@ -3,6 +3,7 @@ use core::ptr::NonNull;
 use nonmax::NonMaxU16;
 
 use crate::{
+    Generic64,
     descriptor::{
         FreeDetached, FreeHead, FullDetached, FullHead, Link,
         PartialDetached, PartialHead, SlabState, Unlink, Used, UsedSlab,
@@ -24,6 +25,9 @@ pub struct SlabCache<T: Slab> {
 }
 
 unsafe impl<T: Slab> Send for SlabCache<T> {}
+
+// The cache is three head pointers, whatever `T` is.
+const _: () = assert!(size_of::<SlabCache<Generic64>>() == 24);
 
 const impl Default for SlabCache<()> {
     fn default() -> Self {
