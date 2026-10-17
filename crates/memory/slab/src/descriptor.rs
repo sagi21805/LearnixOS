@@ -38,17 +38,17 @@ pub(crate) trait ListNode<T: Slab> {
     /// The state of the list's head.
     type Head: SlabState;
     /// This descriptor in the list.
-    type Linked;
+    type Attached;
     /// This descriptor outside the list.
     type Detached;
 
     /// Links this descriptor into the list after its head, or as its head
-    /// when the list is empty. Either way it comes back as a linked node,
-    /// as only the cache's head pointer has the head state.
+    /// when the list is empty. Either way it comes back as an attached
+    /// node, as only the cache's head pointer has the head state.
     fn link(
         &mut self,
         head: &mut ListHead<T, Self::Head>,
-    ) -> &mut Self::Linked;
+    ) -> &mut Self::Attached;
 
     /// Unlinks this descriptor from the list, moving the head on when this
     /// descriptor is it.
@@ -63,13 +63,13 @@ pub(crate) trait ListNode<T: Slab> {
 #[group_impl(PartialStates, state = S)]
 impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
-    type Linked = SlabDescriptor<T, S::Linked>;
+    type Attached = SlabDescriptor<T, S::Attached>;
     type Detached = SlabDescriptor<T, S::Detached>;
 
     fn link(
         &mut self,
         head: &mut ListHead<T, S::Head>,
-    ) -> &mut SlabDescriptor<T, S::Linked> {
+    ) -> &mut SlabDescriptor<T, S::Attached> {
         match head {
             None => {
                 *head = Some(NonNull::from_mut(
@@ -86,7 +86,7 @@ impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
                     SlabAddress::from_non_null(NonNull::from_mut(self));
             }
         }
-        self.cast_state_mut::<S::Linked>()
+        self.cast_state_mut::<S::Attached>()
     }
 
     fn unlink(
@@ -126,13 +126,13 @@ impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
 #[group_impl(LinkedStates, state = S)]
 impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
-    type Linked = SlabDescriptor<T, S::Linked>;
+    type Attached = SlabDescriptor<T, S::Attached>;
     type Detached = SlabDescriptor<T, S::Detached>;
 
     fn link(
         &mut self,
         head: &mut ListHead<T, S::Head>,
-    ) -> &mut SlabDescriptor<T, S::Linked> {
+    ) -> &mut SlabDescriptor<T, S::Attached> {
         match head {
             None => {
                 *head = Some(NonNull::from_mut(
@@ -163,7 +163,7 @@ impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
                 first.next = address;
             }
         }
-        self.cast_state_mut::<S::Linked>()
+        self.cast_state_mut::<S::Attached>()
     }
 
     fn unlink(

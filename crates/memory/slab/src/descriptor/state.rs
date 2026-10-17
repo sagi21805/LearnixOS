@@ -77,22 +77,22 @@ pub trait ListState: SlabState {
     /// The state of the list's first node.
     type Head: SlabStateGroupMember<Self::Marker>;
     /// The state of a node in the list.
-    type Linked: SlabStateGroupMember<Self::Marker>;
+    type Attached: SlabStateGroupMember<Self::Marker>;
     /// The state of a node outside the list.
     type Detached: SlabStateGroupMember<Self::Marker>;
 }
 
-/// Implements [`ListState`] for the head, linked and detached states of
+/// Implements [`ListState`] for the head, attached and detached states of
 /// one list.
 macro_rules! list_states {
-    ($head:ident, $linked:ident, $detached:ident) => {
-        list_states!(@each ($head, $linked, $detached) $head $linked $detached);
+    ($head:ident, $attached:ident, $detached:ident) => {
+        list_states!(@each ($head, $attached, $detached) $head $attached $detached);
     };
-    (@each ($head:ident, $linked:ident, $detached:ident) $($state:ident)+) => {
+    (@each ($head:ident, $attached:ident, $detached:ident) $($state:ident)+) => {
         $(
             impl ListState for $state {
                 type Head = $head;
-                type Linked = $linked;
+                type Attached = $attached;
                 type Detached = $detached;
             }
         )+
