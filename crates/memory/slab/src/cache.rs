@@ -15,7 +15,10 @@ use crate::{
 };
 use typestate_groups::Morphic;
 
+/// It is `repr(C)`, so its layout is the same for every `T`, which
+/// [`SlabCaches::cache`] relies on.
 #[derive(Debug)]
+#[repr(C)]
 pub struct SlabCache<T: Slab> {
     pub(crate) free: ListHead<T, FreeHead>,
     pub(crate) partial: ListHead<T, PartialHead>,
@@ -29,6 +32,27 @@ unsafe impl<T: Slab> Send for SlabCache<T> {}
 
 // The cache is three head pointers, whatever `T` is.
 const _: () = assert!(size_of::<SlabCache<Generic64>>() == 24);
+
+/// The slab caches, each slab type `T`'s at `T::SLAB_POSITION`, stored
+/// erased so they fit in one array.
+pub struct SlabCaches<const N: usize>([SlabCache<()>; N]);
+
+impl<const N: usize> SlabCaches<N> {
+    /// Every cache, empty.
+    pub(crate) const fn new() -> Self {
+        Self([const { SlabCache::new() }; N])
+    }
+
+    /// The cache of `T`.
+    pub fn cache<T: Slab>(&mut self) -> &mut SlabCache<T> {
+        let cache = NonNull::from_mut(&mut self.0[T::SLAB_POSITION]);
+        // SAFETY: `Slab` is sealed, and `define_slab_system!` gives each
+        // type its own position, so only `T` reaches this slot, and an
+        // empty cache is valid for every `T`. `SlabCache` is `repr(C)`,
+        // so `SlabCache<()>` and `SlabCache<T>` share a layout.
+        unsafe { cache.cast::<SlabCache<T>>().as_mut() }
+    }
+}
 
 impl<T: Slab> SlabCache<T> {
     /// An empty cache.
