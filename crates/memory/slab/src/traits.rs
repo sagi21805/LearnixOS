@@ -1,16 +1,40 @@
-use common::enums::PageSize;
+use common::{
+    address_types::VirtualAddress, constants::REGULAR_PAGE_SIZE,
+    enums::PageSize,
+};
 use x86::structures::paging::PageEntryFlags;
+
+use crate::{
+    descriptor::{SlabDescriptor, Used},
+    preallocated::PreAllocated,
+};
 
 /// Get the position on the slab array, for a slab of the given type.
 ///
 /// Shouldn't implement this trait manually; it is implemented
 /// via the `define_slab_system` macro.
-pub trait Slab: 'static + Sized + SlabPosition + SlabFlags {}
+pub trait Slab: SlabPosition + SlabFlags + 'static {}
 
 impl Slab for () {}
 
-pub trait SlabPosition {
+pub trait SlabPosition: Sized {
     const SLAB_POSITION: usize;
+    /// The buddy order of one slab, the smallest that fits an object.
+    const BUDDY_ORDER: usize = size_of::<PreAllocated<Self>>()
+        .div_ceil(REGULAR_PAGE_SIZE)
+        .next_power_of_two()
+        .ilog2() as usize;
+    const PAGES_PER_SLAB: usize = 1 << Self::BUDDY_ORDER;
+    const OBJECT_PER_SLAB: usize = Self::PAGES_PER_SLAB
+        * REGULAR_PAGE_SIZE
+        / size_of::<PreAllocated<Self>>();
+    /// The alignment of every object, the largest power of two that
+    /// divides both the slot size and the page size the slab starts on.
+    /// As the page size is a power of two, that is the lowest set bit of
+    /// their OR.
+    const OBJECT_ALIGNMENT: usize = (size_of::<PreAllocated<Self>>()
+        | REGULAR_PAGE_SIZE)
+        .isolate_lowest_one();
 }
 
 impl SlabPosition for () {
@@ -29,20 +53,9 @@ impl<T: SlabPosition> SlabFlags for T {
     default const PSIZE: PageSize = PageSize::Regular;
 }
 
-impl SlabFlags for () {
-    const PFLAGS: PageEntryFlags = PageEntryFlags::default();
-    const PSIZE: PageSize = PageSize::Regular;
-}
-
-pub trait SlabCacheConstructor {
-    fn new(buddy_order: usize) -> Self;
-}
-
 pub trait Generic {
     const START: usize;
     const END: usize;
-
-    fn size(&self) -> usize;
 }
 
 pub trait DmaGeneric {
@@ -50,4 +63,26 @@ pub trait DmaGeneric {
     const END: usize;
 
     fn size(&self) -> usize;
+}
+
+pub trait SlabBlock {
+    fn from_address(address: VirtualAddress) -> Self;
+
+    /// Retrive a reference to the [`SlabDescriptor`] from the block.
+    ///
+    /// # Safety
+    ///
+    /// The `T` that this function gets will cast the [`SlabDescriptor`]
+    /// that in this block unconditionality which in unsafe.
+    fn slab_descriptor<T: Slab>(&self) -> &SlabDescriptor<T, Used>;
+
+    /// Retrive a mutable reference [`SlabDescriptor`] from the block.
+    ///
+    /// # Safety
+    ///
+    /// The `T` that this function gets will cast the [`SlabDescriptor`]
+    /// that in this block unconditionality which in unsafe.
+    fn slab_descriptor_mut<T: Slab>(
+        &mut self,
+    ) -> &mut SlabDescriptor<T, Used>;
 }

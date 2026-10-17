@@ -1,160 +1,228 @@
+extern crate alloc;
+
+pub mod free;
+pub mod full;
+pub mod meta;
+pub mod partial;
+pub mod state;
+
+pub use state::*;
+
 use crate::{
-    alloc_pages,
-    memory::{
-        allocators::slab::traits::Slab,
-        unassigned::{AssignSlab, UnassignSlab},
-    },
+    slab_address::SlabAddress, slab_objects::SlabObjects, traits::Slab,
 };
-use common::constants::REGULAR_PAGE_SIZE;
-use core::{
-    fmt::Debug,
-    mem::{ManuallyDrop, size_of},
-    ptr::NonNull,
-};
-use nonmax::NonMaxU16;
+use core::ptr::NonNull;
+use typestate_groups::{Isomorphic, group_impl, group_trait, typestate};
 
-/// Preallocated object in the slab allocator.
-pub union PreallocatedObject<T: 'static + Sized> {
-    pub allocated: ManuallyDrop<T>,
-    pub next_free_idx: Option<NonMaxU16>,
+#[typestate(state = S, unsafe_transmute = true)]
+pub struct SlabDescriptor<T: Slab, S: SlabState> {
+    pub state: S::Meta,
+    pub objects: SlabObjects<T>,
+    pub next: SlabAddress,
 }
 
-impl<T> Debug for PreallocatedObject<T> {
-    fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Ok(())
-    }
+pub enum SlabStateKind {
+    Partial,
+    Free,
+    Full,
 }
 
-#[derive(Debug, Clone)]
-pub struct SlabDescriptor<T: Slab> {
-    pub next_free_idx: Option<NonMaxU16>,
-    pub total_allocated: u16,
-    pub objects: NonNull<[PreallocatedObject<T>]>,
-    pub next: Option<NonNull<SlabDescriptor<T>>>,
+/// The head of a slab list, the first descriptor in it or `None` when the
+/// list is empty.
+pub(crate) type ListHead<T, H> = Option<NonNull<SlabDescriptor<T, H>>>;
+
+/// A node of a slab list, which links itself into the list at `head` or
+/// unlinks itself from it, and returns itself in its new state.
+#[group_trait(by = SlabState)]
+pub(crate) trait ListNode<T: Slab> {
+    /// The state of the list's head.
+    type Head: SlabState;
+    /// This descriptor in the list.
+    type Attached;
+    /// This descriptor outside the list.
+    type Detached;
+
+    /// Links this descriptor into the list after its head, or as its head
+    /// when the list is empty. Either way it comes back as an attached
+    /// node, as only the cache's head pointer has the head state.
+    fn link(
+        &mut self,
+        head: &mut ListHead<T, Self::Head>,
+    ) -> &mut Self::Attached;
+
+    /// Unlinks this descriptor from the list, moving the head on when this
+    /// descriptor is it.
+    fn unlink(
+        &mut self,
+        head: &mut ListHead<T, Self::Head>,
+    ) -> &mut Self::Detached;
 }
 
-impl AssignSlab for NonNull<SlabDescriptor<()>> {
-    type Target<Unassigned: Slab> = NonNull<SlabDescriptor<Unassigned>>;
+/// The singly-linked partial list. A node doesn't know its previous node,
+/// so unlinking one other than the head walks the list from the head.
+#[group_impl(SinglyLinked, state = S)]
+impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
+    type Head = S::Head;
+    type Attached = SlabDescriptor<T, S::Attached>;
+    type Detached = SlabDescriptor<T, S::Detached>;
 
-    fn assign<T: Slab>(&self) -> NonNull<SlabDescriptor<T>> {
-        unsafe {
-            NonNull::new_unchecked(self.as_ptr() as *mut SlabDescriptor<T>)
-        }
-    }
-}
-
-impl<T: Slab> UnassignSlab for NonNull<SlabDescriptor<T>> {
-    type Target = NonNull<SlabDescriptor<()>>;
-
-    fn as_unassigned(&self) -> Self::Target {
-        unsafe {
-            NonNull::new_unchecked(self.as_ptr() as *mut SlabDescriptor<()>)
-        }
-    }
-}
-
-impl<T: Slab> SlabDescriptor<T> {
-    /// Create a new slab descriptor.
-    ///
-    /// # Safety
-    /// This function is marked as unsafe because it does not initialize
-    /// the page that the allocation is on.
-    ///
-    /// This function is meant to be called from the [`grow`]
-    /// function inside slab cache. (Which is safe and do initialize
-    /// the page)
-    pub unsafe fn new(
-        order: usize,
-        next: Option<NonNull<SlabDescriptor<T>>>,
-    ) -> SlabDescriptor<T> {
-        let address = unsafe { alloc_pages!(1 << order).translate() };
-
-        let mut objects = NonNull::slice_from_raw_parts(
-            address.as_non_null::<PreallocatedObject<T>>(),
-            ((1 << order) * REGULAR_PAGE_SIZE)
-                / size_of::<PreallocatedObject<T>>(),
-        );
-
-        for (i, object) in
-            unsafe { objects.as_mut() }.iter_mut().enumerate()
-        {
-            *object = PreallocatedObject {
-                next_free_idx: Some(unsafe {
-                    NonMaxU16::new_unchecked(i as u16 + 1)
-                }),
+    fn link(
+        &mut self,
+        head: &mut ListHead<T, S::Head>,
+    ) -> &mut SlabDescriptor<T, S::Attached> {
+        match head {
+            None => {
+                *head = Some(NonNull::from_mut(
+                    self.cast_state_mut::<S::Head>(),
+                ))
+            }
+            Some(first) => {
+                // SAFETY: the head is live and isn't this descriptor,
+                // which is outside the list, and nothing else borrows it
+                // while the list is locked.
+                let first = unsafe { first.as_mut() };
+                self.next = first.next;
+                first.next =
+                    SlabAddress::from_non_null(NonNull::from_mut(self));
             }
         }
+        self.cast_state_mut::<S::Attached>()
+    }
 
-        unsafe {
-            objects.as_mut().last_mut().unwrap().next_free_idx = None
-        };
+    fn unlink(
+        &mut self,
+        head: &mut ListHead<T, S::Head>,
+    ) -> &mut SlabDescriptor<T, S::Detached> {
+        let address = SlabAddress::from_non_null(NonNull::from_mut(self));
+        let mut first = head.expect("this descriptor is in the list");
 
-        SlabDescriptor {
-            next_free_idx: Some(unsafe { NonMaxU16::new_unchecked(0) }),
-            total_allocated: 0,
-            objects,
-            next,
+        if SlabAddress::from_non_null(first) == address {
+            // SAFETY: `next` links a live node of this list.
+            *head = unsafe { self.next.as_non_null::<T, S::Head>() };
+        } else {
+            // SAFETY: the head is live and isn't this descriptor, and
+            // nothing else borrows it while the list is locked.
+            let mut link = &mut unsafe { first.as_mut() }.next;
+            while *link != address {
+                // SAFETY: `link` links a live node of this list before
+                // this one, which nothing else borrows while the list is
+                // locked.
+                let mut node = unsafe { link.as_non_null::<T, S>() }
+                    .expect("this descriptor is in the list");
+                // SAFETY: as above.
+                link = &mut unsafe { node.as_mut() }.next;
+            }
+            *link = self.next;
         }
-    }
 
-    pub fn alloc(&mut self) -> NonNull<T> {
-        debug_assert!(
-            self.next_free_idx.is_some(),
-            "Called allocate on a full slab"
-        );
-
-        let idx = self.next_free_idx.unwrap().get() as usize;
-        let preallocated = unsafe { &mut self.objects.as_mut()[idx] };
-
-        self.next_free_idx = unsafe { preallocated.next_free_idx };
-
-        self.total_allocated += 1;
-
-        unsafe { NonNull::from_mut(&mut preallocated.allocated) }
-    }
-
-    // TODO: In tests rembmber to implement something on T that implement
-    // drop and see that when freeing the memory it is called
-    pub unsafe fn dealloc(&mut self, ptr: NonNull<T>) {
-        todo!("Remember to call drop on the item");
-
-        let freed_index = (ptr.as_ptr().addr()
-            - self.objects.as_ptr().addr())
-            / size_of::<PreallocatedObject<T>>();
-
-        unsafe {
-            self.objects.as_mut()[freed_index].next_free_idx =
-                self.next_free_idx;
-        };
-        self.next_free_idx =
-            unsafe { Some(NonMaxU16::new_unchecked(freed_index as u16)) };
-
-        self.total_allocated -= 1;
+        self.next = SlabAddress::default();
+        self.cast_state_mut::<S::Detached>()
     }
 }
 
-impl SlabDescriptor<SlabDescriptor<()>> {
-    /// Return a pointer to the initial descriptor after it allocated
-    /// himself.
-    ///
-    /// The pointer the is returned by this function contains an already
-    /// initialized descriptor that allocates itself.
-    pub fn initial_descriptor(
-        order: usize,
-    ) -> NonNull<SlabDescriptor<SlabDescriptor<()>>> {
-        let mut descriptor = unsafe {
-            SlabDescriptor::<SlabDescriptor<()>>::new(order, None)
-        };
+/// The doubly-linked free and full lists. Every node of a list shares
+/// this descriptor's metadata, so it reads its neighbours in its own
+/// state.
+#[group_impl(DoublyLinked, state = S)]
+impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
+    type Head = S::Head;
+    type Attached = SlabDescriptor<T, S::Attached>;
+    type Detached = SlabDescriptor<T, S::Detached>;
 
-        let mut self_allocation = descriptor.alloc();
+    fn link(
+        &mut self,
+        head: &mut ListHead<T, S::Head>,
+    ) -> &mut SlabDescriptor<T, S::Attached> {
+        match head {
+            None => {
+                *head = Some(NonNull::from_mut(
+                    self.cast_state_mut::<S::Head>(),
+                ))
+            }
+            Some(first) => {
+                // SAFETY: the head is live and isn't this descriptor,
+                // which is outside the list, and nothing else borrows it
+                // while the list is locked.
+                let first = unsafe { first.as_mut() };
+                let address =
+                    SlabAddress::from_non_null(NonNull::from_mut(self));
 
-        unsafe {
-            *self_allocation.as_mut() = NonNull::from_ref(&descriptor)
-                .as_unassigned()
-                .as_ref()
-                .clone()
+                // SAFETY: `next` links a live node of this list, which
+                // nothing else borrows while the list is locked.
+                if let Some(mut next) =
+                    unsafe { first.next.as_non_null::<T, S>() }
+                {
+                    // SAFETY: as above.
+                    unsafe { next.as_mut() }.state.set_prev(address);
+                }
+
+                self.next = first.next;
+                self.state.set_prev(SlabAddress::from_non_null(
+                    NonNull::from_mut(first),
+                ));
+                first.next = address;
+            }
+        }
+        self.cast_state_mut::<S::Attached>()
+    }
+
+    fn unlink(
+        &mut self,
+        head: &mut ListHead<T, S::Head>,
+    ) -> &mut SlabDescriptor<T, S::Detached> {
+        let address = SlabAddress::from_non_null(NonNull::from_mut(self));
+        if head.is_some_and(|first| {
+            SlabAddress::from_non_null(first) == address
+        }) {
+            // SAFETY: `next` links a live node of this list.
+            *head = unsafe { self.next.as_non_null::<T, S::Head>() };
         }
 
-        self_allocation.assign::<SlabDescriptor<()>>()
+        let prev = self.state.get_prev();
+
+        // SAFETY: `next` links a live node of this list, which nothing
+        // else borrows while the list is locked.
+        if let Some(mut next) = unsafe { self.next.as_non_null::<T, S>() }
+        {
+            // SAFETY: as above.
+            unsafe { next.as_mut() }.state.set_prev(prev);
+        }
+
+        // SAFETY: `prev` links a live node of this list, which nothing
+        // else borrows while the list is locked.
+        if let Some(mut prev) = unsafe { prev.as_non_null::<T, S>() } {
+            // SAFETY: as above.
+            unsafe { prev.as_mut() }.next = self.next;
+        }
+
+        self.next = SlabAddress::default();
+        self.state.set_prev(SlabAddress::default());
+        self.cast_state_mut::<S::Detached>()
+    }
+}
+
+impl<T: Slab> SlabDescriptor<T, Used> {
+    pub fn is_partial(
+        &self,
+    ) -> Result<&SlabDescriptor<T, Partial>, &SlabDescriptor<T, Full>>
+    {
+        if self.state.is_partial() {
+            Ok(self.cast_state_ref::<Partial>())
+        } else {
+            Err(self.cast_state_ref::<Full>())
+        }
+    }
+
+    pub fn is_partial_mut(
+        &mut self,
+    ) -> Result<
+        &mut SlabDescriptor<T, Partial>,
+        &mut SlabDescriptor<T, Full>,
+    > {
+        if self.state.is_partial() {
+            Ok(self.cast_state_mut::<Partial>())
+        } else {
+            Err(self.cast_state_mut::<Full>())
+        }
     }
 }

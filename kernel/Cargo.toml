@@ -13,7 +13,7 @@ derive_more = { version = "2.1.1", default-features = false, features = [
     "full",
 ] }
 extend = "1.2.0"
-macros = { path = "../crates/macros" }
+bitfields = { path = "../crates/macros/bitfields" }
 strum_macros = { version = "0.28", default-features = false }
 strum = { version = "0.28", default-features = false }
 nonmax = { version = "0.5.5", default-features = false }

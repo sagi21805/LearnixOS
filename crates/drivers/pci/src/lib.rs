@@ -11,7 +11,7 @@ use common::enums::{
     PciDeviceType, Port, ProgrammingInterface, SubClass, VendorDevice,
     VendorID,
 };
-use macros::bitfields;
+use bitfields::bitfields;
 use x86::instructions::port::PortExt;
 
 #[bitfields]

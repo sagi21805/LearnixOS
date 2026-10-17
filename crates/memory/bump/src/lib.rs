@@ -3,7 +3,10 @@
 #![feature(const_default)]
 #![feature(const_trait_impl)]
 
-use core::alloc::{GlobalAlloc, Layout};
+use core::{
+    alloc::{AllocError, Allocator, Layout},
+    ptr::NonNull,
+};
 
 use common::{
     address_types::{Address, VirtualAddress},
@@ -34,8 +37,13 @@ impl<'a> BumpAllocator<'a> {
     }
 }
 
-unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+// SAFETY: blocks never overlap, because the cursor only moves forward,
+// and nothing frees them.
+unsafe impl<'a> Allocator for BumpAllocator<'a> {
+    fn allocate(
+        &self,
+        layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
         let mut curser = self.curser.lock();
 
         // Allocate at least a page per allocation.
@@ -74,13 +82,16 @@ unsafe impl<'a> GlobalAlloc for BumpAllocator<'a> {
                 layout,
                 base: aligned_cursor,
             });
-            unsafe { aligned_cursor.as_non_null().as_mut() }
+            Ok(NonNull::slice_from_raw_parts(
+                aligned_cursor.as_non_null::<u8>(),
+                layout.size(),
+            ))
         } else {
-            core::ptr::null_mut()
+            Err(AllocError)
         }
     }
 
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
+    unsafe fn deallocate(&self, _ptr: NonNull<u8>, _layout: Layout) {
         unimplemented!("Bump allocator does not support deallocation")
     }
 }

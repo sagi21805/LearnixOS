@@ -3,7 +3,7 @@ use common::{
     enums::{ProtectionLevel, Sections},
 };
 
-use macros::bitfields;
+use bitfields::bitfields;
 
 #[bitfields]
 pub struct SegmentSelector {
