@@ -17,10 +17,7 @@ use typestate_groups::Morphic;
 
 use super::descriptor::SlabDescriptor;
 
-/// It is `repr(C)`, so its layout is the same for every `T`, which the
-/// casts between `SlabCache<()>` and `SlabCache<T>` rely on.
 #[derive(Debug)]
-#[repr(C)]
 pub struct SlabCache<T: Slab> {
     pub free: Option<NonNull<SlabDescriptor<T, FreeHead>>>,
     pub partial: Option<NonNull<SlabDescriptor<T, PartialHead>>>,
@@ -32,24 +29,9 @@ unsafe impl<T: Slab> Send for SlabCache<T> {}
 // The cache is three head pointers, whatever `T` is.
 const _: () = assert!(size_of::<SlabCache<Generic64>>() == 24);
 
-const impl Default for SlabCache<()> {
-    fn default() -> Self {
-        SlabCache {
-            free: None,
-            partial: None,
-            full: None,
-        }
-    }
-}
-
-impl SlabCache<()> {
-    pub unsafe fn assign<T: Slab>(&mut self) -> &mut SlabCache<T> {
-        unsafe { core::mem::transmute(self) }
-    }
-}
-
 impl<T: Slab> SlabCache<T> {
-    pub fn new() -> SlabCache<T> {
+    /// An empty cache.
+    pub(crate) const fn new() -> SlabCache<T> {
         SlabCache {
             free: None,
             partial: None,
