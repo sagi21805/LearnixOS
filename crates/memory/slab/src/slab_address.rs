@@ -31,24 +31,13 @@ const impl From<SlabAddress> for u64 {
 }
 
 impl SlabAddress {
-    /// The descriptor at this address, in state `S`, or `None` for no
-    /// address.
-    ///
-    /// # Safety
-    ///
-    /// A non-zero address must point at a live descriptor whose metadata
-    /// is `S::Meta`.
-    pub unsafe fn as_non_null<T: Slab, S: SlabState>(
+    /// A pointer to the descriptor at this address, in state `S`, or
+    /// `None` for no address. Dereferencing it needs a live descriptor
+    /// whose metadata is `S::Meta` at this address.
+    pub fn as_non_null<T: Slab, S: SlabState>(
         &self,
     ) -> Option<NonNull<SlabDescriptor<T, S>>> {
-        // SAFETY: the caller guarantees the address points at a live
-        // descriptor.
-        unsafe {
-            Some(
-                VirtualAddress::new_unchecked(self.0?.get() as usize)
-                    .as_non_null(),
-            )
-        }
+        Some(VirtualAddress::from(self.0?.get() as usize).as_non_null())
     }
 
     pub fn from_non_null<T: Slab, S: SlabState>(

@@ -8,8 +8,7 @@ use crate::{
     slab_objects::SlabObjects,
     traits::Slab,
 };
-use alloc::alloc::{Layout, alloc};
-use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
+use alloc::alloc::alloc;
 use core::ptr::NonNull;
 use typestate_groups::MorphFrom;
 
@@ -22,14 +21,8 @@ impl<T: Slab> SlabDescriptor<T, FreeDetached> {
     )]
     pub fn new() -> SlabDescriptor<T, FreeDetached> {
         todo!("Use direct call on buddy allocator for certain page size.");
-        // SAFETY: the layout has a non-zero size and a power-of-two
-        // alignment.
-        let pages = unsafe {
-            alloc(Layout::from_size_alignment_unchecked(
-                T::PAGES_PER_SLAB * REGULAR_PAGE_SIZE,
-                REGULAR_PAGE_ALIGNMENT,
-            ))
-        };
+        // SAFETY: a slab's layout has at least one page.
+        let pages = unsafe { alloc(T::SLAB_LAYOUT) };
         let pages = NonNull::new(pages)
             .expect("TODO: handle running out of pages");
         // SAFETY: the pages were just allocated, so nothing else points at

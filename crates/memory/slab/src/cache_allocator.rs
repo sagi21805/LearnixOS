@@ -5,7 +5,7 @@ use core::{
 };
 
 use buddy::meta::{BuddyArena, BuddyBlock};
-use common::address_types::{Address, VirtualAddress};
+use common::address_types::VirtualAddress;
 use x86::structures::paging::VirtualAddressExt;
 
 use crate::{
@@ -100,10 +100,7 @@ where
         let arena_lock = self.slab.buddy_arena.lock();
         let mut slab_lock = self.slab.slab_arena.lock();
 
-        // SAFETY: `object` came from `allocate`, so it is a mapped
-        // address.
-        let address =
-            unsafe { VirtualAddress::new_unchecked(ptr.addr().get()) };
+        let address = VirtualAddress::from(ptr.addr().get());
         let mut page = arena_lock
             .page_with_address(
                 address
