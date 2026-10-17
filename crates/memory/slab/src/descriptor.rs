@@ -12,9 +12,7 @@ use crate::{
     slab_address::SlabAddress, slab_objects::SlabObjects, traits::Slab,
 };
 use core::ptr::NonNull;
-use typestate_groups::{
-    ByMut, CastableState, Isomorphic, group_impl, group_trait, typestate,
-};
+use typestate_groups::{Isomorphic, group_impl, group_trait, typestate};
 
 #[typestate(state = S, unsafe_transmute = true)]
 pub struct SlabDescriptor<T: Slab, S: SlabState> {
@@ -63,19 +61,7 @@ pub(crate) trait ListNode<T: Slab> {
 /// The singly-linked partial list. A node doesn't know its previous node,
 /// so unlinking one other than the head walks the list from the head.
 #[group_impl(PartialStates, state = S)]
-impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S>
-where
-    SlabDescriptor<T, S>: CastableState<S::Head, ByMut, Target = SlabDescriptor<T, S::Head>>
-        + CastableState<
-            S::Linked,
-            ByMut,
-            Target = SlabDescriptor<T, S::Linked>,
-        > + CastableState<
-            S::Detached,
-            ByMut,
-            Target = SlabDescriptor<T, S::Detached>,
-        >,
-{
+impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
     type Linked = SlabDescriptor<T, S::Linked>;
     type Detached = SlabDescriptor<T, S::Detached>;
@@ -138,19 +124,7 @@ where
 /// this descriptor's metadata, so it reads its neighbours in its own
 /// state.
 #[group_impl(LinkedStates, state = S)]
-impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S>
-where
-    SlabDescriptor<T, S>: CastableState<S::Head, ByMut, Target = SlabDescriptor<T, S::Head>>
-        + CastableState<
-            S::Linked,
-            ByMut,
-            Target = SlabDescriptor<T, S::Linked>,
-        > + CastableState<
-            S::Detached,
-            ByMut,
-            Target = SlabDescriptor<T, S::Detached>,
-        >,
-{
+impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
     type Linked = SlabDescriptor<T, S::Linked>;
     type Detached = SlabDescriptor<T, S::Detached>;
