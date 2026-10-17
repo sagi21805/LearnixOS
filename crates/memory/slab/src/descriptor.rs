@@ -60,7 +60,7 @@ pub(crate) trait ListNode<T: Slab> {
 
 /// The singly-linked partial list. A node doesn't know its previous node,
 /// so unlinking one other than the head walks the list from the head.
-#[group_impl(PartialStates, state = S)]
+#[group_impl(SinglyLinked, state = S)]
 impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
     type Attached = SlabDescriptor<T, S::Attached>;
@@ -123,7 +123,7 @@ impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
 /// The doubly-linked free and full lists. Every node of a list shares
 /// this descriptor's metadata, so it reads its neighbours in its own
 /// state.
-#[group_impl(LinkedStates, state = S)]
+#[group_impl(DoublyLinked, state = S)]
 impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
     type Attached = SlabDescriptor<T, S::Attached>;

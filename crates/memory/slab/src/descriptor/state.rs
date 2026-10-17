@@ -52,13 +52,13 @@ pub struct FullDetached;
 #[state]
 pub struct Used;
 
-#[group(PartialStates)]
+#[group(SinglyLinked)]
 impl SlabState for (PartialHead, Partial, PartialDetached) {
     #[size(8)]
     type Meta = PartialMeta;
 }
 
-#[group(LinkedStates)]
+#[group(DoublyLinked)]
 impl SlabState
     for (FreeHead, Free, FreeDetached, FullHead, Full, FullDetached)
 {
@@ -66,7 +66,7 @@ impl SlabState
     type Meta = FullFreeMeta;
 }
 
-#[group(RawStates)]
+#[group(UnknownList)]
 impl SlabState for (Used,) {
     #[size(8)]
     type Meta = RawMeta;
