@@ -35,9 +35,26 @@ impl SlabAddress {
     /// `None` for no address. Dereferencing it needs a live descriptor
     /// whose metadata is `S::Meta` at this address.
     pub fn as_non_null<T: Slab, S: SlabState>(
-        &self,
+        self,
     ) -> Option<NonNull<SlabDescriptor<T, S>>> {
         Some(VirtualAddress::from(self.0?.get() as usize).as_non_null())
+    }
+
+    /// The descriptor at this address, in state `S`, or `None` for no
+    /// address.
+    ///
+    /// # Safety
+    ///
+    /// A non-zero address must be the `next` or `prev` of a node in a
+    /// list the caller has locked, so a live descriptor in state `S`
+    /// sits there. The caller must hold no other reference to that
+    /// descriptor while this one is used.
+    pub(crate) unsafe fn node_mut<'a, T: Slab, S: SlabState>(
+        self,
+    ) -> Option<&'a mut SlabDescriptor<T, S>> {
+        // SAFETY: the caller guarantees a live descriptor in state `S` at
+        // this address, which nothing else references.
+        self.as_non_null().map(|mut node| unsafe { node.as_mut() })
     }
 
     pub fn from_non_null<T: Slab, S: SlabState>(
