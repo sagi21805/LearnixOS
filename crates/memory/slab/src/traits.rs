@@ -7,16 +7,35 @@ use common::{
 use x86::structures::paging::PageEntryFlags;
 
 use crate::{
-    SlabCaches,
-    cache::SlabCache,
     descriptor::{SlabDescriptor, Used},
     preallocated::PreAllocated,
 };
 
-/// A type allocated from its own slab cache.
-pub trait Slab: SlabGeometry + SlabFlags + 'static {
-    /// This type's cache in `caches`.
-    fn cache(caches: &mut SlabCaches) -> &mut SlabCache<Self>;
+/// A type allocated from its own slab cache, the one at `SLAB_POSITION`
+/// in [`SlabCaches`](crate::cache::SlabCaches).
+pub trait Slab:
+    SlabGeometry + SlabFlags + sealed::Sealed + 'static
+{
+    /// The index of this type's cache, which no other type shares.
+    const SLAB_POSITION: usize;
+}
+
+/// The erased type of the caches in
+/// [`SlabCaches`](crate::cache::SlabCaches), which has no cache of its
+/// own.
+impl Slab for () {
+    const SLAB_POSITION: usize = usize::MAX;
+}
+
+impl SlabGeometry for () {}
+
+impl sealed::Sealed for () {}
+
+/// Keeps [`Slab`] to the types `define_slab_system!` numbers, as
+/// [`SlabCaches::cache`](crate::cache::SlabCaches::cache) trusts that no
+/// two of them share a position.
+pub(crate) mod sealed {
+    pub trait Sealed {}
 }
 
 /// The sizes of a slab of `Self`, all derived from the size of its slot.
