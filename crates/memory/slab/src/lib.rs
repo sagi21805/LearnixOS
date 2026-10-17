@@ -19,7 +19,7 @@ pub mod traits;
 use crate::{
     cache::SlabCache,
     cache_allocator::CacheAllocator,
-    traits::{Slab, SlabBlock, SlabPosition},
+    traits::{Slab, SlabBlock},
 };
 use core::{
     alloc::{AllocError, Allocator, Layout},

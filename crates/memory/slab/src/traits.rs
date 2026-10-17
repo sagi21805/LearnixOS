@@ -1,3 +1,5 @@
+use core::alloc::Layout;
+
 use common::{
     address_types::VirtualAddress, constants::REGULAR_PAGE_SIZE,
     enums::PageSize,
@@ -35,6 +37,15 @@ pub trait SlabPosition: Sized {
     const OBJECT_ALIGNMENT: usize = (size_of::<PreAllocated<Self>>()
         | REGULAR_PAGE_SIZE)
         .isolate_lowest_one();
+    /// The layout of one slab's pages. A slab too large for a `Layout`
+    /// fails the build.
+    const SLAB_LAYOUT: Layout = match Layout::from_size_align(
+        Self::PAGES_PER_SLAB * REGULAR_PAGE_SIZE,
+        REGULAR_PAGE_SIZE,
+    ) {
+        Ok(layout) => layout,
+        Err(_) => panic!("a slab's pages fit in a `Layout`"),
+    };
 }
 
 impl SlabPosition for () {

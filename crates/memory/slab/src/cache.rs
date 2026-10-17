@@ -108,10 +108,6 @@ impl<T: Slab> SlabCache<T> {
         partial
     }
 
-    pub unsafe fn as_unit(self) -> SlabCache<()> {
-        unsafe { core::mem::transmute(self) }
-    }
-
     /// Allocate a new slab descriptor, attaches it to the free slab list,
     /// and initialize it's page.
     ///

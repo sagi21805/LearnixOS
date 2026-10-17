@@ -113,23 +113,6 @@ macro_rules! define_slab_system {
         const EMPTY_SLAB: SlabCache<()> = SlabCache::default();
 
         pub(crate) static SLAB_ARENA: SpinMutex<[SlabCache<()>; COUNT]> = SpinMutex::new([EMPTY_SLAB; COUNT]);
-
-        impl<Block, Arena> SlabAllocator<Block, Arena> where
-            Block: BuddyBlock + SlabBlock,
-            Arena: BuddyArena<Block>
-        {
-
-
-            pub fn init(&mut self) {
-                $(
-                    let index = <$t>::SLAB_POSITION;
-
-                    let slab_cache = SlabCache::<$t>::new();
-
-                    self.slab_arena.lock()[index] = unsafe { slab_cache.as_unit() };
-                )*
-            }
-        }
     }
 }
 
