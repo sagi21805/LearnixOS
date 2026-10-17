@@ -68,21 +68,21 @@ pub trait DmaGeneric {
 pub trait SlabBlock {
     fn from_address(address: VirtualAddress) -> Self;
 
-    /// Retrive a reference to the [`SlabDescriptor`] from the block.
+    /// The [`SlabDescriptor`] of the slab this block holds.
     ///
     /// # Safety
     ///
-    /// The `T` that this function gets will cast the [`SlabDescriptor`]
-    /// that in this block unconditionality which in unsafe.
-    fn slab_descriptor<T: Slab>(&self) -> &SlabDescriptor<T, Used>;
+    /// The block must hold a slab of `T`, as the descriptor is cast to
+    /// `T` without a check.
+    unsafe fn slab_descriptor<T: Slab>(&self) -> &SlabDescriptor<T, Used>;
 
-    /// Retrive a mutable reference [`SlabDescriptor`] from the block.
+    /// The [`SlabDescriptor`] of the slab this block holds, mutably.
     ///
     /// # Safety
     ///
-    /// The `T` that this function gets will cast the [`SlabDescriptor`]
-    /// that in this block unconditionality which in unsafe.
-    fn slab_descriptor_mut<T: Slab>(
+    /// The block must hold a slab of `T`, as the descriptor is cast to
+    /// `T` without a check.
+    unsafe fn slab_descriptor_mut<T: Slab>(
         &mut self,
     ) -> &mut SlabDescriptor<T, Used>;
 }

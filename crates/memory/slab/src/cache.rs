@@ -17,7 +17,10 @@ use typestate_groups::Morphic;
 
 use super::descriptor::SlabDescriptor;
 
+/// It is `repr(C)`, so its layout is the same for every `T`, which the
+/// casts between `SlabCache<()>` and `SlabCache<T>` rely on.
 #[derive(Debug)]
+#[repr(C)]
 pub struct SlabCache<T: Slab> {
     pub free: Option<NonNull<SlabDescriptor<T, FreeHead>>>,
     pub partial: Option<NonNull<SlabDescriptor<T, PartialHead>>>,

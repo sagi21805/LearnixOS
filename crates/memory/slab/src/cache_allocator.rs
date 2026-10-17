@@ -112,8 +112,9 @@ where
             )
             .expect("the buddy arena covers every mapped page");
 
-        // SAFETY: the page holds `object`, which belongs to a slab of
-        // `T`, so the page's descriptor is a `T` descriptor.
+        // SAFETY: `page` is a live page of the locked buddy arena. It
+        // holds `object`, which belongs to a slab of `T`, so the page's
+        // descriptor is a `T` descriptor.
         let descriptor =
             unsafe { page.as_mut().slab_descriptor_mut::<T>() };
         let idx = descriptor
