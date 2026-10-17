@@ -22,6 +22,9 @@ pub struct SlabCache<T: Slab> {
     pub(crate) full: ListHead<T, FullHead>,
 }
 
+// SAFETY: the descriptors the heads point at are reached only through
+// this cache's lists, and only through `&mut self`, so moving the cache to
+// another thread moves its lists with it.
 unsafe impl<T: Slab> Send for SlabCache<T> {}
 
 // The cache is three head pointers, whatever `T` is.
@@ -111,18 +114,24 @@ impl<T: Slab> SlabCache<T> {
         idx: NonMaxU16,
         slab: &mut SlabDescriptor<T, Used>,
     ) {
-        // SAFETY: the caller's guarantees carry over.
-        unsafe {
-            match slab.classify_mut() {
-                UsedSlab::PartialHead(partial) => {
-                    self.return_to_partial(idx, partial)
-                }
-                UsedSlab::Partial(partial) => {
-                    self.return_to_partial(idx, partial)
-                }
-                UsedSlab::FullHead(full) => self.return_to_full(idx, full),
-                UsedSlab::Full(full) => self.return_to_full(idx, full),
-            }
+        match slab.classify_mut() {
+            // SAFETY: the caller guarantees `idx` is an allocated object
+            // of `slab`.
+            UsedSlab::PartialHead(partial) => unsafe {
+                self.return_to_partial(idx, partial)
+            },
+            // SAFETY: as above.
+            UsedSlab::Partial(partial) => unsafe {
+                self.return_to_partial(idx, partial)
+            },
+            // SAFETY: as above.
+            UsedSlab::FullHead(full) => unsafe {
+                self.return_to_full(idx, full)
+            },
+            // SAFETY: as above.
+            UsedSlab::Full(full) => unsafe {
+                self.return_to_full(idx, full)
+            },
         }
     }
 

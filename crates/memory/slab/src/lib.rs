@@ -1,4 +1,8 @@
 #![no_std]
+#![deny(unsafe_op_in_unsafe_fn)]
+#![warn(clippy::undocumented_unsafe_blocks)]
+#![warn(clippy::multiple_unsafe_ops_per_block)]
+#![warn(clippy::missing_safety_doc)]
 #![allow(incomplete_features)]
 #![feature(specialization)]
 #![feature(ptr_alignment_type)]
