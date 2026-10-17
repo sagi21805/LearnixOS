@@ -1,7 +1,7 @@
 use crate::{
     descriptor::{
         FreeDetached, FullDetached, PartialDetached, SlabDescriptor,
-        SlabState, SlabStateKind, meta::PartialMeta,
+        SlabState, meta::PartialMeta,
     },
     slab_address::SlabAddress,
     traits::Slab,
@@ -44,31 +44,24 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, FullDetached>>
 impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     /// Takes the first free object, and returns it with the slab's state
     /// afterwards.
-    pub(crate) fn take_object(&mut self) -> (NonNull<T>, SlabStateKind) {
-        debug_assert!(self.state.is_partial(),);
-
+    pub(crate) fn take_object(&mut self) -> (NonNull<T>, Taken) {
         let idx = self.state.get_next_free_idx() as usize;
         // SAFETY: `idx` heads this slab's free list, so nothing else
         // references its slot.
         let preallocated = unsafe { self.objects.slot(idx).as_mut() };
 
-        let mut final_state = SlabStateKind::Partial;
-
         self.state
             .set_total_allocated(self.state.get_total_allocated() + 1);
 
-        match unsafe { preallocated.next_free_idx } {
+        let taken = match unsafe { preallocated.next_free_idx } {
             Some(idx) => {
                 self.state.set_next_free_idx(idx.get());
+                Taken::Partial
             }
-            None => {
-                final_state = SlabStateKind::Full;
-            }
-        }
+            None => Taken::Full,
+        };
 
-        unsafe {
-            (NonNull::from_mut(&mut preallocated.allocated), final_state)
-        }
+        unsafe { (NonNull::from_mut(&mut preallocated.allocated), taken) }
     }
 
     /// Puts object `idx` back on the free list, and returns the slab's
@@ -80,9 +73,7 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     pub(crate) unsafe fn return_object(
         &mut self,
         idx: NonMaxU16,
-    ) -> SlabStateKind {
-        debug_assert!(self.state.is_partial());
-
+    ) -> Returned {
         // SAFETY: the caller guarantees `idx` is allocated, and its owner
         // is done with it, so nothing else references its slot.
         unsafe { self.objects.slot(idx.get() as usize).as_mut() }
@@ -95,9 +86,21 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
             .set_total_allocated(self.state.get_total_allocated() - 1);
 
         if self.state.get_total_allocated() == 0 {
-            SlabStateKind::Free
+            Returned::Free
         } else {
-            SlabStateKind::Partial
+            Returned::Partial
         }
     }
+}
+
+/// What a slab became after giving out an object.
+pub(crate) enum Taken {
+    Partial,
+    Full,
+}
+
+/// What a slab became after taking an object back.
+pub(crate) enum Returned {
+    Partial,
+    Free,
 }

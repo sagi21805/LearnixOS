@@ -21,12 +21,6 @@ pub struct SlabDescriptor<T: Slab, S: SlabState> {
     pub next: SlabAddress,
 }
 
-pub enum SlabStateKind {
-    Partial,
-    Free,
-    Full,
-}
-
 /// The head of a slab list, the first descriptor in it or `None` when the
 /// list is empty.
 pub(crate) type ListHead<T, H> = Option<NonNull<SlabDescriptor<T, H>>>;
