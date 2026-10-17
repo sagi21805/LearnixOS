@@ -5,23 +5,21 @@ use nonmax::NonMaxU16;
 use crate::{
     Generic64,
     descriptor::{
-        FreeDetached, FreeHead, FullDetached, FullHead, Link,
-        PartialDetached, PartialHead, SlabState, Unlink, Used, UsedSlab,
+        FreeDetached, FreeHead, FullDetached, FullHead, Link, ListHead,
+        PartialDetached, PartialHead, SlabDescriptor, SlabState, Unlink,
+        Used, UsedSlab,
         meta::PartialMeta,
         partial::{Returned, Taken},
     },
-    slab_address::SlabAddress,
     traits::Slab,
 };
 use typestate_groups::Morphic;
 
-use super::descriptor::SlabDescriptor;
-
 #[derive(Debug)]
 pub struct SlabCache<T: Slab> {
-    pub free: Option<NonNull<SlabDescriptor<T, FreeHead>>>,
-    pub partial: Option<NonNull<SlabDescriptor<T, PartialHead>>>,
-    pub full: Option<NonNull<SlabDescriptor<T, FullHead>>>,
+    pub(crate) free: ListHead<T, FreeHead>,
+    pub(crate) partial: ListHead<T, PartialHead>,
+    pub(crate) full: ListHead<T, FullHead>,
 }
 
 unsafe impl<T: Slab> Send for SlabCache<T> {}
@@ -33,61 +31,10 @@ impl<T: Slab> SlabCache<T> {
     /// An empty cache.
     pub(crate) const fn new() -> SlabCache<T> {
         SlabCache {
-            free: None,
-            partial: None,
-            full: None,
+            free: ListHead::empty(),
+            partial: ListHead::empty(),
+            full: ListHead::empty(),
         }
-    }
-
-    /// Removes the head of the free list.
-    ///
-    /// # Safety
-    ///
-    /// The returned descriptor must not outlive its page, and no other
-    /// reference to it may be used while this one is.
-    unsafe fn pop_free<'a>(
-        &mut self,
-    ) -> Option<&'a mut SlabDescriptor<T, FreeDetached>> {
-        // SAFETY: the head is live, and nothing else borrows it while the
-        // cache is locked.
-        let head = unsafe { self.free?.as_mut() };
-        let free = head.unlink(&mut self.free);
-
-        let address = SlabAddress::from_non_null(NonNull::from_mut(free));
-        debug_assert!(
-            free.next == SlabAddress::default()
-                && free.state.get_prev() == SlabAddress::default(),
-            "a popped slab is unlinked"
-        );
-        debug_assert!(
-            self.free.map(SlabAddress::from_non_null) != Some(address),
-            "a popped slab isn't the head"
-        );
-        Some(free)
-    }
-
-    /// Removes the head of the partial list.
-    ///
-    /// # Safety
-    ///
-    /// The returned descriptor must not outlive its page, and no other
-    /// reference to it may be used while this one is.
-    unsafe fn pop_partial<'a>(
-        &mut self,
-    ) -> &'a mut SlabDescriptor<T, PartialDetached> {
-        let mut head = self.partial.expect("the partial list has a head");
-        // SAFETY: the head is live, and nothing else borrows it while the
-        // cache is locked.
-        let partial = unsafe { head.as_mut() }.unlink(&mut self.partial);
-
-        debug_assert!(
-            self.partial.map(SlabAddress::from_non_null)
-                != Some(SlabAddress::from_non_null(NonNull::from_mut(
-                    partial
-                ))),
-            "a popped slab isn't the head"
-        );
-        partial
     }
 
     /// Allocate a new slab descriptor, attaches it to the free slab list,
@@ -114,28 +61,24 @@ impl<T: Slab> SlabCache<T> {
     /// Takes a free object, and moves its slab to the list of its new
     /// state.
     pub(crate) fn take_object(&mut self) -> NonNull<T> {
-        if let Some(mut head) = self.partial {
-            // SAFETY: the head is live, and nothing else borrows it while
-            // the cache is locked.
-            let (allocation, final_state) =
-                unsafe { head.as_mut() }.take_object();
+        // SAFETY: this call holds no other reference to the partial head.
+        if let Some(head) = unsafe { self.partial.first() } {
+            let (allocation, final_state) = head.take_object();
             match final_state {
                 Taken::Partial => {}
                 Taken::Full => {
-                    // SAFETY: the slab is used only inside this call,
-                    // while the cache is locked.
-                    let full = unsafe { self.pop_partial() }
-                        .morph_mut::<FullDetached>();
-                    full.link(&mut self.full);
+                    head.unlink(&mut self.partial)
+                        .morph_mut::<FullDetached>()
+                        .link(&mut self.full);
                 }
             }
             return allocation;
         }
 
-        // SAFETY: the slab is used only inside this call, while the
-        // cache is locked.
-        if let Some(free) = unsafe { self.pop_free() } {
-            let partial = free.morph_mut::<PartialDetached>();
+        // SAFETY: this call holds no other reference to the free head.
+        if let Some(head) = unsafe { self.free.first() } {
+            let partial =
+                head.unlink(&mut self.free).morph_mut::<PartialDetached>();
             let (allocation, final_state) = partial.take_object();
             match final_state {
                 Taken::Partial => {

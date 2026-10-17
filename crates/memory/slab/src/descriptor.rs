@@ -12,7 +12,10 @@ use crate::{
     Generic64, slab_address::SlabAddress, slab_objects::SlabObjects,
     traits::Slab,
 };
-use core::ptr::NonNull;
+use core::{
+    fmt::{self, Debug, Formatter},
+    ptr::NonNull,
+};
 use typestate_groups::{Isomorphic, group_impl, group_trait, typestate};
 
 #[typestate(state = S, unsafe_transmute = true)]
@@ -31,7 +34,43 @@ const _: () = {
 
 /// The head of a slab list, the first descriptor in it or `None` when the
 /// list is empty.
-pub(crate) type ListHead<T, H> = Option<NonNull<SlabDescriptor<T, H>>>;
+///
+/// Only [`Link`] and [`Unlink`] set it, so a head that isn't `None`
+/// points at a live descriptor in the list.
+#[repr(transparent)]
+pub(crate) struct ListHead<T: Slab, H: SlabState>(
+    Option<NonNull<SlabDescriptor<T, H>>>,
+);
+
+impl<T: Slab, H: SlabState> ListHead<T, H> {
+    /// A list with no descriptors.
+    pub(crate) const fn empty() -> Self { Self(None) }
+
+    /// The first descriptor, or `None` when the list is empty.
+    ///
+    /// # Safety
+    ///
+    /// The descriptor must not be used after its page is freed, and the
+    /// caller must hold no other reference to it while this one is used.
+    pub(crate) unsafe fn first<'a>(
+        self,
+    ) -> Option<&'a mut SlabDescriptor<T, H>> {
+        // SAFETY: only `link` and `unlink` set the head, so it points at
+        // a live descriptor, and the caller holds no other reference to
+        // it.
+        self.0.map(|mut first| unsafe { first.as_mut() })
+    }
+}
+
+impl<T: Slab, H: SlabState> Clone for ListHead<T, H> {
+    fn clone(&self) -> Self { *self }
+}
+
+impl<T: Slab, H: SlabState> Copy for ListHead<T, H> {}
+
+impl<T: Slab, H: SlabState> Debug for ListHead<T, H> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result { self.0.fmt(f) }
+}
 
 /// A slab outside its list, which links itself into the list at `head`.
 #[group_trait(by = (SlabState, ListRole))]
@@ -67,18 +106,17 @@ impl<T: Slab, S: ListState> Link<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
 
     fn link(&mut self, head: &mut ListHead<T, S::Head>) {
-        match head {
+        // SAFETY: this descriptor is outside the list, so it isn't the
+        // head, and nothing else references the head while the list is
+        // locked.
+        match unsafe { head.first() } {
             None => {
                 self.state.set_head(true);
-                *head = Some(NonNull::from_mut(
+                head.0 = Some(NonNull::from_mut(
                     self.cast_state_mut::<S::Head>(),
                 ));
             }
             Some(first) => {
-                // SAFETY: the head is live and isn't this descriptor,
-                // which is outside the list, and nothing else borrows it
-                // while the list is locked.
-                let first = unsafe { first.as_mut() };
                 self.next = first.next;
                 first.next =
                     SlabAddress::from_non_null(NonNull::from_mut(self));
@@ -95,25 +133,27 @@ impl<T: Slab, S: ListState> Link<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
 
     fn link(&mut self, head: &mut ListHead<T, S::Head>) {
-        match head {
+        // SAFETY: this descriptor is outside the list, so it isn't the
+        // head, and nothing else references the head while the list is
+        // locked.
+        match unsafe { head.first() } {
             None => {
-                *head = Some(NonNull::from_mut(
+                head.0 = Some(NonNull::from_mut(
                     self.cast_state_mut::<S::Head>(),
                 ))
             }
             Some(first) => {
-                // SAFETY: the head is live and isn't this descriptor,
-                // which is outside the list, and nothing else borrows it
-                // while the list is locked.
-                let first = unsafe { first.as_mut() };
                 let address =
                     SlabAddress::from_non_null(NonNull::from_mut(self));
 
-                if let Some(mut next) = first.next.as_non_null::<T, S>() {
-                    // SAFETY: `next` links a live node of this list, in
-                    // state `S`, which nothing else borrows while the
-                    // list is locked.
-                    unsafe { next.as_mut() }.state.set_prev(address);
+                // SAFETY: `next` links the node after the head, in state
+                // `S`, so it is neither the head nor this descriptor,
+                // and nothing else references it while the list is
+                // locked.
+                if let Some(next) =
+                    unsafe { first.next.node_mut::<T, S>() }
+                {
+                    next.state.set_prev(address);
                 }
 
                 self.next = first.next;
@@ -142,12 +182,11 @@ impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
             "the head has its head bit set"
         );
 
-        *head = self.next.as_non_null::<T, S::Head>();
-        if let Some(mut first) = *head {
-            // SAFETY: `next` linked a live node of this list, which is
-            // now its head and which nothing else borrows while the list
-            // is locked.
-            unsafe { first.as_mut() }.state.set_head(true);
+        head.0 = self.next.as_non_null::<T, S::Head>();
+        // SAFETY: the new head is the node after this one, and nothing
+        // else references it while the list is locked.
+        if let Some(first) = unsafe { head.first() } {
+            first.state.set_head(true);
         }
 
         self.next = SlabAddress::default();
@@ -172,14 +211,11 @@ impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
             "the head has no previous node"
         );
 
-        *head = self.next.as_non_null::<T, S::Head>();
-        if let Some(mut first) = *head {
-            // SAFETY: `next` linked a live node of this list, which is
-            // now its head and which nothing else borrows while the list
-            // is locked.
-            unsafe { first.as_mut() }
-                .state
-                .set_prev(SlabAddress::default());
+        head.0 = self.next.as_non_null::<T, S::Head>();
+        // SAFETY: the new head is the node after this one, and nothing
+        // else references it while the list is locked.
+        if let Some(first) = unsafe { head.first() } {
+            first.state.set_prev(SlabAddress::default());
         }
 
         self.next = SlabAddress::default();
@@ -204,19 +240,19 @@ impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
             "an attached node isn't the head"
         );
         let address = SlabAddress::from_non_null(NonNull::from_mut(self));
-        let mut first = head.expect("an attached node's list has a head");
+        // SAFETY: an attached node isn't the head, and nothing else
+        // references the head while the list is locked.
+        let first = unsafe { head.first() }
+            .expect("an attached node's list has a head");
 
-        // SAFETY: the head is live and isn't this descriptor, and nothing
-        // else borrows it while the list is locked.
-        let mut link = &mut unsafe { first.as_mut() }.next;
+        let mut link = &mut first.next;
         while *link != address {
-            let mut node = link
-                .as_non_null::<T, S>()
+            // SAFETY: `link` links a node of this list before this one,
+            // in state `S`, so it isn't this descriptor, and nothing else
+            // references it while the list is locked.
+            let node = unsafe { link.node_mut::<T, S>() }
                 .expect("this descriptor is in the list");
-            // SAFETY: `link` links a live node of this list before this
-            // one, in state `S`, which nothing else borrows while the
-            // list is locked.
-            link = &mut unsafe { node.as_mut() }.next;
+            link = &mut node.next;
         }
         *link = self.next;
 
@@ -238,17 +274,16 @@ impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
     ) -> &mut SlabDescriptor<T, S::Detached> {
         let prev = self.state.get_prev();
 
-        let mut prev_node = prev
-            .as_non_null::<T, S>()
-            .expect("an attached node has a previous node");
-        // SAFETY: `prev` links a live node of this list, in state `S`,
-        // which nothing else borrows while the list is locked.
-        unsafe { prev_node.as_mut() }.next = self.next;
+        // SAFETY: `prev` links the node before this one, in state `S`,
+        // which nothing else references while the list is locked.
+        unsafe { prev.node_mut::<T, S>() }
+            .expect("an attached node has a previous node")
+            .next = self.next;
 
-        if let Some(mut next) = self.next.as_non_null::<T, S>() {
-            // SAFETY: `next` links a live node of this list, in state
-            // `S`, which nothing else borrows while the list is locked.
-            unsafe { next.as_mut() }.state.set_prev(prev);
+        // SAFETY: `next` links the node after this one, in state `S`,
+        // which nothing else references while the list is locked.
+        if let Some(next) = unsafe { self.next.node_mut::<T, S>() } {
+            next.state.set_prev(prev);
         }
 
         self.next = SlabAddress::default();
