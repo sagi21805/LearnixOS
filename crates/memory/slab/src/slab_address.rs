@@ -3,11 +3,11 @@ use core::{num::NonZeroU64, ptr::NonNull};
 use common::address_types::{Address, VirtualAddress};
 
 use crate::{
-    descriptor::{Erased, SlabDescriptor},
+    descriptor::{SlabDescriptor, SlabState},
     traits::Slab,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SlabAddress(Option<NonZeroU64>);
 
 const impl Default for SlabAddress {
@@ -28,9 +28,18 @@ const impl From<SlabAddress> for u64 {
 }
 
 impl SlabAddress {
-    pub unsafe fn as_non_null<T: Slab>(
+    /// The descriptor at this address, in state `S`, or `None` for no
+    /// address.
+    ///
+    /// # Safety
+    ///
+    /// A non-zero address must point at a live descriptor whose metadata
+    /// is `S::Meta`.
+    pub unsafe fn as_non_null<T: Slab, S: SlabState>(
         &self,
-    ) -> Option<NonNull<SlabDescriptor<T, Erased>>> {
+    ) -> Option<NonNull<SlabDescriptor<T, S>>> {
+        // SAFETY: the caller guarantees the address points at a live
+        // descriptor.
         unsafe {
             Some(
                 VirtualAddress::new_unchecked(self.0?.get() as usize)
@@ -39,8 +48,8 @@ impl SlabAddress {
         }
     }
 
-    pub fn from_non_null<T: Slab>(
-        ptr: NonNull<SlabDescriptor<T, Erased>>,
+    pub fn from_non_null<T: Slab, S: SlabState>(
+        ptr: NonNull<SlabDescriptor<T, S>>,
     ) -> Self {
         Self(NonZeroU64::try_from(ptr.addr()).ok())
     }

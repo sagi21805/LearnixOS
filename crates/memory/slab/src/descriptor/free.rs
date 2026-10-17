@@ -2,87 +2,66 @@ extern crate alloc;
 
 use crate::{
     descriptor::{
-        Attach, Free, FreeDetached, PartialDetached, PartialHead,
-        SlabDescriptor, SlabStateKind, meta::FullFreeMeta,
+        FreeDetached, PartialDetached, SlabDescriptor, meta::FullFreeMeta,
     },
-    preallocated::PreAllocated,
     slab_address::SlabAddress,
+    slab_objects::SlabObjects,
     traits::Slab,
 };
 use alloc::alloc::{Layout, alloc};
 use common::constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE};
-use core::{mem::size_of, ptr::NonNull};
-use nonmax::NonMaxU16;
-use typestate_groups::Morphic;
+use core::ptr::NonNull;
+use typestate_groups::MorphFrom;
 
 impl<T: Slab> SlabDescriptor<T, FreeDetached> {
     /// Create a new, free slab descriptor.
-    pub fn new(order: usize) -> SlabDescriptor<T, FreeDetached> {
+    #[expect(
+        clippy::new_without_default,
+        reason = "`new` allocates the slab's pages, which `Default` \
+                  shouldn't hide"
+    )]
+    pub fn new() -> SlabDescriptor<T, FreeDetached> {
         todo!("Use direct call on buddy allocator for certain page size.");
-        let address = unsafe {
-            NonNull::new_unchecked(alloc(
-                Layout::from_size_alignment_unchecked(
-                    REGULAR_PAGE_SIZE * (1 << order),
-                    REGULAR_PAGE_ALIGNMENT,
-                ),
+        // SAFETY: the layout has a non-zero size and a power-of-two
+        // alignment.
+        let pages = unsafe {
+            alloc(Layout::from_size_alignment_unchecked(
+                T::PAGES_PER_SLAB * REGULAR_PAGE_SIZE,
+                REGULAR_PAGE_ALIGNMENT,
             ))
-            .cast::<PreAllocated<T>>()
         };
+        let pages = NonNull::new(pages)
+            .expect("TODO: handle running out of pages");
+        // SAFETY: the pages were just allocated, so nothing else points at
+        // them.
+        let objects = unsafe { SlabObjects::new(pages) };
 
-        let mut objects = NonNull::slice_from_raw_parts(
-            address,
-            (REGULAR_PAGE_SIZE * (1 << order))
-                / size_of::<PreAllocated<T>>(),
-        );
-
-        // Initialize each free object to point at the next free.
-        for (i, object) in
-            unsafe { objects.as_mut() }.iter_mut().enumerate()
-        {
-            *object = PreAllocated {
-                next_free_idx: Some(unsafe {
-                    NonMaxU16::new_unchecked(i as u16 + 1)
-                }),
-            }
-        }
-
-        unsafe {
-            // Set the last object free_index into none because it is the
-            // end of the slab.
-            objects.as_mut().last_mut().unwrap().next_free_idx = None;
-
-            SlabDescriptor {
-                state: FullFreeMeta::new()
-                    .prev(SlabAddress::default())
-                    .partial(false),
-                objects: objects.cast(),
-                next: None,
-            }
-        }
+        let mut free = SlabDescriptor {
+            state: FullFreeMeta::default(),
+            objects,
+            next: SlabAddress::default(),
+        };
+        // SAFETY: a free slab has no allocated slot.
+        unsafe { free.objects.link_all() };
+        free
     }
 }
 
-impl<T: Slab> SlabDescriptor<T, Free> {
-    /// Allocates an object, moving this slab to the partial list.
-    ///
-    /// # Parameters
-    ///
-    /// * `head` - The head of the partial list, which this slab becomes
-    ///   when the list is empty.
-    pub fn alloc<'a>(
-        &'a mut self,
-        head: &'a mut Option<&'a mut SlabDescriptor<T, PartialHead>>,
-    ) -> (NonNull<T>, SlabStateKind) {
-        let partial = self.detach().morph_mut::<PartialDetached>();
+/// A partial slab whose last object was freed becomes free, with its
+/// free list starting at index 0 again.
+impl<T: Slab> MorphFrom<SlabDescriptor<T, PartialDetached>>
+    for SlabDescriptor<T, FreeDetached>
+{
+    fn morph_from(src: SlabDescriptor<T, PartialDetached>) -> Self {
+        debug_assert_eq!(src.state.get_total_allocated(), 0);
 
-        match head {
-            Some(head) => head.attach(partial).alloc(),
-            None => {
-                let attached = partial.as_head();
-                let allocation = attached.alloc();
-                *head = Some(attached);
-                allocation
-            }
-        }
+        let mut free = SlabDescriptor {
+            state: FullFreeMeta::default(),
+            objects: src.objects,
+            next: SlabAddress::default(),
+        };
+        // SAFETY: a free slab has no allocated slot.
+        unsafe { free.objects.link_all() };
+        free
     }
 }
