@@ -18,12 +18,6 @@ use typestate_groups::{Isomorphic, typestate};
 #[typestate(state = S, unsafe_transmute = true)]
 pub struct SlabDescriptor<T: Slab, S: SlabState> {
     pub state: S::Meta,
-
-    // TODO: Check the possibility to not save the length here because it
-    // is already managed by a freelist so the len may not be needed.
-    //
-    // Moreover the local T holds the const order in which we allocate for
-    // the array so the size can always be calculated.
     pub objects: SlabObjects<T>,
     pub next: SlabAddress,
 }
