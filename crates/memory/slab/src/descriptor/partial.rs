@@ -45,15 +45,17 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     /// Takes the first free object, and returns it with the slab's state
     /// afterwards.
     pub(crate) fn take_object(&mut self) -> (NonNull<T>, Taken) {
-        let idx = self.state.get_next_free_idx() as usize;
-        // SAFETY: `idx` heads this slab's free list, so nothing else
-        // references its slot.
-        let preallocated = unsafe { self.objects.slot(idx).as_mut() };
+        let slot =
+            self.objects.slot(self.state.get_next_free_idx() as usize);
+        // SAFETY: the slot heads this slab's free list, so it is free and
+        // its live field is `next_free_idx`, which `repr(C)` puts at its
+        // start.
+        let next = unsafe { slot.cast::<Option<NonMaxU16>>().read() };
 
         self.state
             .set_total_allocated(self.state.get_total_allocated() + 1);
 
-        let taken = match unsafe { preallocated.next_free_idx } {
+        let taken = match next {
             Some(idx) => {
                 self.state.set_next_free_idx(idx.get());
                 Taken::Partial
@@ -61,7 +63,7 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
             None => Taken::Full,
         };
 
-        unsafe { (NonNull::from_mut(&mut preallocated.allocated), taken) }
+        (slot.cast::<T>(), taken)
     }
 
     /// Puts object `idx` back on the free list, and returns the slab's
@@ -74,11 +76,12 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
         &mut self,
         idx: NonMaxU16,
     ) -> Returned {
+        let slot = self.objects.slot(idx.get() as usize);
+        let next = NonMaxU16::new(self.state.get_next_free_idx());
         // SAFETY: the caller guarantees `idx` is allocated, and its owner
-        // is done with it, so nothing else references its slot.
-        unsafe { self.objects.slot(idx.get() as usize).as_mut() }
-            .next_free_idx =
-            NonMaxU16::new(self.state.get_next_free_idx());
+        // is done with it, so nothing else references its slot. `repr(C)`
+        // puts `next_free_idx` at the slot's start.
+        unsafe { slot.cast::<Option<NonMaxU16>>().write(next) };
 
         self.state.set_next_free_idx(idx.get());
 
