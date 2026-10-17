@@ -1,12 +1,13 @@
-use core::{hint::unreachable_unchecked, ptr::NonNull};
+use core::ptr::NonNull;
 
 use nonmax::NonMaxU16;
 
 use crate::{
     descriptor::{
         FreeDetached, FreeHead, FullDetached, FullHead, Link,
-        PartialDetached, PartialHead, SlabState, SlabStateKind, Unlink,
-        Used, UsedSlab, meta::PartialMeta,
+        PartialDetached, PartialHead, SlabState, Unlink, Used, UsedSlab,
+        meta::PartialMeta,
+        partial::{Returned, Taken},
     },
     slab_address::SlabAddress,
     traits::Slab,
@@ -134,16 +135,14 @@ impl<T: Slab> SlabCache<T> {
             let (allocation, final_state) =
                 unsafe { head.as_mut() }.take_object();
             match final_state {
-                SlabStateKind::Partial => {}
-                SlabStateKind::Full => {
+                Taken::Partial => {}
+                Taken::Full => {
                     // SAFETY: the slab is used only inside this call,
                     // while the cache is locked.
                     let full = unsafe { self.pop_partial() }
                         .morph_mut::<FullDetached>();
                     full.link(&mut self.full);
                 }
-                // SAFETY: allocating never frees a slab.
-                SlabStateKind::Free => unsafe { unreachable_unchecked() },
             }
             return allocation;
         }
@@ -154,16 +153,14 @@ impl<T: Slab> SlabCache<T> {
             let partial = free.morph_mut::<PartialDetached>();
             let (allocation, final_state) = partial.take_object();
             match final_state {
-                SlabStateKind::Partial => {
+                Taken::Partial => {
                     partial.link(&mut self.partial);
                 }
-                SlabStateKind::Full => {
+                Taken::Full => {
                     partial
                         .morph_mut::<FullDetached>()
                         .link(&mut self.full);
                 }
-                // SAFETY: allocating never frees a slab.
-                SlabStateKind::Free => unsafe { unreachable_unchecked() },
             }
             return allocation;
         }
@@ -220,15 +217,13 @@ impl<T: Slab> SlabCache<T> {
     {
         // SAFETY: the caller guarantees `idx` is allocated.
         match unsafe { partial.return_object(idx) } {
-            SlabStateKind::Partial => {}
-            SlabStateKind::Free => {
+            Returned::Partial => {}
+            Returned::Free => {
                 partial
                     .unlink(&mut self.partial)
                     .morph_mut::<FreeDetached>()
                     .link(&mut self.free);
             }
-            // SAFETY: freeing never fills a slab.
-            SlabStateKind::Full => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -253,14 +248,12 @@ impl<T: Slab> SlabCache<T> {
             full.unlink(&mut self.full).morph_mut::<PartialDetached>();
         // SAFETY: the caller guarantees `idx` is allocated.
         match unsafe { partial.return_object(idx) } {
-            SlabStateKind::Partial => {
+            Returned::Partial => {
                 partial.link(&mut self.partial);
             }
-            SlabStateKind::Free => {
+            Returned::Free => {
                 partial.morph_mut::<FreeDetached>().link(&mut self.free);
             }
-            // SAFETY: freeing never fills a slab.
-            SlabStateKind::Full => unsafe { unreachable_unchecked() },
         }
     }
 }
