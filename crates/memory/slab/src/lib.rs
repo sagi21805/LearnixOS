@@ -17,7 +17,6 @@ pub mod slab_objects;
 pub mod traits;
 
 use crate::{
-    cache::SlabCache,
     cache_allocator::CacheAllocator,
     traits::{Slab, SlabBlock},
 };
@@ -52,26 +51,26 @@ where
     Block: BuddyBlock + SlabBlock,
     Arena: BuddyArena<Block> + 'static,
 {
-    slab_arena: &'static SpinMutex<[SlabCache<()>; COUNT]>,
+    slab_arena: &'static SpinMutex<SlabCaches>,
     buddy_arena: &'static SpinMutex<Arena>,
     // Wrap in a mutex to automatically implement Sync and Send.
     _block: PhantomData<SpinMutex<Block>>,
 }
 
 define_slab_system!(
-    Generic8,
-    Generic16,
-    Generic32,
-    Generic64,
-    Generic96,
-    Generic128,
-    Generic192,
-    Generic256,
-    Generic512,
-    Generic1024,
-    Generic2048,
-    Generic4096,
-    Generic8192,
+    generic8: Generic8,
+    generic16: Generic16,
+    generic32: Generic32,
+    generic64: Generic64,
+    generic96: Generic96,
+    generic128: Generic128,
+    generic192: Generic192,
+    generic256: Generic256,
+    generic512: Generic512,
+    generic1024: Generic1024,
+    generic2048: Generic2048,
+    generic4096: Generic4096,
+    generic8192: Generic8192,
 );
 
 impl<Block, Arena> SlabAllocator<Block, Arena>

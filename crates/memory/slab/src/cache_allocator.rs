@@ -85,11 +85,8 @@ where
             return Err(AllocError);
         }
 
-        let mut slab_lock = self.slab.slab_arena.lock();
-        // SAFETY: `define_slab_system!` put `T`'s cache at
-        // `T::SLAB_POSITION`.
-        let cache = unsafe { slab_lock[T::SLAB_POSITION].assign::<T>() };
-        let object = cache.take_object();
+        let object =
+            self.slab.slab_arena.lock().cache::<T>().take_object();
         Ok(NonNull::slice_from_raw_parts(object.cast(), size_of::<T>()))
     }
 
@@ -119,12 +116,9 @@ where
             .index_of(object)
             .expect("an allocated object is a slot of its page's slab");
 
-        // SAFETY: `define_slab_system!` put `T`'s cache at
-        // `T::SLAB_POSITION`.
-        let cache = unsafe { slab_lock[T::SLAB_POSITION].assign::<T>() };
         // SAFETY: the caller guarantees `object` is allocated, and its
         // slab sits in one of the cache's lists.
-        unsafe { cache.return_object(idx, descriptor) };
+        unsafe { slab_lock.cache::<T>().return_object(idx, descriptor) };
 
         drop(arena_lock);
         drop(slab_lock);

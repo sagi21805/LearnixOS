@@ -23,7 +23,7 @@ macro_rules! define_generics {
                 $(
                     if layout.size() <= <$name as $crate::traits::Generic>::END
                         && layout.align()
-                            <= <$name as $crate::traits::SlabPosition>::OBJECT_ALIGNMENT
+                            <= <$name as $crate::traits::SlabGeometry>::OBJECT_ALIGNMENT
                     {
                         return Some(SizeClass::$name);
                     }
@@ -85,35 +85,51 @@ macro_rules! define_generics {
     (@step $start:expr;) => {};
 }
 
-#[macro_export]
-macro_rules! register_slabs {
-    ($($t:ty),* $(,)?) => {
-        $crate::register_slabs!(@step 0; $($t),*);
-    };
-    // One arm handles both "head + rest" and "head only" via optional repetition.
-    (@step $idx:expr; $head:ty $(, $tail:ty)*) => {
-        impl $crate::traits::SlabPosition for $head {
-            const SLAB_POSITION: usize = $idx;
-        }
-
-        impl $crate::traits::Slab for $head {}
-
-        $crate::register_slabs!(@step $idx + 1; $($tail),*);
-    };
-    (@step $idx:expr; ) => {};
-}
-
+/// Declares one slab cache per `field: Type`, as a field of
+/// `SlabCaches`, and makes each type a [`Slab`](crate::traits::Slab) that
+/// finds its own field.
+///
+/// `define_slab_system!(generic8: Generic8)` -> `SlabCaches { generic8:
+/// SlabCache<Generic8> }`, and `Generic8::cache` returns that field.
 #[macro_export]
 macro_rules! define_slab_system {
-    ($($t:ty),* $(,)?) => {
-        $crate::register_slabs!($($t),*);
+    ($($field:ident: $t:ty),* $(,)?) => {
+        /// The slab caches, one per slab type.
+        pub struct SlabCaches {
+            $($field: $crate::cache::SlabCache<$t>,)*
+        }
 
-        const COUNT: usize = [$(stringify!($t)),*].len();
+        impl SlabCaches {
+            /// Every cache, empty.
+            const fn new() -> Self {
+                Self {
+                    $($field: $crate::cache::SlabCache::new(),)*
+                }
+            }
 
-        const EMPTY_SLAB: SlabCache<()> = SlabCache::default();
+            /// The cache of `T`.
+            pub fn cache<T: $crate::traits::Slab>(
+                &mut self,
+            ) -> &mut $crate::cache::SlabCache<T> {
+                T::cache(self)
+            }
+        }
 
-        pub(crate) static SLAB_ARENA: SpinMutex<[SlabCache<()>; COUNT]> = SpinMutex::new([EMPTY_SLAB; COUNT]);
-    }
+        $(
+            impl $crate::traits::SlabGeometry for $t {}
+
+            impl $crate::traits::Slab for $t {
+                fn cache(
+                    caches: &mut SlabCaches,
+                ) -> &mut $crate::cache::SlabCache<Self> {
+                    &mut caches.$field
+                }
+            }
+        )*
+
+        pub(crate) static SLAB_ARENA: SpinMutex<SlabCaches> =
+            SpinMutex::new(SlabCaches::new());
+    };
 }
 
 // TODO implement reverse lookup with an enum that will automatically be

@@ -7,20 +7,20 @@ use common::{
 use x86::structures::paging::PageEntryFlags;
 
 use crate::{
+    SlabCaches,
+    cache::SlabCache,
     descriptor::{SlabDescriptor, Used},
     preallocated::PreAllocated,
 };
 
-/// Get the position on the slab array, for a slab of the given type.
-///
-/// Shouldn't implement this trait manually; it is implemented
-/// via the `define_slab_system` macro.
-pub trait Slab: SlabPosition + SlabFlags + 'static {}
+/// A type allocated from its own slab cache.
+pub trait Slab: SlabGeometry + SlabFlags + 'static {
+    /// This type's cache in `caches`.
+    fn cache(caches: &mut SlabCaches) -> &mut SlabCache<Self>;
+}
 
-impl Slab for () {}
-
-pub trait SlabPosition: Sized {
-    const SLAB_POSITION: usize;
+/// The sizes of a slab of `Self`, all derived from the size of its slot.
+pub trait SlabGeometry: Sized {
     /// The buddy order of one slab, the smallest that fits an object.
     const BUDDY_ORDER: usize = size_of::<PreAllocated<Self>>()
         .div_ceil(REGULAR_PAGE_SIZE)
@@ -48,16 +48,12 @@ pub trait SlabPosition: Sized {
     };
 }
 
-impl SlabPosition for () {
-    const SLAB_POSITION: usize = usize::MAX;
-}
-
-pub trait SlabFlags: SlabPosition {
+pub trait SlabFlags: SlabGeometry {
     const PFLAGS: PageEntryFlags;
     const PSIZE: PageSize;
 }
 
-impl<T: SlabPosition> SlabFlags for T {
+impl<T: SlabGeometry> SlabFlags for T {
     default const PFLAGS: PageEntryFlags =
         PageEntryFlags::regular_page_flags();
 
