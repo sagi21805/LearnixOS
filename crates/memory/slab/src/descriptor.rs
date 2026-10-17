@@ -9,7 +9,8 @@ pub mod state;
 pub use state::*;
 
 use crate::{
-    slab_address::SlabAddress, slab_objects::SlabObjects, traits::Slab,
+    Generic64, slab_address::SlabAddress, slab_objects::SlabObjects,
+    traits::Slab,
 };
 use core::ptr::NonNull;
 use typestate_groups::{Isomorphic, group_impl, group_trait, typestate};
@@ -20,6 +21,13 @@ pub struct SlabDescriptor<T: Slab, S: SlabState> {
     pub objects: SlabObjects<T>,
     pub next: SlabAddress,
 }
+
+// A descriptor is its metadata, its objects pointer and its `next` link,
+// in every state.
+const _: () = {
+    assert!(size_of::<SlabDescriptor<Generic64, Partial>>() == 24);
+    assert!(size_of::<SlabDescriptor<Generic64, Free>>() == 24);
+};
 
 /// The head of a slab list, the first descriptor in it or `None` when the
 /// list is empty.

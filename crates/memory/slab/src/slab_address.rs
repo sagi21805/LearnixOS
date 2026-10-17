@@ -10,6 +10,9 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SlabAddress(Option<NonZeroU64>);
 
+// `None` takes the zero niche, so an address stays one `u64`.
+const _: () = assert!(size_of::<SlabAddress>() == 8);
+
 const impl Default for SlabAddress {
     fn default() -> Self { Self(None) }
 }
