@@ -8,6 +8,8 @@ use crate::descriptor::SlabAddress;
 pub struct PartialMeta {
     pub next_free_idx: B16,
     pub total_allocated: B31,
+    #[flag(r)]
+    pub reserved: B16,
     pub partial: B1,
 }
 

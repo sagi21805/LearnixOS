@@ -9,7 +9,11 @@
 
 pub mod meta;
 
-use core::{alloc::GlobalAlloc, marker::PhantomData, ptr::NonNull};
+use core::{
+    alloc::{AllocError, Allocator, Layout},
+    marker::PhantomData,
+    ptr::NonNull,
+};
 
 use libk::println;
 use sync::mutex::SpinMutex;
@@ -342,74 +346,74 @@ where
     }
 }
 
-unsafe impl<Arena, Block> GlobalAlloc for BuddyAllocator<Arena, Block>
+/// The buddy order whose blocks fit `layout`, or `None` for an empty
+/// layout or one larger than the biggest block.
+fn order_of(layout: Layout) -> Option<usize> {
+    let pages = layout.size().next_multiple_of(
+        REGULAR_PAGE_ALIGNMENT.max(layout.alignment()).as_usize(),
+    ) / REGULAR_PAGE_SIZE;
+
+    (1..=1 << BuddyOrder::MAX as usize)
+        .contains(&pages)
+        .then(|| pages.next_power_of_two().ilog2() as usize)
+}
+
+// SAFETY: every block comes from this allocator's arena and free lists,
+// stays allocated until `deallocate` returns it, and is never handed out
+// twice.
+unsafe impl<Arena, Block> Allocator for BuddyAllocator<Arena, Block>
 where
     Arena: BuddyArena<Block>,
     Block: const BuddyBlock,
 {
-    #[track_caller]
-    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        let num_pages = layout.size().next_multiple_of(
-            REGULAR_PAGE_ALIGNMENT.max(layout.alignment()).as_usize(),
-        ) / REGULAR_PAGE_SIZE;
+    /// Takes a block of the smallest order that fits `layout`, and
+    /// returns all of it.
+    fn allocate(
+        &self,
+        layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        let order = order_of(layout).ok_or(AllocError)?;
 
-        debug_assert!(num_pages <= (1 << BuddyOrder::MAX as usize));
+        let free = self.freelist.lock()[order].next.read();
+        let page = match free {
+            Some(page) => page,
+            None => {
+                let block = self.split_until(order).ok_or(AllocError)?;
+                // SAFETY: `split_until` returns a live block of the arena.
+                NonNull::from_ref(unsafe { block.as_ref() }.meta())
+            }
+        };
 
-        if num_pages > (1 << BuddyOrder::MAX as usize) || num_pages == 0 {
-            return core::ptr::null_mut();
-        }
-
-        let order = (usize::BITS
-            - 1
-            - num_pages.next_power_of_two().leading_zeros())
-            as usize;
-
-        let page =
-            self.freelist.lock()[order].next.read().unwrap_or_else(|| {
-                NonNull::from_ref(unsafe {
-                    self.split_until(order)
-                        .expect("Out of memory, swap is not implemented")
-                        .as_ref()
-                        .meta()
-                })
-            });
-
+        // SAFETY: `page` heads the free list of `order`, or was just split
+        // off for this call, so it is a free block.
         unsafe { self.allocate_meta(page) };
 
-        self.arena
+        let start = self
+            .arena
             .lock()
             .address_of(Block::from_meta(page))
-            .as_non_null::<u8>()
-            .as_ptr()
+            .as_non_null::<u8>();
+        Ok(NonNull::slice_from_raw_parts(
+            start,
+            REGULAR_PAGE_SIZE << order,
+        ))
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        let num_pages = layout.size().next_multiple_of(
-            REGULAR_PAGE_ALIGNMENT.max(layout.alignment()).as_usize(),
-        );
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        let order = order_of(layout);
+        debug_assert!(order.is_some(), "`layout` came from `allocate`");
+        // SAFETY: the caller guarantees `layout` is the one `allocate`
+        // accepted, so it has an order.
+        let order = unsafe { order.unwrap_unchecked() };
 
-        debug_assert!(
-            num_pages <= (1 << BuddyOrder::MAX as usize),
-            "Size cannot be greater then: {}",
-            1 << BuddyOrder::MAX as usize
-        );
-        if num_pages > (1 << BuddyOrder::MAX as usize) || num_pages == 0 {
-            panic!(
-                "Tried to deallocate a layout that couldn't possibly be \
-                 allocated by the allocate function."
-            )
-        }
         let mut page = self
             .arena
             .lock()
-            .page_with_address(PhysicalAddress::from(ptr as usize))
-            .unwrap();
+            .page_with_address(PhysicalAddress::from(ptr.addr().get()))
+            .expect("an allocated block lies in the arena");
 
-        let order = (usize::BITS
-            - 1
-            - num_pages.next_power_of_two().leading_zeros())
-            as usize;
-
+        // SAFETY: `page` is the allocated block at `ptr`, which nothing
+        // else uses once it is freed.
         unsafe {
             page.as_mut()
                 .meta_mut()

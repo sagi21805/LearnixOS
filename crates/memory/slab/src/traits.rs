@@ -4,7 +4,10 @@ use common::{
 };
 use x86::structures::paging::PageEntryFlags;
 
-use crate::descriptor::{SlabDescriptor, Used};
+use crate::{
+    descriptor::{SlabDescriptor, Used},
+    preallocated::PreAllocated,
+};
 
 /// Get the position on the slab array, for a slab of the given type.
 ///
@@ -16,11 +19,22 @@ impl Slab for () {}
 
 pub trait SlabPosition: Sized {
     const SLAB_POSITION: usize;
-    const PAGES_PER_SLAB: usize = size_of::<Self>()
-        .next_multiple_of(REGULAR_PAGE_SIZE)
-        / REGULAR_PAGE_SIZE;
-    const OBJECT_PER_SLAB: usize =
-        Self::PAGES_PER_SLAB / size_of::<Self>();
+    /// The buddy order of one slab, the smallest that fits an object.
+    const BUDDY_ORDER: usize = size_of::<PreAllocated<Self>>()
+        .div_ceil(REGULAR_PAGE_SIZE)
+        .next_power_of_two()
+        .ilog2() as usize;
+    const PAGES_PER_SLAB: usize = 1 << Self::BUDDY_ORDER;
+    const OBJECT_PER_SLAB: usize = Self::PAGES_PER_SLAB
+        * REGULAR_PAGE_SIZE
+        / size_of::<PreAllocated<Self>>();
+    /// The alignment of every object, the largest power of two that
+    /// divides both the slot size and the page size the slab starts on.
+    /// As the page size is a power of two, that is the lowest set bit of
+    /// their OR.
+    const OBJECT_ALIGNMENT: usize = (size_of::<PreAllocated<Self>>()
+        | REGULAR_PAGE_SIZE)
+        .isolate_lowest_one();
 }
 
 impl SlabPosition for () {
@@ -42,8 +56,6 @@ impl<T: SlabPosition> SlabFlags for T {
 pub trait Generic {
     const START: usize;
     const END: usize;
-
-    fn size(&self) -> usize;
 }
 
 pub trait DmaGeneric {

@@ -12,19 +12,6 @@ pub trait SlabState {
     type Meta;
 }
 
-/// The list a slab descriptor belongs to, and the states it takes as the
-/// list's head, as a node after the head, and outside the list.
-#[state_types]
-pub trait SlabList {
-    type Head: SlabState;
-    type Attached: SlabState;
-    type Detached: SlabState;
-}
-
-/// Where a slab descriptor sits relative to its list.
-#[state_types]
-pub trait SlabRole {}
-
 /// The first node of the partial list.
 #[state]
 pub struct PartialHead;
@@ -65,17 +52,13 @@ pub struct FullDetached;
 #[state]
 pub struct Used;
 
-/// A slab reached through a link, whose state the link doesn't record.
-#[state]
-pub struct Erased;
-
-#[group(PartialStates)]
+#[group(SinglyLinked)]
 impl SlabState for (PartialHead, Partial, PartialDetached) {
     #[size(8)]
     type Meta = PartialMeta;
 }
 
-#[group(LinkedStates)]
+#[group(DoublyLinked)]
 impl SlabState
     for (FreeHead, Free, FreeDetached, FullHead, Full, FullDetached)
 {
@@ -83,38 +66,39 @@ impl SlabState
     type Meta = FullFreeMeta;
 }
 
-#[group(RawStates)]
-impl SlabState for (Used, Erased) {
+#[group(UnknownList)]
+impl SlabState for (Used,) {
     #[size(8)]
     type Meta = RawMeta;
 }
 
-#[group(PartialList)]
-impl SlabList for (PartialHead, Partial, PartialDetached) {
-    type Head = PartialHead;
-    type Attached = Partial;
-    type Detached = PartialDetached;
+/// The states of the list a state belongs to, all in its group.
+pub trait ListState: SlabState {
+    /// The state of the list's first node.
+    type Head: SlabStateGroupMember<Self::Marker>;
+    /// The state of a node in the list.
+    type Attached: SlabStateGroupMember<Self::Marker>;
+    /// The state of a node outside the list.
+    type Detached: SlabStateGroupMember<Self::Marker>;
 }
 
-#[group(FreeList)]
-impl SlabList for (FreeHead, Free, FreeDetached) {
-    type Head = FreeHead;
-    type Attached = Free;
-    type Detached = FreeDetached;
+/// Implements [`ListState`] for the head, attached and detached states of
+/// one list.
+macro_rules! list_states {
+    ($head:ident, $attached:ident, $detached:ident) => {
+        list_states!(@each ($head, $attached, $detached) $head $attached $detached);
+    };
+    (@each ($head:ident, $attached:ident, $detached:ident) $($state:ident)+) => {
+        $(
+            impl ListState for $state {
+                type Head = $head;
+                type Attached = $attached;
+                type Detached = $detached;
+            }
+        )+
+    };
 }
 
-#[group(FullList)]
-impl SlabList for (FullHead, Full, FullDetached) {
-    type Head = FullHead;
-    type Attached = Full;
-    type Detached = FullDetached;
-}
-
-#[group(HeadRole)]
-impl SlabRole for (PartialHead, FreeHead, FullHead) {}
-
-#[group(AttachedRole)]
-impl SlabRole for (Partial, Free, Full) {}
-
-#[group(DetachedRole)]
-impl SlabRole for (PartialDetached, FreeDetached, FullDetached) {}
+list_states!(PartialHead, Partial, PartialDetached);
+list_states!(FreeHead, Free, FreeDetached);
+list_states!(FullHead, Full, FullDetached);
