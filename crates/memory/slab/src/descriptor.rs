@@ -31,50 +31,46 @@ pub enum SlabStateKind {
 /// list is empty.
 pub(crate) type ListHead<T, H> = Option<NonNull<SlabDescriptor<T, H>>>;
 
-/// A node of a slab list, which links itself into the list at `head` or
-/// unlinks itself from it, and returns itself in its new state.
-#[group_trait(by = SlabState)]
-pub(crate) trait ListNode<T: Slab> {
+/// A slab outside its list, which links itself into the list at `head`.
+#[group_trait(by = (SlabState, ListRole))]
+pub(crate) trait Link<T: Slab> {
     /// The state of the list's head.
     type Head: SlabState;
-    /// This descriptor in the list.
-    type Attached;
+
+    /// Links this descriptor into the list after its head, or as its head
+    /// when the list is empty.
+    fn link(&mut self, head: &mut ListHead<T, Self::Head>);
+}
+
+/// A slab in its list, which unlinks itself from the list at `head` and
+/// returns itself outside the list.
+#[group_trait(by = (SlabState, ListRole))]
+pub(crate) trait Unlink<T: Slab> {
+    /// The state of the list's head.
+    type Head: SlabState;
     /// This descriptor outside the list.
     type Detached;
 
-    /// Links this descriptor into the list after its head, or as its head
-    /// when the list is empty. Either way it comes back as an attached
-    /// node, as only the cache's head pointer has the head state.
-    fn link(
-        &mut self,
-        head: &mut ListHead<T, Self::Head>,
-    ) -> &mut Self::Attached;
-
-    /// Unlinks this descriptor from the list, moving the head on when this
-    /// descriptor is it.
+    /// Unlinks this descriptor from the list.
     fn unlink(
         &mut self,
         head: &mut ListHead<T, Self::Head>,
     ) -> &mut Self::Detached;
 }
 
-/// The singly-linked partial list. A node doesn't know its previous node,
-/// so unlinking one other than the head walks the list from the head.
-#[group_impl(SinglyLinked, state = S)]
-impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
+/// Links a slab into the singly-linked partial list, marking it as the
+/// head when the list is empty.
+#[group_impl(SlabState = SinglyLinked, ListRole = Detached, state = S)]
+impl<T: Slab, S: ListState> Link<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
-    type Attached = SlabDescriptor<T, S::Attached>;
-    type Detached = SlabDescriptor<T, S::Detached>;
 
-    fn link(
-        &mut self,
-        head: &mut ListHead<T, S::Head>,
-    ) -> &mut SlabDescriptor<T, S::Attached> {
+    fn link(&mut self, head: &mut ListHead<T, S::Head>) {
         match head {
             None => {
+                self.state.set_head(true);
                 *head = Some(NonNull::from_mut(
                     self.cast_state_mut::<S::Head>(),
-                ))
+                ));
             }
             Some(first) => {
                 // SAFETY: the head is live and isn't this descriptor,
@@ -86,53 +82,17 @@ impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
                     SlabAddress::from_non_null(NonNull::from_mut(self));
             }
         }
-        self.cast_state_mut::<S::Attached>()
-    }
-
-    fn unlink(
-        &mut self,
-        head: &mut ListHead<T, S::Head>,
-    ) -> &mut SlabDescriptor<T, S::Detached> {
-        let address = SlabAddress::from_non_null(NonNull::from_mut(self));
-        let mut first = head.expect("this descriptor is in the list");
-
-        if SlabAddress::from_non_null(first) == address {
-            // SAFETY: `next` links a live node of this list.
-            *head = unsafe { self.next.as_non_null::<T, S::Head>() };
-        } else {
-            // SAFETY: the head is live and isn't this descriptor, and
-            // nothing else borrows it while the list is locked.
-            let mut link = &mut unsafe { first.as_mut() }.next;
-            while *link != address {
-                // SAFETY: `link` links a live node of this list before
-                // this one, which nothing else borrows while the list is
-                // locked.
-                let mut node = unsafe { link.as_non_null::<T, S>() }
-                    .expect("this descriptor is in the list");
-                // SAFETY: as above.
-                link = &mut unsafe { node.as_mut() }.next;
-            }
-            *link = self.next;
-        }
-
-        self.next = SlabAddress::default();
-        self.cast_state_mut::<S::Detached>()
     }
 }
 
-/// The doubly-linked free and full lists. Every node of a list shares
-/// this descriptor's metadata, so it reads its neighbours in its own
-/// state.
-#[group_impl(DoublyLinked, state = S)]
-impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
+/// Links a slab into a doubly-linked free or full list. Every node of a
+/// list shares this descriptor's metadata, so it reads its neighbours in
+/// its own state.
+#[group_impl(SlabState = DoublyLinked, ListRole = Detached, state = S)]
+impl<T: Slab, S: ListState> Link<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
-    type Attached = SlabDescriptor<T, S::Attached>;
-    type Detached = SlabDescriptor<T, S::Detached>;
 
-    fn link(
-        &mut self,
-        head: &mut ListHead<T, S::Head>,
-    ) -> &mut SlabDescriptor<T, S::Attached> {
+    fn link(&mut self, head: &mut ListHead<T, S::Head>) {
         match head {
             None => {
                 *head = Some(NonNull::from_mut(
@@ -163,8 +123,120 @@ impl<T: Slab, S: ListState> ListNode<T> for SlabDescriptor<T, S> {
                 first.next = address;
             }
         }
-        self.cast_state_mut::<S::Attached>()
     }
+}
+
+/// Unlinks the head of the singly-linked partial list, and marks the
+/// next node as the head.
+#[group_impl(SlabState = SinglyLinked, ListRole = Heads, state = S)]
+impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
+    type Head = S::Head;
+    type Detached = SlabDescriptor<T, S::Detached>;
+
+    fn unlink(
+        &mut self,
+        head: &mut ListHead<T, S::Head>,
+    ) -> &mut SlabDescriptor<T, S::Detached> {
+        debug_assert!(
+            self.state.is_head(),
+            "the head has its head bit set"
+        );
+
+        // SAFETY: `next` links a live node of this list, which nothing
+        // else borrows while the list is locked.
+        *head = unsafe { self.next.as_non_null::<T, S::Head>() };
+        if let Some(mut first) = *head {
+            // SAFETY: as above.
+            unsafe { first.as_mut() }.state.set_head(true);
+        }
+
+        self.next = SlabAddress::default();
+        self.state.set_head(false);
+        self.cast_state_mut::<S::Detached>()
+    }
+}
+
+/// Unlinks the head of a doubly-linked free or full list, and leaves the
+/// next node without a previous one.
+#[group_impl(SlabState = DoublyLinked, ListRole = Heads, state = S)]
+impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
+    type Head = S::Head;
+    type Detached = SlabDescriptor<T, S::Detached>;
+
+    fn unlink(
+        &mut self,
+        head: &mut ListHead<T, S::Head>,
+    ) -> &mut SlabDescriptor<T, S::Detached> {
+        debug_assert!(
+            self.state.get_prev() == SlabAddress::default(),
+            "the head has no previous node"
+        );
+
+        // SAFETY: `next` links a live node of this list, which nothing
+        // else borrows while the list is locked.
+        *head = unsafe { self.next.as_non_null::<T, S::Head>() };
+        if let Some(mut first) = *head {
+            // SAFETY: as above.
+            unsafe { first.as_mut() }
+                .state
+                .set_prev(SlabAddress::default());
+        }
+
+        self.next = SlabAddress::default();
+        self.cast_state_mut::<S::Detached>()
+    }
+}
+
+/// Unlinks a node of the singly-linked partial list. A node doesn't know
+/// its previous node, so unlinking one other than the head walks the list
+/// from the head.
+#[group_impl(SlabState = SinglyLinked, ListRole = Attached, state = S)]
+impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
+    type Head = S::Head;
+    type Detached = SlabDescriptor<T, S::Detached>;
+
+    fn unlink(
+        &mut self,
+        head: &mut ListHead<T, S::Head>,
+    ) -> &mut SlabDescriptor<T, S::Detached> {
+        let address = SlabAddress::from_non_null(NonNull::from_mut(self));
+        let mut first = head.expect("this descriptor is in the list");
+
+        if SlabAddress::from_non_null(first) == address {
+            // SAFETY: `next` links a live node of this list.
+            *head = unsafe { self.next.as_non_null::<T, S::Head>() };
+            if let Some(mut first) = *head {
+                // SAFETY: as above, and nothing else borrows it while
+                // the list is locked.
+                unsafe { first.as_mut() }.state.set_head(true);
+            }
+            self.state.set_head(false);
+        } else {
+            // SAFETY: the head is live and isn't this descriptor, and
+            // nothing else borrows it while the list is locked.
+            let mut link = &mut unsafe { first.as_mut() }.next;
+            while *link != address {
+                // SAFETY: `link` links a live node of this list before
+                // this one, which nothing else borrows while the list is
+                // locked.
+                let mut node = unsafe { link.as_non_null::<T, S>() }
+                    .expect("this descriptor is in the list");
+                // SAFETY: as above.
+                link = &mut unsafe { node.as_mut() }.next;
+            }
+            *link = self.next;
+        }
+
+        self.next = SlabAddress::default();
+        self.cast_state_mut::<S::Detached>()
+    }
+}
+
+/// Unlinks a node of a doubly-linked free or full list.
+#[group_impl(SlabState = DoublyLinked, ListRole = Attached, state = S)]
+impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
+    type Head = S::Head;
+    type Detached = SlabDescriptor<T, S::Detached>;
 
     fn unlink(
         &mut self,
