@@ -9,7 +9,9 @@ pub struct PartialMeta {
     pub next_free_idx: B16,
     pub total_allocated: B31,
     #[flag(r)]
-    pub reserved: B16,
+    pub reserved: B15,
+    /// Whether this slab is the first node of the partial list.
+    pub head: B1,
     pub partial: B1,
 }
 
