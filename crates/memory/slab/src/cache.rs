@@ -4,8 +4,9 @@ use nonmax::NonMaxU16;
 
 use crate::{
     descriptor::{
-        FreeDetached, FreeHead, Full, FullDetached, FullHead, ListNode,
-        Partial, PartialDetached, PartialHead, SlabStateKind, Used,
+        FreeDetached, FreeHead, Full, FullDetached, FullHead, Link,
+        Partial, PartialDetached, PartialHead, SlabStateKind, Unlink,
+        Used,
     },
     slab_address::SlabAddress,
     traits::Slab,

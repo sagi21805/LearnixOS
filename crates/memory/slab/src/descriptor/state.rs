@@ -72,6 +72,22 @@ impl SlabState for (Used,) {
     type Meta = RawMeta;
 }
 
+/// A state's place in its list.
+#[state_types]
+pub trait ListRole {}
+
+/// The first node of a list.
+#[group(Heads)]
+impl ListRole for (PartialHead, FreeHead, FullHead) {}
+
+/// A node in its list.
+#[group(Attached)]
+impl ListRole for (Partial, Free, Full) {}
+
+/// A node outside its list.
+#[group(Detached)]
+impl ListRole for (PartialDetached, FreeDetached, FullDetached) {}
+
 /// The states of the list a state belongs to, all in its group.
 pub trait ListState: SlabState {
     /// The state of the list's first node.
