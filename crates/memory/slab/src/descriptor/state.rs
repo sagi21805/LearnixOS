@@ -80,7 +80,7 @@ pub trait ListRole {}
 #[group(Heads)]
 impl ListRole for (PartialHead, FreeHead, FullHead) {}
 
-/// A node in its list.
+/// A node in its list other than its head.
 #[group(Attached)]
 impl ListRole for (Partial, Free, Full) {}
 
