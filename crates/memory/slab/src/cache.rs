@@ -4,9 +4,9 @@ use nonmax::NonMaxU16;
 
 use crate::{
     descriptor::{
-        FreeDetached, FreeHead, Full, FullDetached, FullHead, Link,
-        Partial, PartialDetached, PartialHead, SlabStateKind, Unlink,
-        Used,
+        FreeDetached, FreeHead, FullDetached, FullHead, Link,
+        PartialDetached, PartialHead, SlabState, SlabStateKind, Unlink,
+        Used, UsedSlab, meta::PartialMeta,
     },
     slab_address::SlabAddress,
     traits::Slab,
@@ -188,9 +188,15 @@ impl<T: Slab> SlabCache<T> {
     ) {
         // SAFETY: the caller's guarantees carry over.
         unsafe {
-            match slab.is_partial_mut() {
-                Ok(partial) => self.return_to_partial(idx, partial),
-                Err(full) => self.return_to_full(idx, full),
+            match slab.classify_mut() {
+                UsedSlab::PartialHead(partial) => {
+                    self.return_to_partial(idx, partial)
+                }
+                UsedSlab::Partial(partial) => {
+                    self.return_to_partial(idx, partial)
+                }
+                UsedSlab::FullHead(full) => self.return_to_full(idx, full),
+                UsedSlab::Full(full) => self.return_to_full(idx, full),
             }
         }
     }
@@ -200,11 +206,18 @@ impl<T: Slab> SlabCache<T> {
     /// # Safety
     ///
     /// `idx` must be an allocated object of `partial`.
-    unsafe fn return_to_partial(
+    unsafe fn return_to_partial<S>(
         &mut self,
         idx: NonMaxU16,
-        partial: &mut SlabDescriptor<T, Partial>,
-    ) {
+        partial: &mut SlabDescriptor<T, S>,
+    ) where
+        S: SlabState<Meta = PartialMeta>,
+        SlabDescriptor<T, S>: Unlink<
+                T,
+                Head = PartialHead,
+                Detached = SlabDescriptor<T, PartialDetached>,
+            >,
+    {
         // SAFETY: the caller guarantees `idx` is allocated.
         match unsafe { partial.return_object(idx) } {
             SlabStateKind::Partial => {}
@@ -224,11 +237,18 @@ impl<T: Slab> SlabCache<T> {
     /// # Safety
     ///
     /// `idx` must be an allocated object of `full`.
-    unsafe fn return_to_full(
+    unsafe fn return_to_full<S>(
         &mut self,
         idx: NonMaxU16,
-        full: &mut SlabDescriptor<T, Full>,
-    ) {
+        full: &mut SlabDescriptor<T, S>,
+    ) where
+        S: SlabState,
+        SlabDescriptor<T, S>: Unlink<
+                T,
+                Head = FullHead,
+                Detached = SlabDescriptor<T, FullDetached>,
+            >,
+    {
         let partial =
             full.unlink(&mut self.full).morph_mut::<PartialDetached>();
         // SAFETY: the caller guarantees `idx` is allocated.

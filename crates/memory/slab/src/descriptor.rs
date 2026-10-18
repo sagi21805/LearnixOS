@@ -187,9 +187,9 @@ impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
     }
 }
 
-/// Unlinks a node of the singly-linked partial list. A node doesn't know
-/// its previous node, so unlinking one other than the head walks the list
-/// from the head.
+/// Unlinks a node of the singly-linked partial list other than its head.
+/// A node doesn't know its previous node, so it walks the list from the
+/// head.
 #[group_impl(SlabState = SinglyLinked, ListRole = Attached, state = S)]
 impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
@@ -199,40 +199,33 @@ impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
         &mut self,
         head: &mut ListHead<T, S::Head>,
     ) -> &mut SlabDescriptor<T, S::Detached> {
+        debug_assert!(
+            !self.state.is_head(),
+            "an attached node isn't the head"
+        );
         let address = SlabAddress::from_non_null(NonNull::from_mut(self));
-        let mut first = head.expect("this descriptor is in the list");
+        let mut first = head.expect("an attached node's list has a head");
 
-        if SlabAddress::from_non_null(first) == address {
-            // SAFETY: `next` links a live node of this list.
-            *head = unsafe { self.next.as_non_null::<T, S::Head>() };
-            if let Some(mut first) = *head {
-                // SAFETY: as above, and nothing else borrows it while
-                // the list is locked.
-                unsafe { first.as_mut() }.state.set_head(true);
-            }
-            self.state.set_head(false);
-        } else {
-            // SAFETY: the head is live and isn't this descriptor, and
-            // nothing else borrows it while the list is locked.
-            let mut link = &mut unsafe { first.as_mut() }.next;
-            while *link != address {
-                // SAFETY: `link` links a live node of this list before
-                // this one, which nothing else borrows while the list is
-                // locked.
-                let mut node = unsafe { link.as_non_null::<T, S>() }
-                    .expect("this descriptor is in the list");
-                // SAFETY: as above.
-                link = &mut unsafe { node.as_mut() }.next;
-            }
-            *link = self.next;
+        // SAFETY: the head is live and isn't this descriptor, and nothing
+        // else borrows it while the list is locked.
+        let mut link = &mut unsafe { first.as_mut() }.next;
+        while *link != address {
+            // SAFETY: `link` links a live node of this list before this
+            // one, which nothing else borrows while the list is locked.
+            let mut node = unsafe { link.as_non_null::<T, S>() }
+                .expect("this descriptor is in the list");
+            // SAFETY: as above.
+            link = &mut unsafe { node.as_mut() }.next;
         }
+        *link = self.next;
 
         self.next = SlabAddress::default();
         self.cast_state_mut::<S::Detached>()
     }
 }
 
-/// Unlinks a node of a doubly-linked free or full list.
+/// Unlinks a node of a doubly-linked free or full list other than its
+/// head, so it always has a previous node and leaves the head alone.
 #[group_impl(SlabState = DoublyLinked, ListRole = Attached, state = S)]
 impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
@@ -240,17 +233,16 @@ impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
 
     fn unlink(
         &mut self,
-        head: &mut ListHead<T, S::Head>,
+        _head: &mut ListHead<T, S::Head>,
     ) -> &mut SlabDescriptor<T, S::Detached> {
-        let address = SlabAddress::from_non_null(NonNull::from_mut(self));
-        if head.is_some_and(|first| {
-            SlabAddress::from_non_null(first) == address
-        }) {
-            // SAFETY: `next` links a live node of this list.
-            *head = unsafe { self.next.as_non_null::<T, S::Head>() };
-        }
-
         let prev = self.state.get_prev();
+
+        // SAFETY: `prev` links a live node of this list, which nothing
+        // else borrows while the list is locked.
+        let mut prev_node = unsafe { prev.as_non_null::<T, S>() }
+            .expect("an attached node has a previous node");
+        // SAFETY: as above.
+        unsafe { prev_node.as_mut() }.next = self.next;
 
         // SAFETY: `next` links a live node of this list, which nothing
         // else borrows while the list is locked.
@@ -260,41 +252,44 @@ impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S> {
             unsafe { next.as_mut() }.state.set_prev(prev);
         }
 
-        // SAFETY: `prev` links a live node of this list, which nothing
-        // else borrows while the list is locked.
-        if let Some(mut prev) = unsafe { prev.as_non_null::<T, S>() } {
-            // SAFETY: as above.
-            unsafe { prev.as_mut() }.next = self.next;
-        }
-
         self.next = SlabAddress::default();
         self.state.set_prev(SlabAddress::default());
         self.cast_state_mut::<S::Detached>()
     }
 }
 
-impl<T: Slab> SlabDescriptor<T, Used> {
-    pub fn is_partial(
-        &self,
-    ) -> Result<&SlabDescriptor<T, Partial>, &SlabDescriptor<T, Full>>
-    {
-        if self.state.is_partial() {
-            Ok(self.cast_state_ref::<Partial>())
-        } else {
-            Err(self.cast_state_ref::<Full>())
-        }
-    }
+/// A used slab in the state of its list and its place in it.
+///
+/// The head and attached states hold only while the cache stays locked,
+/// because popping the head makes the next node the head.
+pub enum UsedSlab<'a, T: Slab> {
+    PartialHead(&'a mut SlabDescriptor<T, PartialHead>),
+    Partial(&'a mut SlabDescriptor<T, Partial>),
+    FullHead(&'a mut SlabDescriptor<T, FullHead>),
+    Full(&'a mut SlabDescriptor<T, Full>),
+}
 
-    pub fn is_partial_mut(
-        &mut self,
-    ) -> Result<
-        &mut SlabDescriptor<T, Partial>,
-        &mut SlabDescriptor<T, Full>,
-    > {
+impl<T: Slab> SlabDescriptor<T, Used> {
+    /// Reads this slab's list from its partial bit, and whether it heads
+    /// that list from its head bit or, for a full slab, from it having no
+    /// previous node.
+    pub fn classify_mut(&mut self) -> UsedSlab<'_, T> {
         if self.state.is_partial() {
-            Ok(self.cast_state_mut::<Partial>())
+            let partial = self.cast_state_mut::<Partial>();
+            if partial.state.is_head() {
+                UsedSlab::PartialHead(
+                    partial.cast_state_mut::<PartialHead>(),
+                )
+            } else {
+                UsedSlab::Partial(partial)
+            }
         } else {
-            Err(self.cast_state_mut::<Full>())
+            let full = self.cast_state_mut::<Full>();
+            if full.state.get_prev() == SlabAddress::default() {
+                UsedSlab::FullHead(full.cast_state_mut::<FullHead>())
+            } else {
+                UsedSlab::Full(full)
+            }
         }
     }
 }
