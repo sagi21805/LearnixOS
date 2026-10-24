@@ -5,13 +5,14 @@ use nonmax::NonMaxU16;
 use crate::{
     Generic64,
     descriptor::{
-        FreeDetached, FreeHead, FullDetached, FullHead, Link, ListHead,
+        FreeDetached, FreeHead, FullDetached, FullHead, InList, Link,
+        ListHead,
         PartialDetached, PartialHead, SlabDescriptor, SlabState, Unlink,
         Used, UsedSlab,
         meta::PartialMeta,
-        partial::{Returned, Taken},
+        partial::{Released, Claimed},
     },
-    traits::Slab,
+    traits::{Slab, Unknown},
 };
 use typestate_groups::Morphic;
 
@@ -25,17 +26,16 @@ pub struct SlabCache<T: Slab> {
     pub(crate) full: ListHead<T, FullHead>,
 }
 
-// SAFETY: the descriptors the heads point at are reached only through
-// this cache's lists, and only through `&mut self`, so moving the cache to
-// another thread moves its lists with it.
+// SAFETY: the lists are reached only through `&mut self`, so they move
+// with the cache.
 unsafe impl<T: Slab> Send for SlabCache<T> {}
 
 // The cache is three head pointers, whatever `T` is.
 const _: () = assert!(size_of::<SlabCache<Generic64>>() == 24);
 
-/// The slab caches, each slab type `T`'s at `T::SLAB_POSITION`, stored
-/// erased so they fit in one array.
-pub struct SlabCaches<const N: usize>([SlabCache<()>; N]);
+/// The slab caches, each slab type `T`'s at `T::SLAB_POSITION`, stored as
+/// [`Unknown`] caches so they fit in one array.
+pub struct SlabCaches<const N: usize>([SlabCache<Unknown>; N]);
 
 impl<const N: usize> SlabCaches<N> {
     /// Every cache, empty.
@@ -46,10 +46,8 @@ impl<const N: usize> SlabCaches<N> {
     /// The cache of `T`.
     pub fn cache<T: Slab>(&mut self) -> &mut SlabCache<T> {
         let cache = NonNull::from_mut(&mut self.0[T::SLAB_POSITION]);
-        // SAFETY: `Slab` is sealed, and `define_slab_system!` gives each
-        // type its own position, so only `T` reaches this slot, and an
-        // empty cache is valid for every `T`. `SlabCache` is `repr(C)`,
-        // so `SlabCache<()>` and `SlabCache<T>` share a layout.
+        // SAFETY: `Slab` is sealed and each type has its own position, so
+        // only `T` reaches this slot. `repr(C)` keeps the layouts equal.
         unsafe { cache.cast::<SlabCache<T>>().as_mut() }
     }
 }
@@ -64,36 +62,14 @@ impl<T: Slab> SlabCache<T> {
         }
     }
 
-    /// Allocate a new slab descriptor, attaches it to the free slab list,
-    /// and initialize it's page.
-    ///
-    /// TODO: THIS FUNCTION SHOULD MOVE TO THE SLAB ALLOCATOR AND GET A
-    /// TYPE OF A SPECIFIC SLAB
-    pub fn grow(&mut self) {
-        // Allocate a new slab descriptor for this slab
-        // let mut slab = unsafe {
-        //     SLAB_ALLOCATOR.kmalloc::<SlabDescriptor<()>>().assign::<T>()
-        // };
-
-        // unsafe {
-        //     *slab.as_mut() =
-        //         SlabDescriptor::<T>::new(self.buddy_order, self.free)
-        // }
-
-        // self.take_ownership(slab);
-
-        // self.free = Some(slab);
-    }
-
     /// Takes a free object, and moves its slab to the list of its new
     /// state.
     pub(crate) fn take_object(&mut self) -> NonNull<T> {
-        // SAFETY: this call holds no other reference to the partial head.
         if let Some(head) = unsafe { self.partial.first() } {
-            let (allocation, final_state) = head.take_object();
+            let (allocation, final_state) = head.claim_slot();
             match final_state {
-                Taken::Partial => {}
-                Taken::Full => {
+                Claimed::Partial => {}
+                Claimed::Full => {
                     head.unlink(&mut self.partial)
                         .morph_mut::<FullDetached>()
                         .link(&mut self.full);
@@ -102,16 +78,15 @@ impl<T: Slab> SlabCache<T> {
             return allocation;
         }
 
-        // SAFETY: this call holds no other reference to the free head.
         if let Some(head) = unsafe { self.free.first() } {
             let partial =
                 head.unlink(&mut self.free).morph_mut::<PartialDetached>();
-            let (allocation, final_state) = partial.take_object();
+            let (allocation, final_state) = partial.claim_slot();
             match final_state {
-                Taken::Partial => {
+                Claimed::Partial => {
                     partial.link(&mut self.partial);
                 }
-                Taken::Full => {
+                Claimed::Full => {
                     partial
                         .morph_mut::<FullDetached>()
                         .link(&mut self.full);
@@ -139,20 +114,15 @@ impl<T: Slab> SlabCache<T> {
         slab: &mut SlabDescriptor<T, Used>,
     ) {
         match slab.classify_mut() {
-            // SAFETY: the caller guarantees `idx` is an allocated object
-            // of `slab`.
             UsedSlab::PartialHead(partial) => unsafe {
                 self.return_to_partial(idx, partial)
             },
-            // SAFETY: as above.
             UsedSlab::Partial(partial) => unsafe {
                 self.return_to_partial(idx, partial)
             },
-            // SAFETY: as above.
             UsedSlab::FullHead(full) => unsafe {
                 self.return_to_full(idx, full)
             },
-            // SAFETY: as above.
             UsedSlab::Full(full) => unsafe {
                 self.return_to_full(idx, full)
             },
@@ -170,16 +140,11 @@ impl<T: Slab> SlabCache<T> {
         partial: &mut SlabDescriptor<T, S>,
     ) where
         S: SlabState<Meta = PartialMeta>,
-        SlabDescriptor<T, S>: Unlink<
-                T,
-                Head = PartialHead,
-                Detached = SlabDescriptor<T, PartialDetached>,
-            >,
+        SlabDescriptor<T, S>: InList<T, PartialHead>,
     {
-        // SAFETY: the caller guarantees `idx` is allocated.
-        match unsafe { partial.return_object(idx) } {
-            Returned::Partial => {}
-            Returned::Free => {
+        match unsafe { partial.release_slot(idx) } {
+            Released::Partial => {}
+            Released::Free => {
                 partial
                     .unlink(&mut self.partial)
                     .morph_mut::<FreeDetached>()
@@ -199,20 +164,15 @@ impl<T: Slab> SlabCache<T> {
         full: &mut SlabDescriptor<T, S>,
     ) where
         S: SlabState,
-        SlabDescriptor<T, S>: Unlink<
-                T,
-                Head = FullHead,
-                Detached = SlabDescriptor<T, FullDetached>,
-            >,
+        SlabDescriptor<T, S>: InList<T, FullHead>,
     {
         let partial =
             full.unlink(&mut self.full).morph_mut::<PartialDetached>();
-        // SAFETY: the caller guarantees `idx` is allocated.
-        match unsafe { partial.return_object(idx) } {
-            Returned::Partial => {
+        match unsafe { partial.release_slot(idx) } {
+            Released::Partial => {
                 partial.link(&mut self.partial);
             }
-            Returned::Free => {
+            Released::Free => {
                 partial.morph_mut::<FreeDetached>().link(&mut self.free);
             }
         }

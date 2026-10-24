@@ -7,6 +7,7 @@ use crate::{
     traits::Slab,
 };
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SlabAddress(Option<NonZeroU64>);
 
@@ -45,15 +46,13 @@ impl SlabAddress {
     ///
     /// # Safety
     ///
-    /// A non-zero address must be the `next` or `prev` of a node in a
-    /// list the caller has locked, so a live descriptor in state `S`
-    /// sits there. The caller must hold no other reference to that
-    /// descriptor while this one is used.
+    /// A non-zero address must be a list head, or the `next` or `prev`
+    /// of a node, in a list the caller has locked, so a live descriptor in
+    /// state `S` sits there. The caller must hold no other reference
+    /// to that descriptor while this one is used.
     pub(crate) unsafe fn node_mut<'a, T: Slab, S: SlabState>(
         self,
     ) -> Option<&'a mut SlabDescriptor<T, S>> {
-        // SAFETY: the caller guarantees a live descriptor in state `S` at
-        // this address, which nothing else references.
         self.as_non_null().map(|mut node| unsafe { node.as_mut() })
     }
 
