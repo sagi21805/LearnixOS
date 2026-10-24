@@ -1,120 +1,78 @@
-/// Declares a [`Generic`](crate::traits::Generic) size class for each
-/// `Name = size`, covering the sizes above the previous class up to its
-/// own, plus a `SizeClass` enum of them and the `Allocator` impl of
-/// `SlabAllocator` that picks a class per layout.
+/// Declares a generic allocation size for each `Name = size`, smallest
+/// first, `define_slab_system!`, which numbers them before the slab types
+/// it is given, and `match_generic!`, which runs a block with a type
+/// named after the smallest size that holds a given number of bytes.
 ///
-/// `define_generics!(Generic8 = 8, Generic16 = 16)` -> `Generic8` covers
-/// `0..=8` and `Generic16` covers `9..=16`.
+/// `define_generics!(Generic8 = 8, Generic16 = 16)` ->
+/// `match_generic!(size, T => { body }, _ => fallback)` expands to
+/// `match size { ..=8 => { type T = Generic8; body } ..=16 => { type T =
+/// Generic16; body } _ => fallback }`.
 #[macro_export]
 macro_rules! define_generics {
     ($($name:ident = $size:literal),* $(,)?) => {
-        $crate::define_generics!(@step 0; $($name = $size),*);
+        $(
+            #[derive(Debug, Clone, Copy)]
+            #[::typestate_groups::state]
+            pub struct $name(pub [usize; $size / 8]);
+        )*
 
-        /// The generic size classes, smallest first.
-        #[derive(Debug, Clone, Copy)]
-        pub enum SizeClass {
-            $($name),*
+        use $crate::traits::{SlabFamily, SlabFamilyGroupMarker};
+
+        /// The generic sizes, mapped as regular memory.
+        #[::typestate_groups::group(Generic)]
+        impl SlabFamily for ($($name,)*) {
+            const PFLAGS: ::x86::structures::paging::PageEntryFlags =
+                ::x86::structures::paging::PageEntryFlags::regular_page_flags();
+            const PSIZE: ::common::enums::PageSize =
+                ::common::enums::PageSize::Regular;
         }
 
-        impl SizeClass {
-            /// The smallest class whose objects fit `layout` in size and
-            /// alignment.
-            pub fn of(layout: core::alloc::Layout) -> Option<SizeClass> {
-                $(
-                    if layout.size() <= <$name as $crate::traits::Generic>::END
-                        && layout.align()
-                            <= <$name as $crate::traits::SlabGeometry>::OBJECT_ALIGNMENT
-                    {
-                        return Some(SizeClass::$name);
-                    }
-                )*
-                None
-            }
+        /// Numbers the generic sizes and then the given slab types, as
+        /// `number_slab_types!` does.
+        macro_rules! define_slab_system {
+            ($$($$t:ty),* $$(,)?) => {
+                $crate::number_slab_types!($($name,)* $$($$t),*);
+            };
         }
 
-        // SAFETY: each layout maps to one size class, and every class
-        // forwards to its `CacheAllocator`, so blocks come from and return
-        // to the same cache.
-        unsafe impl<Block, Arena> core::alloc::Allocator
-            for $crate::SlabAllocator<Block, Arena>
-        where
-            Block: buddy::meta::BuddyBlock + $crate::traits::SlabBlock,
-            Arena: buddy::meta::BuddyArena<Block> + 'static,
-        {
-            fn allocate(
-                &self,
-                layout: core::alloc::Layout,
-            ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-                match SizeClass::of(layout).ok_or(core::alloc::AllocError)? {
-                    $(SizeClass::$name => self.cache::<$name>().allocate(layout),)*
+        /// Runs `$body` with `$t` naming the smallest generic size of at
+        /// least `$size` bytes, or `$fallback` when none is that large.
+        macro_rules! match_generic {
+            (
+                $$size:expr,
+                $$t:ident => $$body:block,
+                _ => $$fallback:expr
+            ) => {
+                match $$size {
+                    $( ..=$size => { type $$t = $name; $$body } )*
+                    _ => $$fallback,
                 }
-            }
-
-            unsafe fn deallocate(
-                &self,
-                ptr: core::ptr::NonNull<u8>,
-                layout: core::alloc::Layout,
-            ) {
-                let class = SizeClass::of(layout);
-                debug_assert!(class.is_some(), "`layout` came from `allocate`");
-                // SAFETY: `layout` fits a block `allocate` returned, so `of`
-                // found a class then and finds the same one now.
-                match unsafe { class.unwrap_unchecked() } {
-                    $(
-                        // SAFETY: the caller's guarantees carry over to the
-                        // cache that allocated `ptr`.
-                        SizeClass::$name => unsafe {
-                            self.cache::<$name>().deallocate(ptr, layout)
-                        },
-                    )*
-                }
-            }
+            };
         }
     };
-    (@step $start:expr; $name:ident = $size:literal $(, $rest:ident = $rest_size:literal)*) => {
-        #[derive(Debug, Clone, Copy)]
-        pub struct $name(pub [usize; $size / 8]);
-
-        impl $crate::traits::Generic for $name {
-            const START: usize = $start;
-            const END: usize = $size;
-        }
-
-        $crate::define_generics!(@step $size + 1; $($rest = $rest_size),*);
-    };
-    (@step $start:expr;) => {};
 }
 
 /// Numbers the slab types in order, giving each its position in
-/// [`SlabCaches`](crate::cache::SlabCaches), and declares the static that
-/// holds one cache per type.
+/// [`SlabCaches`](crate::cache::SlabCaches), and counts them in
+/// `SLAB_COUNT`.
 ///
-/// `define_slab_system!(Generic8, Generic16)` -> `Generic8::SLAB_POSITION
-/// == 0`, `Generic16::SLAB_POSITION == 1`, and `SlabCaches<2>`.
+/// `number_slab_types!(Generic8, Generic16)` ->
+/// `Generic8::SLAB_POSITION == 0`, `Generic16::SLAB_POSITION == 1`, and
+/// `SLAB_COUNT == 2`.
 #[macro_export]
-macro_rules! define_slab_system {
+macro_rules! number_slab_types {
     ($($t:ty),* $(,)?) => {
-        $crate::define_slab_system!(@position 0; $($t),*);
+        $(
+            impl $crate::traits::sealed::Sealed for $t {}
 
-        const COUNT: usize = [$(stringify!($t)),*].len();
+            impl $crate::traits::SlabGeometry for $t {}
 
-        pub(crate) static SLAB_ARENA: SpinMutex<SlabCaches<COUNT>> =
-            SpinMutex::new(SlabCaches::new());
+            impl $crate::traits::Slab for $t {
+                const SLAB_POSITION: usize = ${index()};
+            }
+        )*
+
+        /// The number of slab types.
+        const SLAB_COUNT: usize = ${count($t)};
     };
-    (@position $idx:expr; $head:ty $(, $tail:ty)*) => {
-        impl $crate::traits::sealed::Sealed for $head {}
-
-        impl $crate::traits::SlabGeometry for $head {}
-
-        impl $crate::traits::Slab for $head {
-            const SLAB_POSITION: usize = $idx;
-        }
-
-        $crate::define_slab_system!(@position $idx + 1; $($tail),*);
-    };
-    (@position $idx:expr;) => {};
 }
-
-// TODO implement reverse lookup with an enum that will automatically be
-// generated and check the code generated on compiler explorer. if
-// interesting, write on it on the book
