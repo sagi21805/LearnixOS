@@ -6,7 +6,6 @@ use core::{
 
 use buddy::meta::{BuddyArena, BuddyBlock};
 use common::address_types::VirtualAddress;
-use x86::structures::paging::VirtualAddressExt;
 
 use crate::{
     SlabAllocator,
@@ -43,12 +42,6 @@ where
             _object: PhantomData,
         }
     }
-
-    /// Whether objects of this cache can hold `layout`.
-    fn fits(layout: Layout) -> bool {
-        layout.size() <= size_of::<T>()
-            && layout.align() <= T::OBJECT_ALIGNMENT
-    }
 }
 
 impl<T: Slab, Block, Arena> Clone for CacheAllocator<'_, T, Block, Arena>
@@ -66,9 +59,8 @@ where
 {
 }
 
-// SAFETY: every handle to one `SlabAllocator` reaches the same caches, so
-// a block from one copy can be freed through another. Blocks stay valid
-// until `deallocate`, because the slab never hands a slot out twice.
+// SAFETY: every handle reaches the same caches, and a slot is never handed
+// out twice.
 unsafe impl<T: Slab, Block, Arena> Allocator
     for CacheAllocator<'_, T, Block, Arena>
 where
@@ -81,7 +73,7 @@ where
         &self,
         layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        if !Self::fits(layout) {
+        if !T::fits(layout) {
             return Err(AllocError);
         }
 
@@ -91,36 +83,26 @@ where
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        debug_assert!(Self::fits(layout), "the layout fits in a `T`");
+        debug_assert!(T::fits(layout), "the layout fits in a `T`");
         let object = ptr.cast::<T>();
 
-        let arena_lock = self.slab.buddy_arena.lock();
-        let mut slab_lock = self.slab.slab_arena.lock();
+        let arena = self.slab.buddy_arena.lock();
+        let mut caches = self.slab.slab_arena.lock();
 
-        let address = VirtualAddress::from(ptr.addr().get());
-        let mut page = arena_lock
-            .page_with_address(
-                address
-                    .translate()
-                    .expect("an allocated object is mapped"),
-            )
-            .expect("the buddy arena covers every mapped page");
-
-        // SAFETY: `page` is a live page of the locked buddy arena.
-        let page = unsafe { page.as_mut() };
-        // SAFETY: the page holds `object`, which belongs to a slab of `T`,
-        // so the page's descriptor is a `T` descriptor.
-        let descriptor = unsafe { page.slab_descriptor_mut::<T>() };
-        let idx = descriptor
+        let address = VirtualAddress::from(object.addr().get());
+        let mut page = arena
+            .page_with_virtual_address(address)
+            .expect("an allocated object's page is in the buddy arena");
+        // SAFETY: the page holds a `T` object, so its descriptor is a `T`
+        // one.
+        let slab = unsafe { page.as_mut().slab_descriptor_mut::<T>() };
+        let idx = slab
             .objects
             .index_of(object)
             .expect("an allocated object is a slot of its page's slab");
 
-        // SAFETY: the caller guarantees `object` is allocated, and its
-        // slab sits in one of the cache's lists.
-        unsafe { slab_lock.cache::<T>().return_object(idx, descriptor) };
-
-        drop(arena_lock);
-        drop(slab_lock);
+        // SAFETY: an allocated object's slab is in one of the cache's
+        // lists.
+        unsafe { caches.cache::<T>().return_object(idx, slab) };
     }
 }
