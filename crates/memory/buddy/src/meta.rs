@@ -1,12 +1,14 @@
 use core::{fmt::Debug, ptr::NonNull};
 
 use common::{
-    address_types::PhysicalAddress, enums::BuddyOrder, volatile::Volatile,
+    address_types::{PhysicalAddress, VirtualAddress},
+    enums::BuddyOrder,
+    volatile::Volatile,
 };
 
 use bitfields::bitfields;
 use thiserror::Error;
-use x86::memory_map::MemoryMap;
+use x86::{memory_map::MemoryMap, structures::paging::VirtualAddressExt};
 
 #[derive(Debug, Error)]
 pub enum BuddyError {
@@ -20,6 +22,8 @@ pub enum BuddyError {
     BuddyOutOfRange,
     #[error("Page is not part of the arena")]
     PageNotInArena,
+    #[error("The virtual address is not mapped")]
+    AddressNotMapped,
 }
 
 mod private {
@@ -202,6 +206,16 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
         &self,
         address: PhysicalAddress,
     ) -> Result<NonNull<Block>, BuddyError>;
+
+    /// The block holding the page that `address` maps to.
+    fn page_with_virtual_address(
+        &self,
+        address: VirtualAddress,
+    ) -> Result<NonNull<Block>, BuddyError> {
+        let address =
+            address.translate().ok_or(BuddyError::AddressNotMapped)?;
+        self.page_with_address(address)
+    }
 
     /// Split a block into two smaller blocks of previous order.
     fn split(
