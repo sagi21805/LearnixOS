@@ -2,7 +2,8 @@ extern crate alloc;
 
 use crate::{
     descriptor::{
-        FreeDetached, PartialDetached, SlabDescriptor, meta::FullFreeMeta,
+        FreeDetached, ListState, PartialDetached, SlabDescriptor,
+        meta::FullFreeMeta,
     },
     slab_address::SlabAddress,
     slab_objects::SlabObjects,
@@ -25,8 +26,7 @@ impl<T: Slab> SlabDescriptor<T, FreeDetached> {
         let pages = unsafe { alloc(T::SLAB_LAYOUT) };
         let pages = NonNull::new(pages)
             .expect("TODO: handle running out of pages");
-        // SAFETY: the pages were just allocated, so nothing else points at
-        // them.
+        // SAFETY: the pages are fresh.
         let objects = unsafe { SlabObjects::new(pages) };
 
         let mut free = SlabDescriptor {
@@ -56,5 +56,21 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, PartialDetached>>
         // SAFETY: a free slab has no allocated slot.
         unsafe { free.objects.link_all() };
         free
+    }
+}
+
+/// A slab leaving the free list keeps its slots, without its previous
+/// or next node.
+impl<T: Slab, S> MorphFrom<SlabDescriptor<T, S>>
+    for SlabDescriptor<T, FreeDetached>
+where
+    S: ListState<Detached = FreeDetached>,
+{
+    fn morph_from(src: SlabDescriptor<T, S>) -> Self {
+        SlabDescriptor {
+            state: FullFreeMeta::default(),
+            objects: src.objects,
+            next: SlabAddress::default(),
+        }
     }
 }

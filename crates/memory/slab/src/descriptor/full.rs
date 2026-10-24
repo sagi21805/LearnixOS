@@ -1,6 +1,7 @@
 use crate::{
     descriptor::{
-        FullDetached, PartialDetached, SlabDescriptor, meta::FullFreeMeta,
+        FullDetached, ListState, PartialDetached, SlabDescriptor,
+        meta::FullFreeMeta,
     },
     slab_address::SlabAddress,
     traits::Slab,
@@ -18,6 +19,22 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, PartialDetached>>
             T::OBJECT_PER_SLAB as u32
         );
 
+        SlabDescriptor {
+            state: FullFreeMeta::default(),
+            objects: src.objects,
+            next: SlabAddress::default(),
+        }
+    }
+}
+
+/// A slab leaving the full list keeps its slots, without its previous
+/// or next node.
+impl<T: Slab, S> MorphFrom<SlabDescriptor<T, S>>
+    for SlabDescriptor<T, FullDetached>
+where
+    S: ListState<Detached = FullDetached>,
+{
+    fn morph_from(src: SlabDescriptor<T, S>) -> Self {
         SlabDescriptor {
             state: FullFreeMeta::default(),
             objects: src.objects,

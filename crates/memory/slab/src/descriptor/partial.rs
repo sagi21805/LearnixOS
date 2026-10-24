@@ -1,7 +1,7 @@
 use crate::{
     descriptor::{
-        FreeDetached, FullDetached, PartialDetached, SlabDescriptor,
-        SlabState, meta::PartialMeta,
+        FreeDetached, FullDetached, ListState, PartialDetached,
+        SlabDescriptor, SlabState, meta::PartialMeta,
     },
     slab_address::SlabAddress,
     traits::Slab,
@@ -41,15 +41,31 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, FullDetached>>
     }
 }
 
+/// A slab leaving the partial list keeps its slots, without its head
+/// bit or next node.
+impl<T: Slab, S> MorphFrom<SlabDescriptor<T, S>>
+    for SlabDescriptor<T, PartialDetached>
+where
+    S: ListState<Meta = PartialMeta, Detached = PartialDetached>,
+{
+    fn morph_from(src: SlabDescriptor<T, S>) -> Self {
+        SlabDescriptor {
+            state: src.state.head(false),
+            objects: src.objects,
+            next: SlabAddress::default(),
+        }
+    }
+}
+
 impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
-    /// Takes the first free object, and returns it with the slab's state
-    /// afterwards.
-    pub(crate) fn take_object(&mut self) -> (NonNull<T>, Taken) {
-        let slot =
-            self.objects.slot(self.state.get_next_free_idx() as usize);
-        // SAFETY: the slot heads this slab's free list, so it is free and
-        // its live field is `next_free_idx`, which `repr(C)` puts at its
-        // start.
+    /// Claims the first free slot, and returns its object with the slab's
+    /// state afterwards.
+    pub(crate) fn claim_slot(&mut self) -> (NonNull<T>, Claimed) {
+        let slot = unsafe {
+            self.objects.slot(self.state.get_next_free_idx() as usize)
+        };
+        // SAFETY: the free-list head is free, and `repr(C)` puts
+        // `next_free_idx` first.
         let next = unsafe { slot.cast::<Option<NonMaxU16>>().read() };
 
         self.state
@@ -58,9 +74,9 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
         let taken = match next {
             Some(idx) => {
                 self.state.set_next_free_idx(idx.get());
-                Taken::Partial
+                Claimed::Partial
             }
-            None => Taken::Full,
+            None => Claimed::Full,
         };
 
         (slot.cast::<T>(), taken)
@@ -72,15 +88,14 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     /// # Safety
     ///
     /// `idx` must be an allocated object of this slab.
-    pub(crate) unsafe fn return_object(
+    pub(crate) unsafe fn release_slot(
         &mut self,
         idx: NonMaxU16,
-    ) -> Returned {
-        let slot = self.objects.slot(idx.get() as usize);
+    ) -> Released {
+        let slot = unsafe { self.objects.slot(idx.get() as usize) };
         let next = NonMaxU16::new(self.state.get_next_free_idx());
-        // SAFETY: the caller guarantees `idx` is allocated, and its owner
-        // is done with it, so nothing else references its slot. `repr(C)`
-        // puts `next_free_idx` at the slot's start.
+        // SAFETY: the owner is done with slot `idx`, and `repr(C)` puts
+        // `next_free_idx` first.
         unsafe { slot.cast::<Option<NonMaxU16>>().write(next) };
 
         self.state.set_next_free_idx(idx.get());
@@ -89,21 +104,21 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
             .set_total_allocated(self.state.get_total_allocated() - 1);
 
         if self.state.get_total_allocated() == 0 {
-            Returned::Free
+            Released::Free
         } else {
-            Returned::Partial
+            Released::Partial
         }
     }
 }
 
 /// What a slab became after giving out an object.
-pub(crate) enum Taken {
+pub(crate) enum Claimed {
     Partial,
     Full,
 }
 
 /// What a slab became after taking an object back.
-pub(crate) enum Returned {
+pub(crate) enum Released {
     Partial,
     Free,
 }
