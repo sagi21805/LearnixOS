@@ -9,7 +9,7 @@ use crate::{preallocated::PreAllocated, traits::Slab};
 /// It is neither `Copy` nor `Clone` and its pointer is private, so each
 /// slab's pages have exactly one manager.
 #[repr(transparent)]
-pub struct SlabObjects<T: Slab>(NonNull<PreAllocated<T>>);
+pub struct SlabObjects<T: Slab>(NonNull<T::PreAllocatedArray>);
 
 // SAFETY: only this value reaches its free slots, and no method reads the
 // `T` in an allocated one.
@@ -37,14 +37,11 @@ impl<T: Slab> SlabObjects<T> {
     ///
     /// # Safety
     ///
-    /// idx bounds are only checked in debug mode.
+    /// `idx` must be less than `T::OBJECT_PER_SLAB`, which debug builds
+    /// check.
     pub unsafe fn slot(&self, idx: usize) -> NonNull<PreAllocated<T>> {
-        debug_assert!(
-            idx < T::OBJECT_PER_SLAB,
-            "slot {idx} is outside the slab"
-        );
-        // SAFETY: `idx` is inside the slab.
-        unsafe { self.0.add(idx) }
+        // SAFETY: the caller keeps `idx` inside the slab.
+        unsafe { self.objects().get_unchecked_mut(idx) }
     }
 
     /// The index of `object`, or `None` when it isn't a slot of this
@@ -94,10 +91,8 @@ impl<T: Slab> SlabObjects<T> {
     ///
     /// No slot may be allocated.
     pub unsafe fn link_all(&mut self) {
-        let mut slots =
-            NonNull::slice_from_raw_parts(self.0, T::OBJECT_PER_SLAB);
         // SAFETY: no slot is allocated, so nothing else references them.
-        let slots = unsafe { slots.as_mut() };
+        let slots = unsafe { self.objects().as_mut() };
 
         for (slot, next) in slots.iter_mut().zip(1..) {
             slot.next_free_idx = NonMaxU16::new(next);
@@ -106,4 +101,8 @@ impl<T: Slab> SlabObjects<T> {
             last.next_free_idx = None;
         }
     }
+
+    /// Every object of the slab, as a slice pointer whose length comes
+    /// from `T::PreAllocatedArray`.
+    fn objects(&self) -> NonNull<[PreAllocated<T>]> { self.0 }
 }

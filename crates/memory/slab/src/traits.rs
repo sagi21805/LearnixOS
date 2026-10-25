@@ -1,4 +1,4 @@
-use core::{alloc::Layout, mem::Alignment};
+use core::{alloc::Layout, marker::Unsize, mem::Alignment};
 
 use common::{address_types::VirtualAddress, enums::PageSize};
 use typestate_groups::{group, state, state_types};
@@ -27,7 +27,10 @@ impl Slab for Unknown {
     const SLAB_POSITION: usize = usize::MAX;
 }
 
-impl SlabGeometry for Unknown {}
+impl SlabGeometry for Unknown {
+    type PreAllocatedArray = [PreAllocated<Unknown>;
+        <Unknown as SlabGeometry>::OBJECT_PER_SLAB];
+}
 
 impl sealed::Sealed for Unknown {}
 
@@ -58,6 +61,10 @@ pub trait SlabGeometry: SlabFamily + Sized {
     const OBJECT_PER_SLAB: usize = Self::PAGES_PER_SLAB
         * Self::PSIZE.size()
         / size_of::<PreAllocated<Self>>();
+    /// All `OBJECT_PER_SLAB` objects of one slab as one array, so a thin
+    /// pointer to it covers every object. Only an array unsizes to a
+    /// slice.
+    type PreAllocatedArray: Unsize<[PreAllocated<Self>]>;
     /// The alignment of every object, the slot's alignment capped at the
     /// alignment of the page the slab starts on.
     const OBJECT_ALIGNMENT: Alignment =

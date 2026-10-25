@@ -9,6 +9,8 @@
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
 #![feature(macro_metavar_expr)]
+#![feature(slice_ptr_get)]
+#![feature(unsize)]
 
 pub mod cache;
 pub mod cache_allocator;
