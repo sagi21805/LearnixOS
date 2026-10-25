@@ -6,20 +6,17 @@ use crate::{
     Generic64,
     descriptor::{
         FreeDetached, FreeHead, FullDetached, FullHead, InList, Link,
-        ListHead,
-        PartialDetached, PartialHead, SlabDescriptor, SlabState, Unlink,
-        Used, UsedSlab,
+        ListHead, PartialDetached, PartialHead, SlabDescriptor, SlabState,
+        Unlink, Used, UsedSlab,
         meta::PartialMeta,
-        partial::{Released, Claimed},
+        partial::{Claimed, Released},
     },
     traits::{Slab, Unknown},
 };
 use typestate_groups::Morphic;
 
-/// It is `repr(C)`, so its layout is the same for every `T`, which
-/// [`SlabCaches::cache`] relies on.
-#[derive(Debug)]
 #[repr(C)]
+#[derive(Debug)]
 pub struct SlabCache<T: Slab> {
     pub(crate) free: ListHead<T, FreeHead>,
     pub(crate) partial: ListHead<T, PartialHead>,

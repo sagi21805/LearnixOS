@@ -1,13 +1,18 @@
-/// Declares a generic allocation size for each `Name = size`, smallest
-/// first, in the [`Generic`] group, `number_generic_slabs!`, which numbers
-/// them before the slab types it is given, and `match_generic!`, which
-/// runs a block with a type named after the smallest size that holds a
-/// given number of bytes.
+/// Declares the generic allocation sizes, smallest first, in the
+/// [`Generic`] group, along with `number_generic_slabs!` and
+/// `match_generic!` over them.
 ///
-/// `define_generics!(Generic8 = 8, Generic16 = 16)` ->
-/// `match_generic!(size, T => { body }, _ => fallback)` expands to
-/// `match size { ..=8 => { type T = Generic8; body } ..=16 => { type T =
-/// Generic16; body } _ => fallback }`.
+/// ```ignore
+/// define_generics!(Generic8 = 8, Generic16 = 16);
+///
+/// match_generic!(size, T => { body }, _ => fallback)
+/// // expands to
+/// match size {
+///     ..=8 => { type T = Generic8; body }
+///     ..=16 => { type T = Generic16; body }
+///     _ => fallback,
+/// }
+/// ```
 ///
 /// [`Generic`]: crate::Generic
 #[macro_export]
@@ -19,13 +24,10 @@ macro_rules! define_generics {
             pub struct $name(pub [usize; $size / 8]);
         )*
 
-        /// The [`SlabFamily`](crate::traits::SlabFamily) group of the
-        /// generic sizes.
         mod generic_family {
             use super::{$($name),*};
             use $crate::traits::{SlabFamily, SlabFamilyGroupMarker};
 
-            /// The generic sizes, mapped as regular memory.
             #[::typestate_groups::group(Generic)]
             impl SlabFamily for ($($name,)*) {
                 const PFLAGS: ::x86::structures::paging::PageEntryFlags =
@@ -37,16 +39,15 @@ macro_rules! define_generics {
 
         pub use generic_family::Generic;
 
-        /// Numbers the generic sizes and then the given slab types, as
-        /// `number_slab_types!` does.
+        /// `number_slab_types!` with the generic sizes first.
         macro_rules! number_generic_slabs {
             ($$($$t:ty),* $$(,)?) => {
                 $crate::number_slab_types!($($name,)* $$($$t),*);
             };
         }
 
-        /// Runs `$body` with `$t` naming the smallest generic size of at
-        /// least `$size` bytes, or `$fallback` when none is that large.
+        /// Runs `$body` with `$t` as the smallest generic size that holds
+        /// `$size` bytes.
         macro_rules! match_generic {
             (
                 $$size:expr,
@@ -62,18 +63,17 @@ macro_rules! define_generics {
     };
 }
 
-/// Declares a DMA allocation size for each `Name = size`, smallest first,
-/// in the [`DmaGeneric`] group, `define_slab_system!`, which numbers them
-/// and the generic sizes before the slab types it is given, and
-/// `match_dma_generic!`, which works as `match_generic!` does over the DMA
-/// sizes.
+/// Declares the DMA allocation sizes, smallest first, in the
+/// [`DmaGeneric`] group, along with `define_slab_system!` and
+/// `match_dma_generic!` over them. Call it after `define_generics!`.
 ///
-/// Expands after `define_generics!`, as `define_slab_system!` calls the
-/// `number_generic_slabs!` it declares.
+/// ```ignore
+/// define_dma_generics!(DmaGeneric512 = 512);
 ///
-/// `define_dma_generics!(DmaGeneric512 = 512)` ->
-/// `define_slab_system!(Pcb)` expands to
-/// `number_generic_slabs!(DmaGeneric512, Pcb)`.
+/// define_slab_system!(Pcb);
+/// // expands to
+/// number_generic_slabs!(DmaGeneric512, Pcb);
+/// ```
 ///
 /// [`DmaGeneric`]: crate::DmaGeneric
 #[macro_export]
@@ -85,14 +85,11 @@ macro_rules! define_dma_generics {
             pub struct $name(pub [usize; $size / 8]);
         )*
 
-        /// The [`SlabFamily`](crate::traits::SlabFamily) group of the DMA
-        /// sizes.
         mod dma_generic_family {
             use super::{$($name),*};
             use $crate::traits::{SlabFamily, SlabFamilyGroupMarker};
 
-            /// The DMA sizes, mapped uncached so a device and the CPU see
-            /// the same bytes.
+            /// Mapped uncached, so a device and the CPU see the same bytes.
             #[::typestate_groups::group(DmaGeneric)]
             impl SlabFamily for ($($name,)*) {
                 const PFLAGS: ::x86::structures::paging::PageEntryFlags =
@@ -104,16 +101,14 @@ macro_rules! define_dma_generics {
 
         pub use dma_generic_family::DmaGeneric;
 
-        /// Numbers the DMA sizes, the generic sizes and then the given
-        /// slab types, as `number_slab_types!` does.
+        /// `number_generic_slabs!` with the DMA sizes first.
         macro_rules! define_slab_system {
             ($$($$t:ty),* $$(,)?) => {
                 number_generic_slabs!($($name,)* $$($$t),*);
             };
         }
 
-        /// Runs `$body` with `$t` naming the smallest DMA size of at least
-        /// `$size` bytes, or `$fallback` when none is that large.
+        /// `match_generic!` over the DMA sizes.
         macro_rules! match_dma_generic {
             (
                 $$size:expr,
@@ -130,19 +125,28 @@ macro_rules! define_dma_generics {
 }
 
 /// Numbers the slab types in order, giving each its position in
-/// [`SlabCaches`](crate::cache::SlabCaches), and counts them in
-/// `SLAB_COUNT`.
+/// [`SlabCaches`](crate::cache::SlabCaches) and its `PreAllocatedArray`.
 ///
-/// `number_slab_types!(Generic8, Generic16)` ->
-/// `Generic8::SLAB_POSITION == 0`, `Generic16::SLAB_POSITION == 1`, and
-/// `SLAB_COUNT == 2`.
+/// ```ignore
+/// number_slab_types!(Generic8, Generic16);
+///
+/// assert_eq!(Generic8::SLAB_POSITION, 0);
+/// assert_eq!(Generic16::SLAB_POSITION, 1);
+/// assert_eq!(SLAB_COUNT, 2);
+/// // Generic8::PreAllocatedArray = [PreAllocated<Generic8>; 512]
+/// ```
 #[macro_export]
 macro_rules! number_slab_types {
     ($($t:ty),* $(,)?) => {
         $(
             impl $crate::traits::sealed::Sealed for $t {}
 
-            impl $crate::traits::SlabGeometry for $t {}
+            impl $crate::traits::SlabGeometry for $t {
+                type PreAllocatedArray = [
+                    $crate::preallocated::PreAllocated<$t>;
+                    <$t as $crate::traits::SlabGeometry>::OBJECT_PER_SLAB
+                ];
+            }
 
             impl $crate::traits::Slab for $t {
                 const SLAB_POSITION: usize = ${index()};
