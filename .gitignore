@@ -6,3 +6,4 @@ build/bin
 **/image.bin
 .vscode/*
 .zed/*
+graphify-out/*
