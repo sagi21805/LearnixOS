@@ -9,8 +9,10 @@ pub mod state;
 pub use state::*;
 
 use crate::{
-    Generic64, slab_address::SlabAddress, slab_objects::SlabObjects,
-    traits::Slab,
+    Generic64,
+    slab_address::SlabAddress,
+    slab_objects::SlabObjects,
+    traits::{Slab, Unknown},
 };
 use core::{
     fmt::{self, Debug, Formatter},
@@ -34,6 +36,35 @@ const _: () = {
     assert!(size_of::<SlabDescriptor<Generic64, Partial>>() == 24);
     assert!(size_of::<SlabDescriptor<Generic64, Free>>() == 24);
 };
+
+impl SlabDescriptor<Unknown, Unused> {
+    /// Writes `descriptor` into this storage, without reading or dropping
+    /// what it held, and returns it as its own type.
+    ///
+    /// # Safety
+    ///
+    /// The storage must not hold a descriptor that is still in use, so
+    /// nothing else reaches it while the returned reference lives.
+    pub unsafe fn assign<T: Slab, S: SlabState>(
+        &mut self,
+        descriptor: SlabDescriptor<T, S>,
+    ) -> &mut SlabDescriptor<T, S> {
+        const {
+            assert!(
+                size_of::<SlabDescriptor<T, S>>() == size_of::<Self>()
+            );
+            assert!(
+                align_of::<SlabDescriptor<T, S>>() == align_of::<Self>()
+            );
+        };
+        let mut storage =
+            NonNull::from_mut(self).cast::<SlabDescriptor<T, S>>();
+        // SAFETY: the storage fits a descriptor of any type.
+        unsafe { storage.write(descriptor) };
+        // SAFETY: the caller guarantees nothing else uses the storage.
+        unsafe { storage.as_mut() }
+    }
+}
 
 /// The head of a slab list, the first descriptor in it or `None` when the
 /// list is empty.
