@@ -14,8 +14,8 @@ use crate::{
 
 /// Allocates `T`s from their slab cache.
 ///
-/// Freeing locks the buddy arena before the slab array, and every other
-/// path that takes both locks must take them in that order.
+/// Freeing locks the buddy arena before the slab array. Every other path
+/// that takes both locks must take them in that order.
 ///
 /// ```ignore
 /// let inode = Box::new_in(Inode::default(), SLAB.cache::<Inode>());
@@ -67,7 +67,7 @@ where
     Block: BuddyBlock + SlabBlock,
     Arena: BuddyArena<Block> + 'static,
 {
-    /// Takes one object, and returns all of it, so any size up to
+    /// Allocates one object, and returns all of it, so any size up to
     /// `size_of::<T>()` frees it again.
     fn allocate(
         &self,
@@ -77,8 +77,18 @@ where
             return Err(AllocError);
         }
 
+        // The slab lock is released at the end of this statement, before
+        // `new_slab` takes the buddy lock.
         let object =
-            self.slab.slab_arena.lock().cache::<T>().take_object();
+            self.slab.slab_arena.lock().cache::<T>().try_allocate();
+        let object = object.unwrap_or_else(|| {
+            let slab = self.slab.new_slab::<T>();
+            self.slab
+                .slab_arena
+                .lock()
+                .cache::<T>()
+                .allocate_and_link(slab)
+        });
         Ok(NonNull::slice_from_raw_parts(object.cast(), size_of::<T>()))
     }
 
@@ -103,6 +113,6 @@ where
 
         // SAFETY: an allocated object's slab is in one of the cache's
         // lists.
-        unsafe { caches.cache::<T>().return_object(idx, slab) };
+        unsafe { caches.cache::<T>().deallocate_object(idx, slab) };
     }
 }
