@@ -52,6 +52,10 @@ pub struct FullDetached;
 #[state]
 pub struct Used;
 
+/// Descriptor storage that holds no descriptor in use
+#[state]
+pub struct Unused;
+
 #[group(SinglyLinked)]
 impl SlabState for (PartialHead, Partial, PartialDetached) {
     #[size(8)]
@@ -67,7 +71,7 @@ impl SlabState
 }
 
 #[group(UnknownList)]
-impl SlabState for (Used,) {
+impl SlabState for (Used, Unused) {
     #[size(8)]
     type Meta = RawMeta;
 }

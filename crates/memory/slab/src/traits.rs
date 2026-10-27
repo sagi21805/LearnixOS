@@ -1,11 +1,11 @@
 use core::{alloc::Layout, marker::Unsize, mem::Alignment};
 
 use common::{address_types::VirtualAddress, enums::PageSize};
-use typestate_groups::{group, state, state_types};
+use typestate_groups::{Isomorphic, group, state, state_types};
 use x86::structures::paging::PageEntryFlags;
 
 use crate::{
-    descriptor::{SlabDescriptor, Used},
+    descriptor::{SlabDescriptor, Unused, Used},
     preallocated::PreAllocated,
 };
 
@@ -142,4 +142,19 @@ pub trait SlabBlock {
     unsafe fn slab_descriptor_mut<T: Slab>(
         &mut self,
     ) -> &mut SlabDescriptor<T, Used>;
+
+    /// The descriptor storage of this block, ready for
+    /// [`SlabDescriptor::assign`] to write a new descriptor into.
+    ///
+    /// # Safety
+    ///
+    /// The block must hold no slab in use, so no list or reference
+    /// reaches its descriptor.
+    unsafe fn unused_slab_descriptor_mut(
+        &mut self,
+    ) -> &mut SlabDescriptor<Unknown, Unused> {
+        // SAFETY: any block's descriptor storage reads as `Unknown`.
+        unsafe { self.slab_descriptor_mut::<Unknown>() }
+            .cast_state_mut::<Unused>()
+    }
 }
