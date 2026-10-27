@@ -58,9 +58,9 @@ where
 }
 
 impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
-    /// Claims the first free slot, and returns its object with the slab's
-    /// state afterwards.
-    pub(crate) fn claim_slot(&mut self) -> (NonNull<T>, Claimed) {
+    /// Allocates the first free slot, and returns its object with the
+    /// slab's state afterwards.
+    pub(crate) fn allocate_slot(&mut self) -> (NonNull<T>, Allocated) {
         let slot = unsafe {
             self.objects.slot(self.state.get_next_free_idx() as usize)
         };
@@ -74,9 +74,9 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
         let taken = match next {
             Some(idx) => {
                 self.state.set_next_free_idx(idx.get());
-                Claimed::Partial
+                Allocated::Partial
             }
-            None => Claimed::Full,
+            None => Allocated::Full,
         };
 
         (slot.cast::<T>(), taken)
@@ -88,10 +88,10 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     /// # Safety
     ///
     /// `idx` must be an allocated object of this slab.
-    pub(crate) unsafe fn release_slot(
+    pub(crate) unsafe fn deallocate_slot(
         &mut self,
         idx: NonMaxU16,
-    ) -> Released {
+    ) -> Deallocated {
         let slot = unsafe { self.objects.slot(idx.get() as usize) };
         let next = NonMaxU16::new(self.state.get_next_free_idx());
         // SAFETY: the owner is done with slot `idx`, and `repr(C)` puts
@@ -104,21 +104,21 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
             .set_total_allocated(self.state.get_total_allocated() - 1);
 
         if self.state.get_total_allocated() == 0 {
-            Released::Free
+            Deallocated::Free
         } else {
-            Released::Partial
+            Deallocated::Partial
         }
     }
 }
 
-/// What a slab became after giving out an object.
-pub(crate) enum Claimed {
+/// What a slab became after allocating an object.
+pub(crate) enum Allocated {
     Partial,
     Full,
 }
 
-/// What a slab became after taking an object back.
-pub(crate) enum Released {
+/// What a slab became after dellocating an object.
+pub(crate) enum Deallocated {
     Partial,
     Free,
 }
