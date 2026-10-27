@@ -1,42 +1,29 @@
-extern crate alloc;
-
 use crate::{
     descriptor::{
-        FreeDetached, PartialDetached, SlabDescriptor, meta::FullFreeMeta,
+        FreeDetached, ListState, PartialDetached, SlabDescriptor,
+        meta::FullFreeMeta,
     },
     slab_address::SlabAddress,
     slab_objects::SlabObjects,
     traits::Slab,
 };
-use alloc::alloc::alloc;
-use core::ptr::NonNull;
 use typestate_groups::MorphFrom;
 
 impl<T: Slab> SlabDescriptor<T, FreeDetached> {
-    /// Create a new, free slab descriptor.
-    #[expect(
-        clippy::new_without_default,
-        reason = "`new` allocates the slab's pages, which `Default` \
-                  shouldn't hide"
-    )]
-    pub fn new() -> SlabDescriptor<T, FreeDetached> {
-        todo!("Use direct call on buddy allocator for certain page size.");
-        // SAFETY: a slab's layout has at least one page.
-        let pages = unsafe { alloc(T::SLAB_LAYOUT) };
-        let pages = NonNull::new(pages)
-            .expect("TODO: handle running out of pages");
-        // SAFETY: the pages were just allocated, so nothing else points at
-        // them.
-        let objects = unsafe { SlabObjects::new(pages) };
-
-        let mut free = SlabDescriptor {
+    /// A free slab over `objects`, in no list, with every slot on its
+    /// free list.
+    ///
+    /// # Safety
+    ///
+    /// No slot of `objects` may be allocated.
+    pub unsafe fn new(mut objects: SlabObjects<T>) -> Self {
+        // SAFETY: the caller guarantees no slot is allocated.
+        unsafe { objects.link_all() };
+        SlabDescriptor {
             state: FullFreeMeta::default(),
             objects,
             next: SlabAddress::default(),
-        };
-        // SAFETY: a free slab has no allocated slot.
-        unsafe { free.objects.link_all() };
-        free
+        }
     }
 }
 
@@ -47,14 +34,23 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, PartialDetached>>
 {
     fn morph_from(src: SlabDescriptor<T, PartialDetached>) -> Self {
         debug_assert_eq!(src.state.get_total_allocated(), 0);
+        // SAFETY: the slab's last object was freed.
+        unsafe { Self::new(src.objects) }
+    }
+}
 
-        let mut free = SlabDescriptor {
+/// A slab leaving the free list keeps its slots, without its previous
+/// or next node.
+impl<T: Slab, S> MorphFrom<SlabDescriptor<T, S>>
+    for SlabDescriptor<T, FreeDetached>
+where
+    S: ListState<Detached = FreeDetached>,
+{
+    fn morph_from(src: SlabDescriptor<T, S>) -> Self {
+        SlabDescriptor {
             state: FullFreeMeta::default(),
             objects: src.objects,
             next: SlabAddress::default(),
-        };
-        // SAFETY: a free slab has no allocated slot.
-        unsafe { free.objects.link_all() };
-        free
+        }
     }
 }

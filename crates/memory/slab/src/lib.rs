@@ -1,15 +1,17 @@
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
-#![warn(clippy::undocumented_unsafe_blocks)]
 #![warn(clippy::multiple_unsafe_ops_per_block)]
 #![warn(clippy::missing_safety_doc)]
-#![allow(incomplete_features)]
-#![feature(specialization)]
 #![feature(ptr_alignment_type)]
 #![feature(const_trait_impl)]
+#![feature(const_cmp)]
 #![feature(const_default)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
+#![feature(macro_metavar_expr)]
+#![feature(slice_ptr_get)]
+#![feature(unsize)]
+#![feature(pointer_is_aligned_to)]
 
 pub mod cache;
 pub mod cache_allocator;
@@ -23,6 +25,8 @@ pub mod traits;
 use crate::{
     cache::SlabCaches,
     cache_allocator::CacheAllocator,
+    descriptor::{FreeDetached, SlabDescriptor},
+    slab_objects::SlabObjects,
     traits::{Slab, SlabBlock},
 };
 use core::{
@@ -51,32 +55,29 @@ define_generics!(
     Generic8192 = 8192,
 );
 
+define_dma_generics!(
+    DmaGeneric512 = 512,
+    DmaGeneric1024 = 1024,
+    DmaGeneric2048 = 2048,
+    DmaGeneric4096 = 4096,
+    DmaGeneric8192 = 8192,
+);
+
+define_slab_system!();
+
 pub struct SlabAllocator<Block, Arena>
 where
     Block: BuddyBlock + SlabBlock,
     Arena: BuddyArena<Block> + 'static,
 {
-    slab_arena: &'static SpinMutex<SlabCaches<COUNT>>,
+    slab_arena: &'static SpinMutex<SlabCaches<SLAB_COUNT>>,
     buddy_arena: &'static SpinMutex<Arena>,
     // Wrap in a mutex to automatically implement Sync and Send.
     _block: PhantomData<SpinMutex<Block>>,
 }
 
-define_slab_system!(
-    Generic8,
-    Generic16,
-    Generic32,
-    Generic64,
-    Generic96,
-    Generic128,
-    Generic192,
-    Generic256,
-    Generic512,
-    Generic1024,
-    Generic2048,
-    Generic4096,
-    Generic8192,
-);
+pub(crate) static SLAB_ARENA: SpinMutex<SlabCaches<SLAB_COUNT>> =
+    SpinMutex::new(SlabCaches::new());
 
 impl<Block, Arena> SlabAllocator<Block, Arena>
 where
@@ -111,10 +112,117 @@ where
     ///
     /// `ptr` must come from `kmalloc::<T>` and not be freed since.
     pub unsafe fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
-        // SAFETY: the caller guarantees `ptr` is a live object from this
-        // cache, allocated with `Layout::new::<T>()`.
         unsafe {
             self.cache::<T>().deallocate(ptr.cast(), Layout::new::<T>())
         }
+    }
+
+    /// Allocates a DMA buffer for `layout`, from the smallest DMA size
+    /// that fits it.
+    pub fn dma_alloc(
+        &self,
+        layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        match_dma_generic!(
+            layout.pad_to_align().size().max(layout.align()),
+            T => {
+                self.cache::<T>().allocate(layout)
+            },
+            _ => Err(AllocError)
+        )
+    }
+
+    /// Frees the DMA buffer at `ptr`, returning it to its slab.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must come from `dma_alloc(layout)` and not be freed since.
+    pub unsafe fn dma_free(&self, ptr: NonNull<u8>, layout: Layout) {
+        match_dma_generic!(
+            layout.pad_to_align().size().max(layout.align()),
+            T => {
+                // SAFETY: the caller's contract carries over to the cache
+                // that allocated `ptr`.
+                unsafe { self.cache::<T>().deallocate(ptr, layout) }
+            },
+            _ => {
+                // SAFETY: `layout` came from `dma_alloc`, which found a
+                // size for it.
+                unsafe { core::hint::unreachable_unchecked() }
+            }
+        )
+    }
+
+    /// A new free slab of `T`s on `T::PAGES_PER_SLAB` fresh pages, whose
+    /// descriptor lives in the block of its first page.
+    #[expect(
+        unreachable_code,
+        unused_variables,
+        clippy::diverging_sub_expression,
+        reason = "the pages are a `todo!()` until the buddy allocator \
+                  can allocate pages (phase 1 of #89)"
+    )]
+    pub(crate) fn new_slab<T: Slab>(
+        &self,
+    ) -> &mut SlabDescriptor<T, FreeDetached> {
+        let arena = self.buddy_arena.lock();
+        let pages: NonNull<u8> = todo!(
+            "take `T::SLAB_LAYOUT` pages from `arena`, once the buddy \
+             allocator can allocate pages (phase 1 of #89)"
+        );
+        // SAFETY: the pages are fresh, so nothing else points at them and
+        // no slot is allocated.
+        let free = unsafe { SlabDescriptor::new(SlabObjects::new(pages)) };
+        let mut block = arena
+            .page_with_virtual_address(free.objects.address())
+            .expect("a slab's pages are in the buddy arena");
+
+        // SAFETY: the arena lock is held, and nothing else references a
+        // block the buddy allocator just gave out.
+        let block = unsafe { block.as_mut() };
+        // SAFETY: the buddy allocator gave `block` out for this slab, so
+        // it holds no slab in use.
+        let storage = unsafe { block.unused_slab_descriptor_mut() };
+        // SAFETY: the buddy allocator gave `block` out for this slab, so
+        // no free list or other descriptor uses its descriptor storage.
+        unsafe { storage.assign(free) }
+    }
+}
+
+// SAFETY: a layout always picks the same generic size, so a block returns
+// to the cache it came from.
+unsafe impl<Block, Arena> Allocator for SlabAllocator<Block, Arena>
+where
+    Block: BuddyBlock + SlabBlock,
+    Arena: BuddyArena<Block> + 'static,
+{
+    /// Serves `layout` from the smallest generic size that fits it.
+    fn allocate(
+        &self,
+        layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        match_generic!(
+            layout.pad_to_align().size().max(layout.align()),
+            T => {
+                self.cache::<T>().allocate(layout)
+            },
+            _ => Err(AllocError)
+        )
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        match_generic!(
+            layout.pad_to_align().size().max(layout.align()),
+            T => {
+                // SAFETY: the caller's contract carries over to the cache
+                // that allocated `ptr`.
+                unsafe { self.cache::<T>().deallocate(ptr, layout) }
+            },
+            _ => {
+                // SAFETY: `layout` came from `allocate`, which found a size
+                // for it.
+                unsafe { core::hint::unreachable_unchecked() }
+            }
+        )
     }
 }
