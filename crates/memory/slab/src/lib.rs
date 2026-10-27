@@ -11,6 +11,7 @@
 #![feature(macro_metavar_expr)]
 #![feature(slice_ptr_get)]
 #![feature(unsize)]
+#![feature(pointer_is_aligned_to)]
 
 pub mod cache;
 pub mod cache_allocator;
@@ -24,6 +25,8 @@ pub mod traits;
 use crate::{
     cache::SlabCaches,
     cache_allocator::CacheAllocator,
+    descriptor::{FreeDetached, SlabDescriptor},
+    slab_objects::SlabObjects,
     traits::{Slab, SlabBlock},
 };
 use core::{
@@ -148,6 +151,41 @@ where
                 unsafe { core::hint::unreachable_unchecked() }
             }
         )
+    }
+
+    /// A new free slab of `T`s on `T::PAGES_PER_SLAB` fresh pages, whose
+    /// descriptor lives in the block of its first page.
+    #[expect(
+        unreachable_code,
+        unused_variables,
+        clippy::diverging_sub_expression,
+        reason = "the pages are a `todo!()` until the buddy allocator \
+                  can allocate pages (phase 1 of #89)"
+    )]
+    pub(crate) fn new_slab<T: Slab>(
+        &self,
+    ) -> &mut SlabDescriptor<T, FreeDetached> {
+        let arena = self.buddy_arena.lock();
+        let pages: NonNull<u8> = todo!(
+            "take `T::SLAB_LAYOUT` pages from `arena`, once the buddy \
+             allocator can allocate pages (phase 1 of #89)"
+        );
+        // SAFETY: the pages are fresh, so nothing else points at them and
+        // no slot is allocated.
+        let free = unsafe { SlabDescriptor::new(SlabObjects::new(pages)) };
+        let mut block = arena
+            .page_with_virtual_address(free.objects.address())
+            .expect("a slab's pages are in the buddy arena");
+
+        // SAFETY: the arena lock is held, and nothing else references a
+        // block the buddy allocator just gave out.
+        let block = unsafe { block.as_mut() };
+        // SAFETY: the buddy allocator gave `block` out for this slab, so
+        // it holds no slab in use.
+        let storage = unsafe { block.unused_slab_descriptor_mut() };
+        // SAFETY: the buddy allocator gave `block` out for this slab, so
+        // no free list or other descriptor uses its descriptor storage.
+        unsafe { storage.assign(free) }
     }
 }
 
