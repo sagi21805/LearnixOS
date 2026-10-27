@@ -1,5 +1,6 @@
 use core::ptr::NonNull;
 
+use common::address_types::VirtualAddress;
 use nonmax::NonMaxU16;
 
 use crate::{preallocated::PreAllocated, traits::Slab};
@@ -22,15 +23,17 @@ impl<T: Slab> SlabObjects<T> {
     ///
     /// `pages` must start `T::PAGES_PER_SLAB` live pages that nothing else
     /// points at.
-    pub unsafe fn new(pages: NonNull<u8>) -> Self {
+    pub fn new(pages: NonNull<u8>) -> Self {
         debug_assert!(
-            pages
-                .addr()
-                .get()
-                .is_multiple_of(T::PSIZE.alignment().as_usize()),
+            pages.is_aligned_to(T::PSIZE.alignment().as_usize()),
             "slab pages are page-aligned"
         );
         Self(pages.cast())
+    }
+
+    /// Where the slab's pages start.
+    pub fn address(&self) -> VirtualAddress {
+        VirtualAddress::from(self.0.addr().get())
     }
 
     /// The slot at `idx`.
