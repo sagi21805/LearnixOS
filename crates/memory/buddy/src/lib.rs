@@ -12,6 +12,7 @@ use core::{
     alloc::{AllocError, Allocator, Layout},
     cmp::Ordering,
     marker::PhantomData,
+    ops::Range,
     ptr::NonNull,
 };
 
@@ -24,7 +25,6 @@ use common::{
     alloc::BumpAllocations,
     constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
     enums::{BuddyOrder, MemoryRegionType},
-    iter,
 };
 
 use crate::meta::{BuddyArena, BuddyBlock, BuddyMeta, Head};
@@ -43,126 +43,37 @@ where
     Block: BuddyBlock,
 {
     pub fn new(memory_map: &MemoryMap) -> BuddyAllocator<Arena, Block> {
-        let mut freelist =
-            [BuddyMeta::<Head>::default(); BuddyOrder::MAX as usize + 1];
-        let arena = Arena::new(memory_map, &mut freelist[0]);
-
         BuddyAllocator {
             inner: SpinMutex::new(BuddyAllocatorInner {
-                arena,
-                freelist,
+                arena: Arena::new(memory_map),
+                freelist: [BuddyMeta::<Head>::default();
+                    BuddyOrder::MAX as usize + 1],
                 _block: PhantomData,
             }),
         }
     }
 
+    /// Builds the free lists from the arena.
+    ///
+    /// Reserves the memory that isn't free, links every free page into the
+    /// order-0 list, and merges buddies from there. The lists point into
+    /// `self`, so it takes `&'static self` to keep the allocator from
+    /// moving.
+    ///
+    /// Every free list starts at its lowest address, so low memory goes
+    /// out first. The kernel reaches page tables only through a window
+    /// over the first 2 MiB, and the IDT, its first allocation, comes
+    /// before the page fault handler that maps the rest.
     pub fn initialize(
-        &self,
+        &'static self,
         allocations: &BumpAllocations,
         mmap: &MemoryMap,
     ) {
         let mut inner = self.inner.lock();
-        let len = inner.arena.iter().len();
-
-        let mut first = inner.arena.at(0).unwrap();
-        unsafe {
-            first.as_mut().meta_mut().prev =
-                Some(NonNull::from_mut(&mut inner.freelist[0].next));
-        }
-
-        // Allocate all the non-usable regions in the memory map
-        if let Some(last_usable_idx) = mmap
-            .regions
-            .read()
-            .iter()
-            .rposition(|r| r.region_type == MemoryRegionType::Usable)
-        {
-            for region in mmap
-                .regions
-                .read()
-                .iter()
-                .take(last_usable_idx + 1)
-                .filter(|r| r.region_type != MemoryRegionType::Usable)
-            {
-                let mut block = inner
-                    .arena
-                    .page_with_address(unsafe {
-                        PhysicalAddress::new_unchecked(
-                            region.base_address as usize,
-                        )
-                        .align_down(REGULAR_PAGE_ALIGNMENT)
-                    })
-                    .unwrap();
-                println!("First Block: {:?}", block);
-
-                let mut length = (region.length as usize)
-                    .next_multiple_of(REGULAR_PAGE_SIZE);
-
-                while length > 0 {
-                    length -= REGULAR_PAGE_SIZE;
-                    unsafe {
-                        block.as_mut().meta_mut().detach();
-                        inner.mark_allocated(block);
-                    }
-                    block = unsafe { block.add(1) };
-                }
-                println!(
-                    "Allocated Range {:x}..{:x}",
-                    PhysicalAddress::new_unchecked(
-                        region.base_address as usize,
-                    )
-                    .align_down(REGULAR_PAGE_ALIGNMENT)
-                    .as_usize(),
-                    region.base_address + region.length
-                )
-            }
-        }
-
-        // Note: Because this is a hobby OS, I do not hanlde all cases on
-        // the ranges in the memory map. And I rely on the observation that
-        // the first first matching free range in the arena is a power of
-        // 2, which is good for this allocator.
-        if allocations.index > 1 {
-            todo!(
-                "Currently does not implement passing allocations that \
-                 are not the arena of this allocator"
-            )
-        }
-
-        let allocation = allocations.iter().nth(0).unwrap();
-
-        println!("Allocation Base: {:x?}", allocation.base.as_usize());
-
-        let allocation_address = allocation.base.translate().unwrap();
-
-        println!(
-            "Initial Allocation Address: {}",
-            allocation_address.as_usize()
-        );
-
-        let mut block =
-            inner.arena.page_with_address(allocation_address).unwrap();
-
-        println!("Block: {:?}", block);
-
-        let mut length =
-            allocation.layout.size().next_multiple_of(REGULAR_PAGE_SIZE);
-
-        while length > 0 {
-            length -= REGULAR_PAGE_SIZE;
-            unsafe {
-                block.as_mut().meta_mut().detach();
-                inner.mark_allocated(block);
-            }
-            block = unsafe { block.add(1) };
-        }
-
-        for (n, _power) in
-            iter::power_chunk_firsts(0..len, BuddyOrder::MAX as usize)
-        {
-            let page = inner.arena.at(n).unwrap();
-            inner.merge(page);
-        }
+        inner.reserve_unusable_regions(mmap);
+        inner.reserve_bump_allocations(allocations);
+        inner.link_free_blocks();
+        inner.merge_free_blocks();
     }
 
     pub fn print_allocated_regions(&self) {
@@ -318,6 +229,103 @@ where
                     unreachable!("a buddy is never larger than its block")
                 }
             };
+        }
+    }
+
+    /// Reserves every region that isn't usable, up to the last usable
+    /// one, where the arena ends.
+    fn reserve_unusable_regions(&mut self, mmap: &MemoryMap) {
+        let regions = mmap.regions.read();
+        let Some(last_usable) = regions
+            .iter()
+            .rposition(|r| r.region_type == MemoryRegionType::Usable)
+        else {
+            return;
+        };
+
+        for region in regions[..=last_usable]
+            .iter()
+            .filter(|r| r.region_type != MemoryRegionType::Usable)
+        {
+            let start = region.base_address as usize;
+            let end = start + region.length as usize;
+            self.reserve(
+                PhysicalAddress::from(start)..PhysicalAddress::from(end),
+            );
+        }
+    }
+
+    /// Reserves the bump allocator's allocation, which holds the arena.
+    fn reserve_bump_allocations(&mut self, allocations: &BumpAllocations) {
+        if allocations.index > 1 {
+            todo!(
+                "Currently does not implement passing allocations that \
+                 are not the arena of this allocator"
+            )
+        }
+
+        let allocation = allocations
+            .iter()
+            .next()
+            .expect("the bump allocator allocated the arena");
+        let start = allocation
+            .base
+            .translate()
+            .expect("the bump allocator hands out mapped memory");
+        let end = start.as_usize() + allocation.layout.size();
+        self.reserve(start..PhysicalAddress::from(end));
+    }
+
+    /// Marks every page of `range` allocated.
+    fn reserve(&mut self, range: Range<PhysicalAddress>) {
+        let start =
+            range.start.align_down(REGULAR_PAGE_ALIGNMENT).as_usize();
+        let size = (range.end.as_usize() - range.start.as_usize())
+            .next_multiple_of(REGULAR_PAGE_SIZE);
+
+        for address in (start..start + size).step_by(REGULAR_PAGE_SIZE) {
+            let mut block = self
+                .arena
+                .page_with_address(PhysicalAddress::from(address))
+                .expect("reserved memory lies inside the arena");
+            // SAFETY: `page_with_address` returns a live block of the
+            // arena.
+            unsafe { block.as_mut() }
+                .meta_mut()
+                .flags
+                .set_allocated(true);
+        }
+    }
+
+    /// Links every free block into the order-0 free list, from the last
+    /// block down, so the list starts at the lowest address.
+    fn link_free_blocks(&mut self) {
+        let len = self.arena.iter().len();
+        let free = (0..len)
+            .rev()
+            .map(|n| self.arena.at(n).expect("`n` is inside the arena"))
+            // SAFETY: `at` returns a live block of the arena.
+            .filter(|block| !unsafe { block.as_ref() }.is_allocated());
+
+        for block in free {
+            self.freelist[0].attach_block(block);
+        }
+    }
+
+    /// Merges from every free block that heads its range, from the last
+    /// block down, so each free list starts at its lowest address.
+    fn merge_free_blocks(&mut self) {
+        let len = self.arena.iter().len();
+        for n in (0..len).rev() {
+            let block = self.arena.at(n).expect("`n` is inside the arena");
+            // SAFETY: `at` returns a live block of the arena.
+            let heads_free_range = unsafe {
+                !block.as_ref().is_allocated()
+                    && block.as_ref().order() != BuddyOrder::None
+            };
+            if heads_free_range {
+                self.merge(block);
+            }
         }
     }
 

@@ -9,7 +9,7 @@ use common::{
 use thiserror::Error;
 use x86::{memory_map::MemoryMap, structures::paging::VirtualAddressExt};
 
-use crate::meta::{BuddyMeta, Head, Regular};
+use crate::meta::{BuddyMeta, Regular};
 
 #[derive(Debug, Error)]
 pub enum BuddyError {
@@ -43,7 +43,8 @@ pub trait BuddyBlock: Sized {
 }
 
 pub trait BuddyArena<Block: BuddyBlock>: Sized {
-    fn new(mmap: &MemoryMap, head: &mut BuddyMeta<Head>) -> Self;
+    /// An arena of free order-0 blocks covering `mmap`, in no free list.
+    fn new(mmap: &MemoryMap) -> Self;
 
     /// Returns an iterator over all blocks in this arena.
     fn iter(&self) -> impl ExactSizeIterator<Item = NonNull<Block>>;

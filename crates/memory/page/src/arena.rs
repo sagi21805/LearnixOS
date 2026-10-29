@@ -14,8 +14,7 @@ use libk::println;
 use x86::memory_map::MemoryMap;
 
 use buddy::meta::{
-    BuddyArena, BuddyBlock, BuddyError, BuddyFlags, BuddyMeta, Head,
-    Regular,
+    BuddyArena, BuddyBlock, BuddyError, BuddyFlags, BuddyMeta, Regular,
 };
 
 use crate::Page;
@@ -25,7 +24,7 @@ pub struct PageMap {
 }
 
 impl BuddyArena<Page> for PageMap {
-    fn new(mmap: &MemoryMap, head: &mut BuddyMeta<Head>) -> Self {
+    fn new(mmap: &MemoryMap) -> Self {
         let regions = mmap.regions.read();
 
         let last = regions
@@ -37,38 +36,22 @@ impl BuddyArena<Page> for PageMap {
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
         println!("Total pages: {}", total_pages);
-        unsafe {
-            let mut page_map =
-                Box::new_uninit_slice(total_pages).assume_init();
-            println!("Last Memory Address: {:?}", page_map.as_ptr_range());
 
-            let mut prev = &mut page_map[0];
-
-            *prev = Page {
+        let mut page_map = Box::new_uninit_slice(total_pages);
+        println!("Last Memory Address: {:?}", page_map.as_ptr_range());
+        for page in page_map.iter_mut() {
+            page.write(Page {
                 buddy: BuddyMeta::<Regular>::new(
                     BuddyFlags::new()
                         .order(BuddyOrder::Order0)
                         .allocated(false),
                 ),
-            };
+            });
+        }
 
-            head.attach_block(NonNull::from_ref(prev));
-
-            for i in 0..page_map.len().saturating_sub(1) {
-                let (left, right) = page_map.split_at_mut(i + 1);
-                prev = left.last_mut().unwrap();
-                let next = right.first_mut().unwrap();
-                *next = Page {
-                    buddy: BuddyMeta::<Regular>::new(
-                        BuddyFlags::new()
-                            .order(BuddyOrder::Order0)
-                            .allocated(false),
-                    ),
-                };
-                prev.buddy.attach_block(NonNull::from_mut(next));
-            }
-
-            PageMap { inner: page_map }
+        // SAFETY: the loop wrote every page.
+        PageMap {
+            inner: unsafe { page_map.assume_init() },
         }
     }
 
