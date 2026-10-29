@@ -3,7 +3,6 @@
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
 #![allow(incomplete_features)]
-#![feature(explicit_tail_calls)]
 #![feature(min_specialization)]
 #![feature(ptr_alignment_type)]
 
@@ -11,6 +10,7 @@ pub mod meta;
 
 use core::{
     alloc::{AllocError, Allocator, Layout},
+    cmp::Ordering,
     marker::PhantomData,
     ptr::NonNull,
 };
@@ -27,9 +27,7 @@ use common::{
     iter,
 };
 
-use crate::meta::{
-    BuddyArena, BuddyBlock, BuddyError, BuddyMeta, Head, Regular,
-};
+use crate::meta::{BuddyArena, BuddyBlock, BuddyMeta, Head, Regular};
 
 pub struct BuddyAllocator<Arena, Block>
 where
@@ -178,7 +176,7 @@ where
             iter::power_chunk_firsts(0..len, BuddyOrder::MAX as usize)
         {
             let page = self.arena.lock().at(n).unwrap();
-            self.merge_recursive(page);
+            self.merge(page);
         }
     }
 
@@ -211,96 +209,52 @@ where
         }
     }
 
-    pub fn split_until(
-        &self,
-        wanted_order: usize,
-    ) -> Option<NonNull<Block>> {
-        let (closet_order, initial_page) = ((wanted_order + 1)
-            ..=BuddyOrder::MAX as usize)
-            .find_map(|i| {
+    /// Splits the smallest free block above `order` down to `order`, and
+    /// returns its first half, detached. Each split puts the second half
+    /// in the free list one order down.
+    pub fn split_until(&self, order: usize) -> Option<NonNull<Block>> {
+        let (mut current, mut block) =
+            (order + 1..=BuddyOrder::MAX as usize).find_map(|i| {
                 Some((
                     i,
                     Block::from_meta(self.freelist.lock()[i].next?.cast()),
                 ))
             })?;
 
-        Some(self.split_recursive(
-            initial_page,
-            closet_order,
-            wanted_order,
-        ))
-    }
-
-    fn split_recursive(
-        &self,
-        page: NonNull<Block>,
-        current_order: usize,
-        target_order: usize,
-    ) -> NonNull<Block> {
-        debug_assert!(target_order < current_order);
-
-        if current_order == target_order {
-            return page;
-        }
-
-        let (lhs, rhs) = match self.arena.lock().split(page) {
-            Ok((lhs, rhs)) => (lhs, rhs),
-            Err(e) => todo!("Handle Error, {:?}", e),
-        };
-
-        let next_order = current_order - 1;
-
-        self.freelist.lock()[next_order].attach_block(rhs);
-
-        become self.split_recursive(lhs, next_order, target_order)
-    }
-
-    /// This function will try to merge a page with it's buddy, until it
-    /// cannot be merged anymore.
-    pub fn merge_recursive(&self, mut page: NonNull<Block>) -> BuddyOrder {
         let arena = self.arena.lock();
-        loop {
-            let buddy = match arena.buddy_of(page) {
-                Ok(buddy) => buddy,
-                Err(
-                    BuddyError::BuddyOutOfRange | BuddyError::MaxOrder,
-                ) => {
-                    let order =
-                        unsafe { page.as_ref().meta().flags.get_order() };
-                    return order;
-                }
-                Err(e) => {
-                    unreachable!(
-                        "Problem in algorithm, the error should not \
-                         happen {:?}\n {:?}",
-                        e, page,
-                    )
-                }
+        while current > order {
+            let (lhs, rhs) = arena
+                .split(block)
+                .expect("a block above `order` splits into two");
+            current -= 1;
+            self.freelist.lock()[current].attach_block(rhs);
+            block = lhs;
+        }
+        Some(block)
+    }
+
+    /// Merges `block` with its buddy, and the result with its own buddy,
+    /// until a buddy is allocated or missing. A buddy of a lower order is
+    /// merged up first.
+    pub fn merge(&self, mut block: NonNull<Block>) {
+        let arena = self.arena.lock();
+        while let Some(buddy) = arena.free_buddy_of(block) {
+            // SAFETY: `block` and its buddy are live blocks of the arena.
+            let (order, buddy_order) = unsafe {
+                (block.as_ref().order(), buddy.as_ref().order())
             };
-
-            if unsafe { buddy.as_ref().meta().flags.is_allocated() } {
-                let order =
-                    unsafe { page.as_ref().meta().flags.get_order() };
-                return order;
-            }
-
-            let buddy_order =
-                unsafe { buddy.as_ref().meta().flags.get_order() };
-            let page_order =
-                unsafe { page.as_ref().meta().flags.get_order() };
-
-            debug_assert!(buddy_order <= page_order);
-
-            if buddy_order < page_order {
-                page = buddy;
-                continue;
-            }
-            match arena.merge(page, buddy) {
-                Ok(merged) => {
+            block = match buddy_order.cmp(&order) {
+                Ordering::Less => buddy,
+                Ordering::Equal => {
+                    let merged = arena
+                        .merge(block, buddy)
+                        .expect("free buddies of one order merge");
                     self.attach_block(merged);
-                    page = merged;
+                    merged
                 }
-                Err(e) => unreachable!("{}", e),
+                Ordering::Greater => {
+                    unreachable!("a buddy is never larger than its block")
+                }
             };
         }
     }
