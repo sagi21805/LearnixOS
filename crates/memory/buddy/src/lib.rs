@@ -60,10 +60,9 @@ where
     /// `self`, so it takes `&'static self` to keep the allocator from
     /// moving.
     ///
-    /// Every free list starts at its lowest address, so low memory goes
-    /// out first. The kernel reaches page tables only through a window
-    /// over the first 2 MiB, and the IDT, its first allocation, comes
-    /// before the page fault handler that maps the rest.
+    /// Every free list starts at its lowest address, so each list hands
+    /// out low blocks first. Page tables rely on that, because the kernel
+    /// reaches them only through a window over the first 2 MiB.
     pub fn initialize(
         &'static self,
         allocations: &BumpAllocations,
@@ -147,6 +146,8 @@ where
         ))
     }
 
+    /// Puts the block back in its free list, and merges it with its free
+    /// buddies.
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         let order = order_of(layout);
         debug_assert!(order.is_some(), "`layout` came from `allocate`");
@@ -155,22 +156,20 @@ where
         let order = unsafe { order.unwrap_unchecked() };
 
         let mut inner = self.inner.lock();
-        let mut page = inner
+        let mut block = inner
             .arena
             .page_with_address(PhysicalAddress::from(ptr.addr().get()))
             .expect("an allocated block lies in the arena");
 
-        // SAFETY: `page` is the allocated block at `ptr`, which nothing
+        // SAFETY: `block` is the allocated block at `ptr`, which nothing
         // else uses once it is freed.
-        unsafe {
-            page.as_mut()
-                .meta_mut()
-                .flags
-                .set_order(BuddyOrder::from(order as u8));
-        }
+        let meta = unsafe { block.as_mut() }.meta_mut();
+        debug_assert!(meta.flags.is_allocated(), "{block:?} is allocated");
+        meta.flags.set_order(BuddyOrder::from(order as u8));
+        meta.flags.set_allocated(false);
 
-        // Deallocate the page by attaching it back to the freelist.
-        inner.freelist[order].attach_block(page);
+        inner.attach(block);
+        inner.merge(block);
     }
 }
 
