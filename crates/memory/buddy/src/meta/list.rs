@@ -99,7 +99,7 @@ impl MorphFrom<BuddyMeta<Attached>> for BuddyMeta<Detached> {
 impl BuddyMeta<Head> {
     /// Links `block` into this free list, right after the head.
     #[inline]
-    pub fn attach_block<Block: const BuddyBlock>(
+    pub fn attach_block<Block: BuddyBlock>(
         &mut self,
         mut block: NonNull<Block>,
     ) {
@@ -114,7 +114,7 @@ impl BuddyMeta<Head> {
 impl BuddyMeta<Regular> {
     /// Links `block` into this block's free list, right after this block.
     #[inline]
-    pub fn attach_block<Block: const BuddyBlock>(
+    pub fn attach_block<Block: BuddyBlock>(
         &mut self,
         mut block: NonNull<Block>,
     ) {
