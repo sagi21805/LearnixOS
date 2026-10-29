@@ -7,7 +7,7 @@ use typestate_groups::{
 };
 
 use super::state::*;
-use crate::meta::{BuddyBlock, BuddyMeta};
+use crate::meta::BuddyMeta;
 
 /// A node of a free list, which links a block in right after itself.
 #[group_trait(by = ListRole)]
@@ -89,45 +89,5 @@ impl MorphFrom<BuddyMeta<Attached>> for BuddyMeta<Detached> {
             prev: None,
             flags: src.flags,
         }
-    }
-}
-
-// TODO: remove once lib.rs links typed states.
-impl BuddyMeta<Head> {
-    /// Links `block` into this free list, right after the head.
-    #[inline]
-    pub fn attach_block<Block: BuddyBlock>(
-        &mut self,
-        mut block: NonNull<Block>,
-    ) {
-        // SAFETY: the allocator only attaches live blocks of its arena
-        // that are in no free list.
-        let meta = unsafe { block.as_mut() }.meta_mut();
-        self.link(meta.cast_state_mut::<Detached>());
-    }
-}
-
-// TODO: remove once lib.rs links typed states.
-impl BuddyMeta<Regular> {
-    /// Links `block` into this block's free list, right after this block.
-    #[inline]
-    pub fn attach_block<Block: BuddyBlock>(
-        &mut self,
-        mut block: NonNull<Block>,
-    ) {
-        // SAFETY: the allocator only attaches live blocks of its arena
-        // that are in no free list.
-        let meta = unsafe { block.as_mut() }.meta_mut();
-        self.cast_state_mut::<Attached>()
-            .link(meta.cast_state_mut::<Detached>());
-    }
-
-    /// Unlinks this block from its free list, and does nothing when it is
-    /// in none, because the allocator detaches some blocks twice.
-    pub fn detach(&mut self) -> NonNull<BuddyMeta<Regular>> {
-        if self.prev.is_some() {
-            self.cast_state_mut::<Attached>().unlink();
-        }
-        NonNull::from_mut(self)
     }
 }

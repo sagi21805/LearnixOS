@@ -104,7 +104,8 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
 
     /// Merge two blocks with the same order to a next order block.
     ///
-    /// The two blocks must be buddies, have the same order, and be free.
+    /// The two blocks must be buddies, have the same order, be free, and
+    /// be in no free list.
     fn merge(
         &self,
         block: NonNull<Block>,
