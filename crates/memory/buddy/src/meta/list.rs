@@ -59,11 +59,8 @@ impl<S: BuddyState + ListRole> Link for BuddyMeta<S> {
 }
 
 /// Unlinks an attached block, through the link that points at it.
-#[group_impl(BuddyState = Nodes, ListRole = Linked, state = S)]
-impl<S: BuddyState + ListRole> Unlink for BuddyMeta<S>
-where
-    BuddyMeta<Detached>: MorphFrom<BuddyMeta<S>>,
-{
+#[group_impl(BuddyState = Nodes, ListRole = Linked, state = Attached)]
+impl Unlink for BuddyMeta<Attached> {
     fn unlink(&mut self) -> &mut BuddyMeta<Detached> {
         debug_assert!(
             self.prev.is_some(),
