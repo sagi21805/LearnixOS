@@ -102,8 +102,8 @@ impl BuddyArena<Page> for PageMap {
 
     fn merge(
         &self,
-        mut block: NonNull<Page>,
-        mut buddy: NonNull<Page>,
+        block: NonNull<Page>,
+        buddy: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
         debug_assert_eq!(self.buddy_of(block)?, buddy);
         debug_assert!(unsafe {
@@ -131,22 +131,27 @@ impl BuddyArena<Page> for PageMap {
                 .ok_or(BuddyError::MaxOrder)?
         };
 
-        let detached_block = unsafe { block.as_mut().meta_mut().detach() };
-        let detached_buddy = unsafe { buddy.as_mut().meta_mut().detach() };
+        debug_assert!(
+            unsafe {
+                block.as_ref().buddy.prev.is_none()
+                    && buddy.as_ref().buddy.prev.is_none()
+            },
+            "the blocks to merge are in no free list"
+        );
 
-        let (mut l, mut r) = if detached_block < detached_buddy {
-            (detached_block, detached_buddy)
+        let (mut l, mut r) = if block < buddy {
+            (block, buddy)
         } else {
-            (detached_buddy, detached_block)
+            (buddy, block)
         };
 
+        // SAFETY: `l` and `r` are live pages of this arena.
         unsafe {
-            l.as_mut().flags.set_order(next_order);
-
-            r.as_mut().flags.set_order(BuddyOrder::None);
+            l.as_mut().meta_mut().flags.set_order(next_order);
+            r.as_mut().meta_mut().flags.set_order(BuddyOrder::None);
         }
 
-        Ok(Page::from_meta(l))
+        Ok(l)
     }
 
     fn split(

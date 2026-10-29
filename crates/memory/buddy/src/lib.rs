@@ -27,7 +27,12 @@ use common::{
     enums::{BuddyOrder, MemoryRegionType},
 };
 
-use crate::meta::{BuddyArena, BuddyBlock, BuddyMeta, Head};
+use typestate_groups::Isomorphic;
+
+use crate::meta::{
+    Attached, BuddyArena, BuddyBlock, BuddyMeta, Detached, Head, Link,
+    Unlink,
+};
 
 pub struct BuddyAllocator<Arena, Block>
 where
@@ -217,6 +222,8 @@ where
             block = match buddy_order.cmp(&order) {
                 Ordering::Less => buddy,
                 Ordering::Equal => {
+                    self.detach(block);
+                    self.detach(buddy);
                     let merged = self
                         .arena
                         .merge(block, buddy)
@@ -299,14 +306,12 @@ where
     /// block down, so the list starts at the lowest address.
     fn link_free_blocks(&mut self) {
         let len = self.arena.iter().len();
-        let free = (0..len)
-            .rev()
-            .map(|n| self.arena.at(n).expect("`n` is inside the arena"))
+        for n in (0..len).rev() {
+            let block = self.arena.at(n).expect("`n` is inside the arena");
             // SAFETY: `at` returns a live block of the arena.
-            .filter(|block| !unsafe { block.as_ref() }.is_allocated());
-
-        for block in free {
-            self.freelist[0].attach_block(block);
+            if !unsafe { block.as_ref() }.is_allocated() {
+                self.attach(block);
+            }
         }
     }
 
@@ -329,18 +334,24 @@ where
 
     /// Detaches the first block of the free list of `order`.
     fn pop(&mut self, order: usize) -> Option<NonNull<Block>> {
-        let mut block =
-            Block::from_meta(self.freelist[order].next?.cast());
-        // SAFETY: free lists link only live blocks of the arena.
-        unsafe { block.as_mut() }.meta_mut().detach();
+        let block = Block::from_meta(self.freelist[order].next?.cast());
+        self.detach(block);
         Some(block)
     }
 
-    /// Links `block` into the free list of its order.
-    fn attach(&mut self, block: NonNull<Block>) {
+    /// Links a block in no free list into the free list of its order.
+    fn attach(&mut self, mut block: NonNull<Block>) {
         // SAFETY: the allocator attaches only live blocks of its arena.
-        let order = unsafe { block.as_ref() }.order();
-        self.freelist[order as usize].attach_block(block);
+        let meta = unsafe { block.as_mut() }.meta_mut();
+        let order = meta.flags.get_order() as usize;
+        self.freelist[order].link(meta.cast_state_mut::<Detached>());
+    }
+
+    /// Unlinks a block from its free list.
+    fn detach(&mut self, mut block: NonNull<Block>) {
+        // SAFETY: free lists link only live blocks of the arena.
+        let meta = unsafe { block.as_mut() }.meta_mut();
+        meta.cast_state_mut::<Attached>().unlink();
     }
 
     /// Marks a detached block as allocated.
