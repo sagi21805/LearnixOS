@@ -2,7 +2,10 @@
 
 use core::ptr::NonNull;
 
-use common::address_types::{PhysicalAddress, VirtualAddress};
+use common::{
+    address_types::{PhysicalAddress, VirtualAddress},
+    enums::BuddyOrder,
+};
 use thiserror::Error;
 use x86::{memory_map::MemoryMap, structures::paging::VirtualAddressExt};
 
@@ -24,12 +27,19 @@ pub enum BuddyError {
     AddressNotMapped,
 }
 
-pub const trait BuddyBlock: Sized {
+pub trait BuddyBlock: Sized {
     fn meta(&self) -> &BuddyMeta<Regular>;
 
     fn meta_mut(&mut self) -> &mut BuddyMeta<Regular>;
 
     fn from_meta(meta: NonNull<BuddyMeta<Regular>>) -> NonNull<Self>;
+
+    /// The order of the range this block heads, or [`BuddyOrder::None`]
+    /// when it lies inside a larger block.
+    fn order(&self) -> BuddyOrder { self.meta().flags.get_order() }
+
+    /// Whether this block is handed out.
+    fn is_allocated(&self) -> bool { self.meta().flags.is_allocated() }
 }
 
 pub trait BuddyArena<Block: BuddyBlock>: Sized {
@@ -64,6 +74,23 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
         let address =
             address.translate().ok_or(BuddyError::AddressNotMapped)?;
         self.page_with_address(address)
+    }
+
+    /// The buddy of `block` when it is free, or `None` when it is
+    /// allocated or `block` has no buddy.
+    fn free_buddy_of(
+        &self,
+        block: NonNull<Block>,
+    ) -> Option<NonNull<Block>> {
+        match self.buddy_of(block) {
+            // SAFETY: `buddy_of` returns a live block of this arena.
+            Ok(buddy) => (!unsafe { buddy.as_ref() }.is_allocated())
+                .then_some(buddy),
+            Err(BuddyError::BuddyOutOfRange | BuddyError::MaxOrder) => {
+                None
+            }
+            Err(e) => unreachable!("{block:?} heads no block: {e}"),
+        }
     }
 
     /// Split a block into two smaller blocks of previous order.

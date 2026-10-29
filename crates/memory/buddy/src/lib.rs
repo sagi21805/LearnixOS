@@ -45,7 +45,7 @@ where
 impl<Arena, Block> BuddyAllocator<Arena, Block>
 where
     Arena: BuddyArena<Block>,
-    Block: const BuddyBlock,
+    Block: BuddyBlock,
 {
     pub fn new(memory_map: &MemoryMap) -> BuddyAllocator<Arena, Block> {
         let freelist = SpinMutex::new(
@@ -336,7 +336,7 @@ where
 impl<Arena, Block> ::core::fmt::Debug for BuddyAllocator<Arena, Block>
 where
     Arena: BuddyArena<Block>,
-    Block: const BuddyBlock,
+    Block: BuddyBlock,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("BuddyAllocator")
@@ -363,7 +363,7 @@ fn order_of(layout: Layout) -> Option<usize> {
 unsafe impl<Arena, Block> Allocator for BuddyAllocator<Arena, Block>
 where
     Arena: BuddyArena<Block>,
-    Block: const BuddyBlock,
+    Block: BuddyBlock,
 {
     /// Takes a block of the smallest order that fits `layout`, and
     /// returns all of it.
