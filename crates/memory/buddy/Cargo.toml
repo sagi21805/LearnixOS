@@ -15,6 +15,10 @@ strum = { version = "0.27", default-features = false }
 thiserror = { version = "2.0.12", default-features = false }
 libk = { path = "../../libk" }
 sync = { path = "../../sync" }
+typestate-groups = { path = "../../macros/typestate-groups/typestate-groups", default-features = false }
+zerocopy = { version = "0.8.59", default-features = false, features = [
+    "derive",
+] }
 
 [features]
 host = []

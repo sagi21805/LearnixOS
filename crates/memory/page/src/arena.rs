@@ -46,7 +46,6 @@ impl BuddyArena<Page> for PageMap {
 
             *prev = Page {
                 buddy: BuddyMeta::<Regular>::new(
-                    NonNull::from_ref(head),
                     BuddyFlags::new()
                         .order(BuddyOrder::Order0)
                         .allocated(false),
@@ -61,7 +60,6 @@ impl BuddyArena<Page> for PageMap {
                 let next = right.first_mut().unwrap();
                 *next = Page {
                     buddy: BuddyMeta::<Regular>::new(
-                        NonNull::from_ref(prev.meta()),
                         BuddyFlags::new()
                             .order(BuddyOrder::Order0)
                             .allocated(false),

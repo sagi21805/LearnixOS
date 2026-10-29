@@ -1,34 +1,52 @@
-//! The states of a [`BuddyMeta`].
+//! The states of a [`BuddyMeta`](super::BuddyMeta) and the groups they
+//! form.
 
-use core::ptr::NonNull;
+use typestate_groups::{group, state, state_types};
 
-use crate::meta::{BuddyFlags, BuddyMeta};
+use crate::meta::BuddyFlags;
 
-mod private {
-    pub trait Seald {}
+/// The state of a free-list node, which sets the type of its flags.
+#[state_types]
+pub trait BuddyState {
+    /// The block's order and allocation bit.
+    type Flags;
 }
 
-/// The first node on the list.
-#[derive(Copy, Clone)]
+/// The head of a free list.
+#[state]
+#[derive(Clone, Copy)]
 pub struct Head;
-#[derive(Copy, Clone)]
-/// A node on the list, that is not the first.
+
+/// A block in a free list.
+#[state]
+#[derive(Clone, Copy)]
+pub struct Attached;
+
+/// A block outside every free list.
+#[state]
+#[derive(Clone, Copy)]
+pub struct Detached;
+
+/// A block the arena handed out, whether in a free list or not.
+#[state]
+#[derive(Clone, Copy)]
 pub struct Regular;
 
-pub trait MetaState: private::Seald {
-    type Next: Sized;
-    type Prev: Sized;
-    type Flags: Sized;
-}
-impl private::Seald for Head {}
-impl MetaState for Head {
-    type Next = Option<NonNull<BuddyMeta<Regular>>>;
-    type Prev = ();
+#[group(Heads)]
+impl BuddyState for (Head,) {
     type Flags = ();
 }
-impl private::Seald for Regular {}
-impl MetaState for Regular {
-    type Next = Option<NonNull<BuddyMeta<Regular>>>;
-    type Prev = NonNull<BuddyMeta<Head>>;
+
+#[group(Nodes)]
+impl BuddyState for (Regular, Attached, Detached) {
+    #[size(8)]
     type Flags = BuddyFlags;
 }
+
+/// A state's place in a free list.
+#[state_types]
+pub trait ListRole {}
+
+/// A node in a free list, so a block can be linked after it.
+#[group(Linked)]
+impl ListRole for (Head, Attached) {}
