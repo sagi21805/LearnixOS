@@ -76,10 +76,11 @@ where
 
         let mut first = self.arena.lock().at(0).unwrap();
 
-        let lock = self.freelist.lock();
-        let head = &lock[0];
+        let mut lock = self.freelist.lock();
+        let head = &mut lock[0];
         unsafe {
-            first.as_mut().meta_mut().prev = NonNull::from_ref(head);
+            first.as_mut().meta_mut().prev =
+                Some(NonNull::from_mut(&mut head.next));
         }
 
         drop(lock);
@@ -217,7 +218,10 @@ where
         let (closet_order, initial_page) = ((wanted_order + 1)
             ..=BuddyOrder::MAX as usize)
             .find_map(|i| {
-                Some((i, Block::from_meta(self.freelist.lock()[i].next?)))
+                Some((
+                    i,
+                    Block::from_meta(self.freelist.lock()[i].next?.cast()),
+                ))
             })?;
 
         Some(self.split_recursive(
@@ -369,7 +373,7 @@ where
     ) -> Result<NonNull<[u8]>, AllocError> {
         let order = order_of(layout).ok_or(AllocError)?;
 
-        let free = self.freelist.lock()[order].next;
+        let free = self.freelist.lock()[order].next.map(NonNull::cast);
         let page = match free {
             Some(page) => page,
             None => {

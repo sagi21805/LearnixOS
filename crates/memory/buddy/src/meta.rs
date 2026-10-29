@@ -3,61 +3,63 @@ mod list;
 mod state;
 
 pub use arena::*;
+pub use list::*;
 pub use state::*;
 
 use core::{fmt::Debug, ptr::NonNull};
 
 use bitfields::bitfields;
 use common::enums::BuddyOrder;
+use typestate_groups::typestate;
+use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+/// The link from a node to the first free block after it.
+pub type Next = Option<NonNull<BuddyMeta<Attached>>>;
 
 #[bitfields]
+#[derive(FromBytes, IntoBytes, Immutable)]
 pub struct BuddyFlags {
     #[flag(flag_type = BuddyOrder)]
     pub order: B7,
     pub allocated: B1,
+    #[flag(r)]
+    pub reserved: B56,
 }
 
-#[repr(C)]
+/// A node of a free list, the list's head or a block of the arena.
+#[typestate(unsafe_transmute = true)]
 #[derive(Clone, Copy)]
-pub struct BuddyMeta<State: MetaState> {
-    pub next: State::Next,
-    pub prev: State::Prev,
-    pub flags: State::Flags,
+pub struct BuddyMeta<S: BuddyState> {
+    pub next: Next,
+    /// The `next` link that points at this block, while it is in a free
+    /// list.
+    pub prev: Option<NonNull<Next>>,
+    pub flags: S::Flags,
 }
 
 impl Default for BuddyMeta<Head> {
     fn default() -> Self {
         Self {
             next: None,
-            prev: (),
+            prev: None,
             flags: (),
         }
     }
 }
 
 impl BuddyMeta<Regular> {
-    pub fn new<
-        S: MetaState<Next = Option<NonNull<BuddyMeta<Regular>>>>,
-    >(
-        prev: NonNull<BuddyMeta<S>>,
-        flags: BuddyFlags,
-    ) -> BuddyMeta<Regular> {
+    /// A block with `flags`, in no free list.
+    pub fn new(flags: BuddyFlags) -> BuddyMeta<Regular> {
         BuddyMeta {
             next: None,
-            prev: prev.cast(),
+            prev: None,
             flags,
         }
     }
 }
 
-impl<S> ::core::fmt::Debug for BuddyMeta<S>
-where
-    S: MetaState<Next: Debug, Prev: Debug, Flags: Debug>,
-{
-    default fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter<'_>,
-    ) -> core::fmt::Result {
+impl<S: BuddyStateGroupMember<Nodes>> Debug for BuddyMeta<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut ds = f.debug_struct("BuddyMeta");
 
         ds.field("next", &self.next)
@@ -71,7 +73,7 @@ where
     }
 }
 
-impl ::core::fmt::Debug for BuddyMeta<Head> {
+impl Debug for BuddyMeta<Head> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut list_fmt = f.debug_list();
 
@@ -90,5 +92,6 @@ impl ::core::fmt::Debug for BuddyMeta<Head> {
     }
 }
 
-unsafe impl Send for BuddyMeta<Regular> {}
-unsafe impl Send for BuddyMeta<Head> {}
+// SAFETY: a node's links point only into its allocator's arena and free
+// lists, which the allocator's locks guard.
+unsafe impl<S: BuddyState> Send for BuddyMeta<S> {}
