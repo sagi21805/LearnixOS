@@ -27,17 +27,14 @@ use common::{
     iter,
 };
 
-use crate::meta::{BuddyArena, BuddyBlock, BuddyMeta, Head, Regular};
+use crate::meta::{BuddyArena, BuddyBlock, BuddyMeta, Head};
 
 pub struct BuddyAllocator<Arena, Block>
 where
     Block: BuddyBlock,
     Arena: BuddyArena<Block>,
 {
-    arena: SpinMutex<Arena>,
-    freelist: SpinMutex<[BuddyMeta<Head>; BuddyOrder::MAX as usize + 1]>,
-    // Wrap in a mutex to automatically implement Sync and Send.
-    _block: PhantomData<SpinMutex<Block>>,
+    inner: SpinMutex<BuddyAllocatorInner<Arena, Block>>,
 }
 
 impl<Arena, Block> BuddyAllocator<Arena, Block>
@@ -46,22 +43,16 @@ where
     Block: BuddyBlock,
 {
     pub fn new(memory_map: &MemoryMap) -> BuddyAllocator<Arena, Block> {
-        let freelist = SpinMutex::new(
-            [BuddyMeta::<Head>::default(); BuddyOrder::MAX as usize + 1],
-        );
-
-        let mut lock = freelist.lock();
-
-        let head = &mut lock[0];
-
-        let arena = SpinMutex::new(Arena::new(memory_map, head));
-
-        drop(lock);
+        let mut freelist =
+            [BuddyMeta::<Head>::default(); BuddyOrder::MAX as usize + 1];
+        let arena = Arena::new(memory_map, &mut freelist[0]);
 
         BuddyAllocator {
-            arena,
-            freelist,
-            _block: PhantomData,
+            inner: SpinMutex::new(BuddyAllocatorInner {
+                arena,
+                freelist,
+                _block: PhantomData,
+            }),
         }
     }
 
@@ -70,18 +61,14 @@ where
         allocations: &BumpAllocations,
         mmap: &MemoryMap,
     ) {
-        let len = self.arena.lock().iter().len();
+        let mut inner = self.inner.lock();
+        let len = inner.arena.iter().len();
 
-        let mut first = self.arena.lock().at(0).unwrap();
-
-        let mut lock = self.freelist.lock();
-        let head = &mut lock[0];
+        let mut first = inner.arena.at(0).unwrap();
         unsafe {
             first.as_mut().meta_mut().prev =
-                Some(NonNull::from_mut(&mut head.next));
+                Some(NonNull::from_mut(&mut inner.freelist[0].next));
         }
-
-        drop(lock);
 
         // Allocate all the non-usable regions in the memory map
         if let Some(last_usable_idx) = mmap
@@ -97,9 +84,8 @@ where
                 .take(last_usable_idx + 1)
                 .filter(|r| r.region_type != MemoryRegionType::Usable)
             {
-                let mut block = self
+                let mut block = inner
                     .arena
-                    .lock()
                     .page_with_address(unsafe {
                         PhysicalAddress::new_unchecked(
                             region.base_address as usize,
@@ -115,7 +101,8 @@ where
                 while length > 0 {
                     length -= REGULAR_PAGE_SIZE;
                     unsafe {
-                        self.allocate_block(block);
+                        block.as_mut().meta_mut().detach();
+                        inner.mark_allocated(block);
                     }
                     block = unsafe { block.add(1) };
                 }
@@ -153,11 +140,8 @@ where
             allocation_address.as_usize()
         );
 
-        let mut block = self
-            .arena
-            .lock()
-            .page_with_address(allocation_address)
-            .unwrap();
+        let mut block =
+            inner.arena.page_with_address(allocation_address).unwrap();
 
         println!("Block: {:?}", block);
 
@@ -167,7 +151,8 @@ where
         while length > 0 {
             length -= REGULAR_PAGE_SIZE;
             unsafe {
-                self.allocate_block(block);
+                block.as_mut().meta_mut().detach();
+                inner.mark_allocated(block);
             }
             block = unsafe { block.add(1) };
         }
@@ -175,106 +160,22 @@ where
         for (n, _power) in
             iter::power_chunk_firsts(0..len, BuddyOrder::MAX as usize)
         {
-            let page = self.arena.lock().at(n).unwrap();
-            self.merge(page);
+            let page = inner.arena.at(n).unwrap();
+            inner.merge(page);
         }
-    }
-
-    /// Mark a block as allocated, detaching it from the freelist.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that `block` is a valid free block in the
-    /// arena.
-    unsafe fn allocate_meta(
-        &self,
-        mut block: NonNull<BuddyMeta<Regular>>,
-    ) {
-        debug_assert!(
-            unsafe { !block.as_ref().flags.is_allocated() },
-            "{:?}",
-            block
-        );
-
-        // Detach page from the freelist and mark it as allocated
-        unsafe {
-            block.as_mut().detach();
-            block.as_mut().flags.set_allocated(true);
-        };
-    }
-
-    unsafe fn allocate_block(&self, block: NonNull<Block>) {
-        unsafe {
-            self.allocate_meta(NonNull::from_ref(block.as_ref().meta()));
-        }
-    }
-
-    /// Splits the smallest free block above `order` down to `order`, and
-    /// returns its first half, detached. Each split puts the second half
-    /// in the free list one order down.
-    pub fn split_until(&self, order: usize) -> Option<NonNull<Block>> {
-        let (mut current, mut block) =
-            (order + 1..=BuddyOrder::MAX as usize).find_map(|i| {
-                Some((
-                    i,
-                    Block::from_meta(self.freelist.lock()[i].next?.cast()),
-                ))
-            })?;
-
-        let arena = self.arena.lock();
-        while current > order {
-            let (lhs, rhs) = arena
-                .split(block)
-                .expect("a block above `order` splits into two");
-            current -= 1;
-            self.freelist.lock()[current].attach_block(rhs);
-            block = lhs;
-        }
-        Some(block)
-    }
-
-    /// Merges `block` with its buddy, and the result with its own buddy,
-    /// until a buddy is allocated or missing. A buddy of a lower order is
-    /// merged up first.
-    pub fn merge(&self, mut block: NonNull<Block>) {
-        let arena = self.arena.lock();
-        while let Some(buddy) = arena.free_buddy_of(block) {
-            // SAFETY: `block` and its buddy are live blocks of the arena.
-            let (order, buddy_order) = unsafe {
-                (block.as_ref().order(), buddy.as_ref().order())
-            };
-            block = match buddy_order.cmp(&order) {
-                Ordering::Less => buddy,
-                Ordering::Equal => {
-                    let merged = arena
-                        .merge(block, buddy)
-                        .expect("free buddies of one order merge");
-                    self.attach_block(merged);
-                    merged
-                }
-                Ordering::Greater => {
-                    unreachable!("a buddy is never larger than its block")
-                }
-            };
-        }
-    }
-
-    fn attach_block(&self, block: NonNull<Block>) {
-        let order = unsafe { block.as_ref().meta().flags.get_order() };
-        self.freelist.lock()[order as usize].attach_block(block);
     }
 
     pub fn print_allocated_regions(&self) {
-        let arena = self.arena.lock();
+        let inner = self.inner.lock();
 
         let mut prev_address =
             unsafe { PhysicalAddress::new_unchecked(0) };
 
-        for block in arena.iter() {
+        for block in inner.arena.iter() {
             let meta = unsafe { block.as_ref().meta() };
 
             if meta.flags.is_allocated() {
-                let address = arena.address_of(block);
+                let address = inner.arena.address_of(block);
                 if address.as_usize() - prev_address.as_usize()
                     > REGULAR_PAGE_SIZE
                 {
@@ -293,22 +194,14 @@ where
     Block: BuddyBlock,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let inner = self.inner.try_lock();
         f.debug_struct("BuddyAllocator")
-            .field("freelist", &self.freelist.try_lock())
+            .field(
+                "freelist",
+                &inner.as_ref().map(|inner| &inner.freelist),
+            )
             .finish()
     }
-}
-
-/// The buddy order whose blocks fit `layout`, or `None` for an empty
-/// layout or one larger than the biggest block.
-fn order_of(layout: Layout) -> Option<usize> {
-    let pages = layout.size().next_multiple_of(
-        REGULAR_PAGE_ALIGNMENT.max(layout.alignment()).as_usize(),
-    ) / REGULAR_PAGE_SIZE;
-
-    (1..=1 << BuddyOrder::MAX as usize)
-        .contains(&pages)
-        .then(|| pages.next_power_of_two().ilog2() as usize)
 }
 
 // SAFETY: every block comes from this allocator's arena and free lists,
@@ -327,25 +220,16 @@ where
     ) -> Result<NonNull<[u8]>, AllocError> {
         let order = order_of(layout).ok_or(AllocError)?;
 
-        let free = self.freelist.lock()[order].next.map(NonNull::cast);
-        let page = match free {
-            Some(page) => page,
-            None => {
-                let block = self.split_until(order).ok_or(AllocError)?;
-                // SAFETY: `split_until` returns a live block of the arena.
-                NonNull::from_ref(unsafe { block.as_ref() }.meta())
-            }
-        };
+        let mut inner = self.inner.lock();
+        let block = inner
+            .pop(order)
+            .or_else(|| inner.split_until(order))
+            .ok_or(AllocError)?;
+        // SAFETY: `pop` and `split_until` return a free block of the
+        // arena, which they detached.
+        unsafe { inner.mark_allocated(block) };
 
-        // SAFETY: `page` heads the free list of `order`, or was just split
-        // off for this call, so it is a free block.
-        unsafe { self.allocate_meta(page) };
-
-        let start = self
-            .arena
-            .lock()
-            .address_of(Block::from_meta(page))
-            .as_non_null::<u8>();
+        let start = inner.arena.address_of(block).as_non_null::<u8>();
         Ok(NonNull::slice_from_raw_parts(
             start,
             REGULAR_PAGE_SIZE << order,
@@ -359,9 +243,9 @@ where
         // accepted, so it has an order.
         let order = unsafe { order.unwrap_unchecked() };
 
-        let mut page = self
+        let mut inner = self.inner.lock();
+        let mut page = inner
             .arena
-            .lock()
             .page_with_address(PhysicalAddress::from(ptr.addr().get()))
             .expect("an allocated block lies in the arena");
 
@@ -375,6 +259,109 @@ where
         }
 
         // Deallocate the page by attaching it back to the freelist.
-        self.freelist.lock()[order].attach_block(page);
+        inner.freelist[order].attach_block(page);
     }
+}
+
+/// An arena and the free lists that link its blocks.
+struct BuddyAllocatorInner<Arena, Block> {
+    arena: Arena,
+    freelist: [BuddyMeta<Head>; BuddyOrder::MAX as usize + 1],
+    _block: PhantomData<Block>,
+}
+
+impl<Arena, Block> BuddyAllocatorInner<Arena, Block>
+where
+    Arena: BuddyArena<Block>,
+    Block: BuddyBlock,
+{
+    /// Splits the smallest free block above `order` down to `order`, and
+    /// returns its first half, detached. Each split puts the second half
+    /// in the free list one order down.
+    fn split_until(&mut self, order: usize) -> Option<NonNull<Block>> {
+        let (mut current, mut block) = (order + 1
+            ..=BuddyOrder::MAX as usize)
+            .find_map(|i| Some((i, self.pop(i)?)))?;
+
+        while current > order {
+            let (lhs, rhs) = self
+                .arena
+                .split(block)
+                .expect("a block above `order` splits into two");
+            current -= 1;
+            self.attach(rhs);
+            block = lhs;
+        }
+        Some(block)
+    }
+
+    /// Merges `block` with its buddy, and the result with its own buddy,
+    /// until a buddy is allocated or missing. A buddy of a lower order is
+    /// merged up first.
+    fn merge(&mut self, mut block: NonNull<Block>) {
+        while let Some(buddy) = self.arena.free_buddy_of(block) {
+            // SAFETY: `block` and its buddy are live blocks of the arena.
+            let (order, buddy_order) = unsafe {
+                (block.as_ref().order(), buddy.as_ref().order())
+            };
+            block = match buddy_order.cmp(&order) {
+                Ordering::Less => buddy,
+                Ordering::Equal => {
+                    let merged = self
+                        .arena
+                        .merge(block, buddy)
+                        .expect("free buddies of one order merge");
+                    self.attach(merged);
+                    merged
+                }
+                Ordering::Greater => {
+                    unreachable!("a buddy is never larger than its block")
+                }
+            };
+        }
+    }
+
+    /// Detaches the first block of the free list of `order`.
+    fn pop(&mut self, order: usize) -> Option<NonNull<Block>> {
+        let mut block =
+            Block::from_meta(self.freelist[order].next?.cast());
+        // SAFETY: free lists link only live blocks of the arena.
+        unsafe { block.as_mut() }.meta_mut().detach();
+        Some(block)
+    }
+
+    /// Links `block` into the free list of its order.
+    fn attach(&mut self, block: NonNull<Block>) {
+        // SAFETY: the allocator attaches only live blocks of its arena.
+        let order = unsafe { block.as_ref() }.order();
+        self.freelist[order as usize].attach_block(block);
+    }
+
+    /// Marks a detached block as allocated.
+    ///
+    /// # Safety
+    ///
+    /// `block` must be a free block of the arena, in no free list.
+    unsafe fn mark_allocated(&mut self, mut block: NonNull<Block>) {
+        // SAFETY: the caller guarantees `block` is a live block of the
+        // arena.
+        let meta = unsafe { block.as_mut() }.meta_mut();
+        debug_assert!(
+            !meta.flags.is_allocated() && meta.prev.is_none(),
+            "{block:?} is free and in no free list"
+        );
+        meta.flags.set_allocated(true);
+    }
+}
+
+/// The buddy order whose blocks fit `layout`, or `None` for an empty
+/// layout or one larger than the biggest block.
+fn order_of(layout: Layout) -> Option<usize> {
+    let pages = layout.size().next_multiple_of(
+        REGULAR_PAGE_ALIGNMENT.max(layout.alignment()).as_usize(),
+    ) / REGULAR_PAGE_SIZE;
+
+    (1..=1 << BuddyOrder::MAX as usize)
+        .contains(&pages)
+        .then(|| pages.next_power_of_two().ilog2() as usize)
 }

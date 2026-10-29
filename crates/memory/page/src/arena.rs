@@ -170,7 +170,13 @@ impl BuddyArena<Page> for PageMap {
         &self,
         mut block: NonNull<Page>,
     ) -> Result<(NonNull<Page>, NonNull<Page>), BuddyError> {
-        let mut detached = unsafe { block.as_mut().meta_mut().detach() };
+        // SAFETY: `block` is a live page of this arena.
+        let mut detached =
+            NonNull::from_mut(unsafe { block.as_mut() }.meta_mut());
+        debug_assert!(
+            unsafe { detached.as_ref() }.prev.is_none(),
+            "the block to split is in no free list"
+        );
 
         let prev_order = unsafe {
             detached

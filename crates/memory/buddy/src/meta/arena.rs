@@ -94,6 +94,8 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
     }
 
     /// Split a block into two smaller blocks of previous order.
+    ///
+    /// The block must be in no free list.
     fn split(
         &self,
         block: NonNull<Block>,
