@@ -25,7 +25,6 @@ use common::{
     constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
     enums::{BuddyOrder, MemoryRegionType},
     iter,
-    volatile::Volatile,
 };
 
 use crate::meta::{
@@ -80,8 +79,7 @@ where
         let lock = self.freelist.lock();
         let head = &lock[0];
         unsafe {
-            first.as_mut().meta_mut().prev =
-                Volatile::new(NonNull::from_ref(head));
+            first.as_mut().meta_mut().prev = NonNull::from_ref(head);
         }
 
         drop(lock);
@@ -219,10 +217,7 @@ where
         let (closet_order, initial_page) = ((wanted_order + 1)
             ..=BuddyOrder::MAX as usize)
             .find_map(|i| {
-                Some((
-                    i,
-                    Block::from_meta(self.freelist.lock()[i].next.read()?),
-                ))
+                Some((i, Block::from_meta(self.freelist.lock()[i].next?)))
             })?;
 
         Some(self.split_recursive(
@@ -374,7 +369,7 @@ where
     ) -> Result<NonNull<[u8]>, AllocError> {
         let order = order_of(layout).ok_or(AllocError)?;
 
-        let free = self.freelist.lock()[order].next.read();
+        let free = self.freelist.lock()[order].next;
         let page = match free {
             Some(page) => page,
             None => {
