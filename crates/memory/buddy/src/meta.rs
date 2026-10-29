@@ -3,7 +3,6 @@ use core::{fmt::Debug, ptr::NonNull};
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     enums::BuddyOrder,
-    volatile::Volatile,
 };
 
 use bitfields::bitfields;
@@ -73,15 +72,9 @@ pub struct BuddyFlags {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BuddyMeta<State: MetaState> {
-    pub next: Volatile<State::Next>,
-    pub prev: Volatile<State::Prev>,
+    pub next: State::Next,
+    pub prev: State::Prev,
     pub flags: State::Flags,
-}
-
-#[derive(Copy, Clone)]
-pub union BuddyMetaType {
-    pub regular: BuddyMeta<Regular>,
-    pub head: BuddyMeta<Head>,
 }
 
 impl<S> BuddyMeta<S>
@@ -91,11 +84,11 @@ where
     #[inline]
     pub fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
         unsafe { p.as_mut().next = self.next };
-        if let Some(mut next) = self.next.read() {
-            unsafe { next.as_mut().prev = Volatile::new(p.cast()) };
+        if let Some(mut next) = self.next {
+            unsafe { next.as_mut().prev = p.cast() };
         }
-        self.next.write(Some(p.cast()));
-        unsafe { p.as_mut().prev.write(NonNull::from_mut(self).cast()) };
+        self.next = Some(p.cast());
+        unsafe { p.as_mut().prev = NonNull::from_mut(self).cast() };
     }
 
     #[inline]
@@ -110,8 +103,8 @@ where
 impl Default for BuddyMeta<Head> {
     fn default() -> Self {
         Self {
-            next: Volatile::new(None),
-            prev: Volatile::new(()),
+            next: None,
+            prev: (),
             flags: (),
         }
     }
@@ -125,18 +118,18 @@ impl BuddyMeta<Regular> {
         flags: BuddyFlags,
     ) -> BuddyMeta<Regular> {
         BuddyMeta {
-            next: Volatile::new(None),
-            prev: Volatile::new(prev.cast()),
+            next: None,
+            prev: prev.cast(),
             flags,
         }
     }
 
     /// Detaches self from the list.
     pub fn detach(&mut self) -> NonNull<BuddyMeta<Regular>> {
-        unsafe { self.prev.read().as_mut().next.write(self.next.read()) }
+        unsafe { self.prev.as_mut().next = self.next }
 
-        if let Some(mut next) = self.next.read() {
-            unsafe { next.as_mut().prev.write(self.prev.read()) };
+        if let Some(mut next) = self.next {
+            unsafe { next.as_mut().prev = self.prev };
         }
 
         NonNull::from_mut(self)
@@ -170,7 +163,7 @@ impl ::core::fmt::Debug for BuddyMeta<Head> {
 
         let mut next = self.next;
         let mut i = 0;
-        while let Some(n) = next.read() {
+        while let Some(n) = next {
             list_fmt.entry(unsafe { n.as_ref() });
             next = unsafe { n.as_ref().next };
             if i == 32 {
