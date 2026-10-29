@@ -276,14 +276,13 @@ where
         self.reserve(start..PhysicalAddress::from(end));
     }
 
-    /// Marks every page of `range` allocated.
+    /// Marks every page that `range` touches allocated.
     fn reserve(&mut self, range: Range<PhysicalAddress>) {
         let start =
             range.start.align_down(REGULAR_PAGE_ALIGNMENT).as_usize();
-        let size = (range.end.as_usize() - range.start.as_usize())
-            .next_multiple_of(REGULAR_PAGE_SIZE);
+        let end = range.end.align_up(REGULAR_PAGE_ALIGNMENT).as_usize();
 
-        for address in (start..start + size).step_by(REGULAR_PAGE_SIZE) {
+        for address in (start..end).step_by(REGULAR_PAGE_SIZE) {
             let mut block = self
                 .arena
                 .page_with_address(PhysicalAddress::from(address))
