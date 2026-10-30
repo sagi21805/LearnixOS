@@ -98,7 +98,7 @@ unsafe impl Allocator for GlobalAllocator<'_> {
 // valid, as `set` requires.
 unsafe impl StaticAllocator for GlobalAllocator<'static> {}
 
-// SAFETY: the bump and buddy allocators behind it never allocate while
+// SAFETY: the buddy allocator behind it never allocates while
 // allocating or freeing, so a call never recurses into the global
 // allocator.
 unsafe impl core::alloc::GlobalAllocator for GlobalAllocator<'static> {}

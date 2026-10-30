@@ -18,5 +18,3 @@ pub const KERNEL_OFFSET: u64 = 0x10000;
 
 #[cfg(target_arch = "x86_64")]
 pub const PHYSICAL_MEMORY_OFFSET: usize = 0xffff800000000000;
-#[cfg(target_arch = "x86_64")]
-pub const PAGE_ALLOCATOR_OFFSET: usize = PHYSICAL_MEMORY_OFFSET + 0x100000;
