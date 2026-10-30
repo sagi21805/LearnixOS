@@ -10,7 +10,6 @@ use core::panic::PanicInfo;
 
 use alloc::boxed::Box;
 use buddy::BuddyAllocator;
-use bump::BumpAllocator;
 use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
     constants::{
@@ -74,8 +73,6 @@ static ADVANCED_WRITER: SpinMutex<LateInit<AdvancedWriter<80, 25>>> =
 static WRITER: SpinMutex<Writer<'static>> =
     SpinMutex::new(Writer::new(unsafe { SIMPLE_WRITER.leak() }));
 
-pub static BUMP_ALLOCATOR: LateInit<BumpAllocator> = LateInit::uninit();
-
 #[global_allocator]
 static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
 
@@ -107,13 +104,6 @@ pub unsafe extern "C" fn _start() -> ! {
 
     unsafe {
         MMAP.init(MemoryMap::parse_map(raw, buf).unwrap());
-
-        BUMP_ALLOCATOR.init(BumpAllocator::new(MMAP.assume_init_ref()));
-
-        // SAFETY: nothing has been allocated yet, so there are no blocks
-        // to hand over.
-        #[allow(static_mut_refs)]
-        GLOBAL_ALLOCATOR.set(BUMP_ALLOCATOR.assume_init_ref());
     }
 
     BUDDY_ALLOCATOR.init(BuddyAllocator::<PageMap, Page>::new(
@@ -122,8 +112,8 @@ pub unsafe extern "C" fn _start() -> ! {
 
     BUDDY_ALLOCATOR.initialize(MMAP.assume_init_ref());
 
-    // SAFETY: nothing allocated through the bump allocator, so there are
-    // no blocks to hand over.
+    // SAFETY: nothing was allocated before, so there are no blocks to
+    // hand over.
     #[allow(static_mut_refs)]
     unsafe {
         GLOBAL_ALLOCATOR.set(BUDDY_ALLOCATOR.assume_init_ref())

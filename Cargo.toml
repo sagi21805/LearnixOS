@@ -10,7 +10,6 @@ members = [
     "crates/drivers/keyboard",
     # "crates/drivers/pci",
     "crates/drivers/vga-display",
-    "crates/memory/bump",
     "crates/memory/buddy",
     "crates/memory/slab",
     "crates/memory/page",
