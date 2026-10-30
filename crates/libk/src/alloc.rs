@@ -8,8 +8,8 @@ use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
     enums::{PageSize, PageTableLevel},
     error::{EntryError, MappingError},
-    late_init::LateInit,
 };
+use sync::once::Once;
 use x86::structures::paging::{PageEntryFlags, PageTable, PageTableEntry};
 
 use crate::println;
@@ -18,30 +18,28 @@ use crate::println;
 pub type DynAllocator = dyn Allocator + Send + Sync;
 
 pub struct GlobalAllocator<'a> {
-    allocator: LateInit<&'a DynAllocator>,
+    allocator: Once<&'a DynAllocator>,
 }
 
 impl<'a> GlobalAllocator<'a> {
-    /// Routes every later allocation and free to `allocator`.
+    /// Routes every allocation and free to `allocator`.
     ///
-    /// # Safety
+    /// # Panics
     ///
-    /// Every live block of the previous allocator must now belong to
-    /// `allocator`, so freeing it through `allocator` is valid.
-    pub unsafe fn set(&mut self, allocator: &'a DynAllocator) {
-        self.allocator = LateInit::new(allocator);
+    /// When an allocator was already set.
+    pub fn set(&self, allocator: &'a DynAllocator) {
+        self.allocator.init(allocator);
     }
 
     pub const fn uninit() -> Self {
         Self {
-            allocator: LateInit::uninit(),
+            allocator: Once::uninit(),
         }
     }
 }
 
-// SAFETY: each method forwards to the current allocator, and `set`
-// requires the new allocator to take over the old one's blocks, so a block
-// stays valid until it is freed, whichever allocator is current.
+// SAFETY: each method forwards to the one allocator `set` installs, so a
+// block stays valid until it is freed.
 unsafe impl Allocator for GlobalAllocator<'_> {
     fn allocate(
         &self,
@@ -94,8 +92,8 @@ unsafe impl Allocator for GlobalAllocator<'_> {
 }
 
 // SAFETY: blocks are invalidated only by `deallocate`. Dropping the
-// wrapper frees nothing, and swapping the allocator keeps old blocks
-// valid, as `set` requires.
+// wrapper frees nothing, and the allocator is set once, so it never
+// changes under a live block.
 unsafe impl StaticAllocator for GlobalAllocator<'static> {}
 
 // SAFETY: the buddy allocator behind it never allocates while

@@ -6,7 +6,7 @@ use core::{
 };
 
 use common::enums::Color;
-use sync::mutex::SpinMutex;
+use sync::{mutex::SpinMutex, once::Once};
 
 use crate::{
     SCREEN, Screen, color_code::ColorCode, generic_writer::GenericWriter,
@@ -16,7 +16,7 @@ use crate::{
 /// Writer implementation for the VGA driver.
 pub struct SimpleWriter<const W: usize, const H: usize> {
     pub color: ColorCode,
-    screen: &'static SpinMutex<Screen>,
+    screen: &'static Once<SpinMutex<Screen>>,
 }
 
 impl<const W: usize, const H: usize> SimpleWriter<W, H> {
