@@ -365,7 +365,7 @@ where
         // arena.
         let meta = unsafe { block.as_mut() }.meta_mut();
         debug_assert!(
-            !meta.flags.is_allocated() && meta.prev.is_none(),
+            !meta.flags.is_allocated() && !meta.is_linked(),
             "{block:?} is free and in no free list"
         );
         meta.flags.set_allocated(true);
