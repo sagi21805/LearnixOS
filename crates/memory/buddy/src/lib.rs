@@ -30,7 +30,7 @@ use common::{
 use typestate_groups::Isomorphic;
 
 use crate::meta::{
-    Attached, BuddyArena, BuddyBlock, BuddyMeta, Detached, Head, Link,
+    Attached, BuddyArena, BuddyBlock, BuddyMeta, Detached, FreeList, Link,
     Unlink,
 };
 
@@ -51,7 +51,7 @@ where
         BuddyAllocator {
             inner: SpinMutex::new(BuddyAllocatorInner {
                 arena: Arena::new(memory_map),
-                freelist: [BuddyMeta::<Head>::default();
+                freelist: [const { FreeList::empty() };
                     BuddyOrder::MAX as usize + 1],
                 _block: PhantomData,
             }),
@@ -181,7 +181,7 @@ where
 /// An arena and the free lists that link its blocks.
 struct BuddyAllocatorInner<Arena, Block> {
     arena: Arena,
-    freelist: [BuddyMeta<Head>; BuddyOrder::MAX as usize + 1],
+    freelist: [FreeList; BuddyOrder::MAX as usize + 1],
     _block: PhantomData<Block>,
 }
 
@@ -334,7 +334,7 @@ where
 
     /// Detaches the first block of the free list of `order`.
     fn pop(&mut self, order: usize) -> Option<NonNull<Block>> {
-        let block = Block::from_meta(self.freelist[order].next?.cast());
+        let block = Block::from_meta(self.freelist[order].first()?.cast());
         self.detach(block);
         Some(block)
     }
@@ -344,7 +344,8 @@ where
         // SAFETY: the allocator attaches only live blocks of its arena.
         let meta = unsafe { block.as_mut() }.meta_mut();
         let order = meta.flags.get_order() as usize;
-        self.freelist[order].link(meta.cast_state_mut::<Detached>());
+        meta.cast_state_mut::<Detached>()
+            .link(self.freelist[order].head_mut());
     }
 
     /// Unlinks a block from its free list.

@@ -26,7 +26,7 @@ pub struct BuddyFlags {
     pub reserved: B56,
 }
 
-/// A node of a free list, the list's head or a block of the arena.
+/// A block of the arena, in a free list or not.
 #[typestate(unsafe_transmute = true)]
 #[derive(Clone, Copy)]
 pub struct BuddyMeta<S: BuddyState> {
@@ -35,16 +35,6 @@ pub struct BuddyMeta<S: BuddyState> {
     /// list.
     pub prev: Option<NonNull<Next>>,
     pub flags: S::Flags,
-}
-
-impl Default for BuddyMeta<Head> {
-    fn default() -> Self {
-        Self {
-            next: None,
-            prev: None,
-            flags: (),
-        }
-    }
 }
 
 impl BuddyMeta<Regular> {
@@ -73,11 +63,31 @@ impl<S: BuddyStateGroupMember<Nodes>> Debug for BuddyMeta<S> {
     }
 }
 
-impl Debug for BuddyMeta<Head> {
+/// A free list, as the link to its first block.
+///
+/// Blocks in the list point back at this link, so a list must not move
+/// while it holds blocks.
+#[repr(transparent)]
+pub struct FreeList(Next);
+
+const _: () = assert!(size_of::<FreeList>() == size_of::<Next>());
+
+impl FreeList {
+    /// A list with no blocks.
+    pub const fn empty() -> FreeList { FreeList(None) }
+
+    /// The first block of the list.
+    pub fn first(&self) -> Next { self.0 }
+
+    /// The link to the first block, which a block links in after.
+    pub fn head_mut(&mut self) -> &mut Next { &mut self.0 }
+}
+
+impl Debug for FreeList {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut list_fmt = f.debug_list();
 
-        let mut next = self.next;
+        let mut next = self.0;
         let mut i = 0;
         while let Some(n) = next {
             list_fmt.entry(unsafe { n.as_ref() });
@@ -95,3 +105,7 @@ impl Debug for BuddyMeta<Head> {
 // SAFETY: a node's links point only into its allocator's arena and free
 // lists, which the allocator's locks guard.
 unsafe impl<S: BuddyState> Send for BuddyMeta<S> {}
+
+// SAFETY: a free list links only blocks of its allocator's arena, which
+// the allocator's locks guard.
+unsafe impl Send for FreeList {}
