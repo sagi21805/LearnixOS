@@ -1,7 +1,5 @@
 use core::ptr::NonNull;
 
-use nonmax::NonMaxU16;
-
 use crate::{
     Generic64,
     descriptor::{
@@ -11,6 +9,7 @@ use crate::{
         meta::PartialMeta,
         partial::{Allocated, Deallocated},
     },
+    slot_index::SlotIndex,
     traits::{Slab, Unknown},
 };
 use typestate_groups::Morphic;
@@ -129,7 +128,7 @@ impl<T: Slab> SlabCache<T> {
     /// one of this cache's lists.
     pub(crate) unsafe fn deallocate_object(
         &mut self,
-        idx: NonMaxU16,
+        idx: SlotIndex,
         slab: &mut SlabDescriptor<T, Used>,
     ) {
         match slab.classify_mut() {
@@ -155,7 +154,7 @@ impl<T: Slab> SlabCache<T> {
     /// `idx` must be an allocated object of `partial`.
     unsafe fn deallocate_from_partial<S>(
         &mut self,
-        idx: NonMaxU16,
+        idx: SlotIndex,
         partial: &mut SlabDescriptor<T, S>,
     ) where
         S: SlabState<Meta = PartialMeta>,
@@ -179,7 +178,7 @@ impl<T: Slab> SlabCache<T> {
     /// `idx` must be an allocated object of `full`.
     unsafe fn deallocate_from_full<S>(
         &mut self,
-        idx: NonMaxU16,
+        idx: SlotIndex,
         full: &mut SlabDescriptor<T, S>,
     ) where
         S: SlabState,

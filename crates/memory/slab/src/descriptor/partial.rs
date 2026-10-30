@@ -4,10 +4,10 @@ use crate::{
         SlabDescriptor, SlabState, meta::PartialMeta,
     },
     slab_address::SlabAddress,
+    slot_index::SlotIndex,
     traits::Slab,
 };
 use core::ptr::NonNull;
-use nonmax::NonMaxU16;
 use typestate_groups::MorphFrom;
 
 /// A free slab allocating its first object becomes partial, starting at
@@ -66,7 +66,7 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
         };
         // SAFETY: the free-list head is free, and `repr(C)` puts
         // `next_free_idx` first.
-        let next = unsafe { slot.cast::<Option<NonMaxU16>>().read() };
+        let next = unsafe { slot.cast::<Option<SlotIndex>>().read() };
 
         self.state
             .set_total_allocated(self.state.get_total_allocated() + 1);
@@ -90,13 +90,13 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     /// `idx` must be an allocated object of this slab.
     pub(crate) unsafe fn deallocate_slot(
         &mut self,
-        idx: NonMaxU16,
+        idx: SlotIndex,
     ) -> Deallocated {
         let slot = unsafe { self.objects.slot(idx.get() as usize) };
-        let next = NonMaxU16::new(self.state.get_next_free_idx());
+        let next = SlotIndex::new(self.state.get_next_free_idx());
         // SAFETY: the owner is done with slot `idx`, and `repr(C)` puts
         // `next_free_idx` first.
-        unsafe { slot.cast::<Option<NonMaxU16>>().write(next) };
+        unsafe { slot.cast::<Option<SlotIndex>>().write(next) };
 
         self.state.set_next_free_idx(idx.get());
 
