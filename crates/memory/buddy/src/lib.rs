@@ -11,8 +11,9 @@ pub mod meta;
 use core::{
     alloc::{AllocError, Allocator, Layout},
     cmp::Ordering,
-    marker::PhantomData,
+    marker::{PhantomData, PhantomPinned},
     ops::Range,
+    pin::Pin,
     ptr::NonNull,
 };
 
@@ -38,6 +39,7 @@ where
     Arena: BuddyArena<Block>,
 {
     inner: SpinMutex<BuddyAllocatorInner<Arena, Block>>,
+    _pinned: PhantomPinned,
 }
 
 impl<Arena, Block> BuddyAllocator<Arena, Block>
@@ -53,6 +55,7 @@ where
                     BuddyOrder::MAX as usize + 1],
                 _block: PhantomData,
             }),
+            _pinned: PhantomPinned,
         }
     }
 
@@ -60,13 +63,13 @@ where
     ///
     /// Reserves the memory that isn't free, links every free page into the
     /// order-0 list, and merges buddies from there. The lists point into
-    /// `self`, so it takes `&'static self` to keep the allocator from
+    /// `self`, so it takes a pinned `self` to keep the allocator from
     /// moving.
     ///
     /// Every free list starts at its lowest address, so each list hands
     /// out low blocks first. Page tables rely on that, because the kernel
     /// reaches them only through a window over the first GiB.
-    pub fn initialize(&'static self, mmap: &MemoryMap) {
+    pub fn initialize(self: Pin<&mut Self>, mmap: &MemoryMap) {
         let mut inner = self.inner.lock();
         inner.reserve_unusable_regions(mmap);
         inner.reserve_arena();

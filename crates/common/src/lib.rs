@@ -11,7 +11,6 @@ pub mod constants;
 pub mod enums;
 pub mod error;
 pub mod iter;
-pub mod late_init;
 #[cfg(target_arch = "x86_64")]
 pub mod ring_buffer;
 pub mod volatile;
