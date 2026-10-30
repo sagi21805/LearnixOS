@@ -133,8 +133,8 @@ impl BuddyArena<Page> for PageMap {
 
         debug_assert!(
             unsafe {
-                block.as_ref().buddy.prev.is_none()
-                    && buddy.as_ref().buddy.prev.is_none()
+                !block.as_ref().buddy.is_linked()
+                    && !buddy.as_ref().buddy.is_linked()
             },
             "the blocks to merge are in no free list"
         );
@@ -162,7 +162,7 @@ impl BuddyArena<Page> for PageMap {
         let mut detached =
             NonNull::from_mut(unsafe { block.as_mut() }.meta_mut());
         debug_assert!(
-            unsafe { detached.as_ref() }.prev.is_none(),
+            !unsafe { detached.as_ref() }.is_linked(),
             "the block to split is in no free list"
         );
 

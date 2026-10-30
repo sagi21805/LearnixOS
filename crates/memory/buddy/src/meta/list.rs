@@ -7,7 +7,7 @@ use typestate_groups::{
 };
 
 use super::state::*;
-use crate::meta::{BuddyMeta, Next};
+use crate::meta::{BuddyMeta, Next, UNLINKED};
 
 /// A block outside every free list, which links itself into one.
 #[group_trait(by = BuddyState)]
@@ -35,7 +35,7 @@ impl Link for BuddyMeta<Detached> {
         at: &mut Next,
     ) -> &'a mut BuddyMeta<Attached> {
         debug_assert!(
-            self.next.is_none() && self.prev.is_none(),
+            self.next.is_none() && !self.is_linked(),
             "a detached block has no neighbours"
         );
         let next = *at;
@@ -45,10 +45,10 @@ impl Link for BuddyMeta<Detached> {
             // SAFETY: `next` is the block after `at` in its free list,
             // which isn't `self`.
             unsafe { next.as_mut() }.prev =
-                Some(NonNull::from_mut(&mut self.next));
+                NonNull::from_mut(&mut self.next);
         }
         self.next = next;
-        self.prev = Some(link);
+        self.prev = link;
 
         let attached = self.cast_state_mut::<Attached>();
         // SAFETY: `link` is `at`, which the caller lends to this call.
@@ -62,18 +62,17 @@ impl Link for BuddyMeta<Detached> {
 impl Unlink for BuddyMeta<Attached> {
     fn unlink(&mut self) -> &mut BuddyMeta<Detached> {
         debug_assert!(
-            self.prev.is_some(),
+            self.is_linked(),
             "an attached block has a previous link"
         );
-        // SAFETY: an attached block always has a previous link.
-        let prev = unsafe { self.prev.unwrap_unchecked() };
+        let prev = self.prev;
 
         // SAFETY: `prev` is the `next` link of the node before `self`.
         unsafe { prev.write(self.next) };
         if let Some(mut next) = self.next {
             // SAFETY: `next` is the block after `self`, which isn't
             // `self`.
-            unsafe { next.as_mut() }.prev = Some(prev);
+            unsafe { next.as_mut() }.prev = prev;
         }
 
         self.morph_mut::<Detached>()
@@ -85,7 +84,7 @@ impl MorphFrom<BuddyMeta<Attached>> for BuddyMeta<Detached> {
     fn morph_from(src: BuddyMeta<Attached>) -> Self {
         BuddyMeta {
             next: None,
-            prev: None,
+            prev: UNLINKED,
             flags: src.flags,
         }
     }

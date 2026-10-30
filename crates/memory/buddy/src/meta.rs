@@ -16,6 +16,10 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 /// The link from a node to the first free block after it.
 pub type Next = Option<NonNull<BuddyMeta<Attached>>>;
 
+/// The `prev` of a block in no free list. No link lives at this address,
+/// so a real `prev` never equals it.
+pub const UNLINKED: NonNull<Next> = NonNull::dangling();
+
 #[bitfields]
 #[derive(FromBytes, IntoBytes, Immutable)]
 pub struct BuddyFlags {
@@ -31,9 +35,9 @@ pub struct BuddyFlags {
 #[derive(Clone, Copy)]
 pub struct BuddyMeta<S: BuddyState> {
     pub next: Next,
-    /// The `next` link that points at this block, while it is in a free
-    /// list.
-    pub prev: Option<NonNull<Next>>,
+    /// The `next` link that points at this block, or [`UNLINKED`] while
+    /// it is in no free list.
+    pub prev: NonNull<Next>,
     pub flags: S::Flags,
 }
 
@@ -42,10 +46,15 @@ impl BuddyMeta<Regular> {
     pub fn new(flags: BuddyFlags) -> BuddyMeta<Regular> {
         BuddyMeta {
             next: None,
-            prev: None,
+            prev: UNLINKED,
             flags,
         }
     }
+}
+
+impl<S: BuddyState> BuddyMeta<S> {
+    /// Whether this block is in a free list.
+    pub fn is_linked(&self) -> bool { self.prev != UNLINKED }
 }
 
 impl<S: BuddyStateGroupMember<Nodes>> Debug for BuddyMeta<S> {
