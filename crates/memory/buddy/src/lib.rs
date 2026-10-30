@@ -6,13 +6,13 @@
 #![feature(min_specialization)]
 #![feature(ptr_alignment_type)]
 
+mod init;
 pub mod meta;
 
 use core::{
     alloc::{AllocError, Allocator, Layout},
     cmp::Ordering,
     marker::{PhantomData, PhantomPinned},
-    ops::Range,
     pin::Pin,
     ptr::NonNull,
 };
@@ -24,7 +24,7 @@ use x86::memory_map::MemoryMap;
 use common::{
     address_types::{Address, PhysicalAddress},
     constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
-    enums::{BuddyOrder, MemoryRegionType},
+    enums::BuddyOrder,
 };
 
 use typestate_groups::Isomorphic;
@@ -70,11 +70,7 @@ where
     /// out low blocks first. Page tables rely on that, because the kernel
     /// reaches them only through a window over the first GiB.
     pub fn initialize(self: Pin<&mut Self>, mmap: &MemoryMap) {
-        let mut inner = self.inner.lock();
-        inner.reserve_unusable_regions(mmap);
-        inner.reserve_arena();
-        inner.link_free_blocks();
-        inner.merge_free_blocks();
+        self.inner.lock().build_free_lists(mmap);
     }
 
     pub fn print_allocated_regions(&self) {
@@ -232,82 +228,6 @@ where
                     unreachable!("a buddy is never larger than its block")
                 }
             };
-        }
-    }
-
-    /// Reserves every region that isn't usable, up to the last usable
-    /// one, where the arena ends.
-    fn reserve_unusable_regions(&mut self, mmap: &MemoryMap) {
-        let regions = mmap.regions.read();
-        let Some(last_usable) = regions
-            .iter()
-            .rposition(|r| r.region_type == MemoryRegionType::Usable)
-        else {
-            return;
-        };
-
-        for region in regions[..=last_usable]
-            .iter()
-            .filter(|r| r.region_type != MemoryRegionType::Usable)
-        {
-            let start = region.base_address as usize;
-            let end = start + region.length as usize;
-            self.reserve(
-                PhysicalAddress::from(start)..PhysicalAddress::from(end),
-            );
-        }
-    }
-
-    /// Reserves the memory that holds the arena itself.
-    fn reserve_arena(&mut self) { self.reserve(self.arena.storage()) }
-
-    /// Marks every page that `range` touches allocated.
-    fn reserve(&mut self, range: Range<PhysicalAddress>) {
-        let start =
-            range.start.align_down(REGULAR_PAGE_ALIGNMENT).as_usize();
-        let end = range.end.align_up(REGULAR_PAGE_ALIGNMENT).as_usize();
-
-        for address in (start..end).step_by(REGULAR_PAGE_SIZE) {
-            let mut block = self
-                .arena
-                .page_with_address(PhysicalAddress::from(address))
-                .expect("reserved memory lies inside the arena");
-            // SAFETY: `page_with_address` returns a live block of the
-            // arena.
-            unsafe { block.as_mut() }
-                .meta_mut()
-                .flags
-                .set_allocated(true);
-        }
-    }
-
-    /// Links every free block into the order-0 free list, from the last
-    /// block down, so the list starts at the lowest address.
-    fn link_free_blocks(&mut self) {
-        let len = self.arena.iter().len();
-        for n in (0..len).rev() {
-            let block = self.arena.at(n).expect("`n` is inside the arena");
-            // SAFETY: `at` returns a live block of the arena.
-            if !unsafe { block.as_ref() }.is_allocated() {
-                self.attach(block);
-            }
-        }
-    }
-
-    /// Merges from every free block that heads its range, from the last
-    /// block down, so each free list starts at its lowest address.
-    fn merge_free_blocks(&mut self) {
-        let len = self.arena.iter().len();
-        for n in (0..len).rev() {
-            let block = self.arena.at(n).expect("`n` is inside the arena");
-            // SAFETY: `at` returns a live block of the arena.
-            let heads_free_range = unsafe {
-                !block.as_ref().is_allocated()
-                    && block.as_ref().order() != BuddyOrder::None
-            };
-            if heads_free_range {
-                self.merge(block);
-            }
         }
     }
 
