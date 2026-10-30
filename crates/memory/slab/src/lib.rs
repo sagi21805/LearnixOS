@@ -12,6 +12,11 @@
 #![feature(slice_ptr_get)]
 #![feature(unsize)]
 #![feature(pointer_is_aligned_to)]
+#![feature(pattern_types, pattern_type_macro)]
+#![expect(
+    internal_features,
+    reason = "`SlotIndex` is a pattern type, which is an internal feature"
+)]
 
 pub mod cache;
 pub mod cache_allocator;
@@ -20,6 +25,7 @@ pub mod local_macros;
 pub mod preallocated;
 pub mod slab_address;
 pub mod slab_objects;
+pub mod slot_index;
 pub mod traits;
 
 use crate::{

@@ -1,9 +1,10 @@
 use core::ptr::NonNull;
 
 use common::address_types::VirtualAddress;
-use nonmax::NonMaxU16;
 
-use crate::{preallocated::PreAllocated, traits::Slab};
+use crate::{
+    preallocated::PreAllocated, slot_index::SlotIndex, traits::Slab,
+};
 
 /// The object slots of one slab, in pages that no other value manages.
 ///
@@ -75,7 +76,7 @@ impl<T: Slab> SlabObjects<T> {
     /// | 100    | `0xCAAA_AAAA_AAAA_AAAC` | not 16-aligned      |
     /// | 112    | `0x0AAA_AAAA_AAAA_AAAD` | not a multiple of 3 |
     /// | -48    | `0x0FFF_FFFF_FFFF_FFFF` | before the slab     |
-    pub fn index_of(&self, object: NonNull<T>) -> Option<NonMaxU16> {
+    pub fn index_of(&self, object: NonNull<T>) -> Option<SlotIndex> {
         let idx = object
             .addr()
             .get()
@@ -84,7 +85,7 @@ impl<T: Slab> SlabObjects<T> {
             .rotate_right(T::SLOT_SHIFT);
 
         (idx < T::OBJECT_PER_SLAB)
-            .then(|| NonMaxU16::new(idx as u16))
+            .then(|| SlotIndex::new(idx as u16))
             .flatten()
     }
 
@@ -98,7 +99,7 @@ impl<T: Slab> SlabObjects<T> {
         let slots = unsafe { self.objects().as_mut() };
 
         for (slot, next) in slots.iter_mut().zip(1..) {
-            slot.next_free_idx = NonMaxU16::new(next);
+            slot.next_free_idx = SlotIndex::new(next);
         }
         if let Some(last) = slots.last_mut() {
             last.next_free_idx = None;

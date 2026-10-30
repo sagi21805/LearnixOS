@@ -16,7 +16,6 @@ extend = "1.2.0"
 bitfields = { path = "../crates/macros/bitfields" }
 strum_macros = { version = "0.28", default-features = false }
 strum = { version = "0.28", default-features = false }
-nonmax = { version = "0.5.5", default-features = false }
 # ahci = { path = "../crates/drivers/ahci" }
 keyboard = { path = "../crates/drivers/keyboard" }
 # pci = { path = "../crates/drivers/pci" }

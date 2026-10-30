@@ -1,7 +1,6 @@
 use core::{fmt::Debug, mem::ManuallyDrop};
-use nonmax::NonMaxU16;
 
-use crate::Generic64;
+use crate::{Generic64, slot_index::SlotIndex};
 
 /// Preallocated object in the slab allocator.
 ///
@@ -9,7 +8,7 @@ use crate::Generic64;
 #[repr(C)]
 pub union PreAllocated<T: Sized> {
     pub allocated: ManuallyDrop<T>,
-    pub next_free_idx: Option<NonMaxU16>,
+    pub next_free_idx: Option<SlotIndex>,
 }
 
 // A slot is exactly as large as the object it holds.
