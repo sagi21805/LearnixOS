@@ -3,8 +3,9 @@ use common::address_types::Address;
 use common::{
     address_types::PhysicalAddress,
     constants::{
-        IDENTITY_PAGE_TABLE_L2_OFFSET, IDENTITY_PAGE_TABLE_L3_OFFSET,
-        IDENTITY_PAGE_TABLE_L4_OFFSET, TOP_IDENTITY_PAGE_TABLE_L2_OFFSET,
+        BIG_PAGE_SIZE, IDENTITY_PAGE_TABLE_L2_OFFSET,
+        IDENTITY_PAGE_TABLE_L3_OFFSET, IDENTITY_PAGE_TABLE_L4_OFFSET,
+        TOP_IDENTITY_PAGE_TABLE_L2_OFFSET,
         TOP_IDENTITY_PAGE_TABLE_L3_OFFSET,
     },
 };
@@ -27,7 +28,7 @@ fn init_identity_tables() -> Option<&'static mut PageTable> {
 
     unsafe {
         // Setup identity paging Mapping address virtual addresses
-        // 0x000000-0x1fffff to the same physical addresses.
+        // 0x00000000-0x3fffffff to the same physical addresses.
         identity_page_table_l4.entries[0].map_unchecked(
             PhysicalAddress::new_unchecked(IDENTITY_PAGE_TABLE_L3_OFFSET),
             PageEntryFlags::table_flags(),
@@ -36,11 +37,11 @@ fn init_identity_tables() -> Option<&'static mut PageTable> {
             PhysicalAddress::new_unchecked(IDENTITY_PAGE_TABLE_L2_OFFSET),
             PageEntryFlags::table_flags(),
         );
-        identity_page_table_l2.entries[0].map_unchecked(
-            PhysicalAddress::new_unchecked(0),
-            PageEntryFlags::huge_page_flags(),
-        );
     }
+    map_first_gib(
+        identity_page_table_l2,
+        PageEntryFlags::huge_page_flags(),
+    );
 
     Some(identity_page_table_l4)
 }
@@ -65,8 +66,8 @@ fn init_kernel_tables(pml4: &mut PageTable) -> Option<()> {
         // Setup kernel identity paging Mapping at the top half
         // of the address space
         // The kernel is mapped from 0xffff800000000000 to
-        // 0xffff8000001fffff to the physical addresses of
-        // 0x000000-0x1fffff
+        // 0xffff80003fffffff to the physical addresses of
+        // 0x00000000-0x3fffffff
         // This mapping will allow the kernel to access physical addresses
         // without any dependency on the current mapping
         pml4.entries[256].map_unchecked(
@@ -81,13 +82,28 @@ fn init_kernel_tables(pml4: &mut PageTable) -> Option<()> {
             ),
             PageEntryFlags::table_flags(),
         );
-        top_identity_page_table_l2.entries[0].map_unchecked(
-            PhysicalAddress::new_unchecked(0),
-            PageEntryFlags::huge_io_page_flags(),
-        );
     }
+    map_first_gib(
+        top_identity_page_table_l2,
+        PageEntryFlags::huge_io_page_flags(),
+    );
 
     Some(())
+}
+
+/// Maps the first GiB of physical memory through every entry of `l2`,
+/// with one 2 MiB page per entry.
+fn map_first_gib(l2: &mut PageTable, flags: PageEntryFlags) {
+    for (i, entry) in l2.entries.iter_mut().enumerate() {
+        // SAFETY: `l2` is a fresh table, and `i * 2 MiB` is 2 MiB
+        // aligned.
+        unsafe {
+            entry.map_unchecked(
+                PhysicalAddress::new_unchecked(i * BIG_PAGE_SIZE),
+                flags,
+            )
+        };
+    }
 }
 
 fn set_cr3() {
