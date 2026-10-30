@@ -7,59 +7,58 @@ use typestate_groups::{
 };
 
 use super::state::*;
-use crate::meta::BuddyMeta;
+use crate::meta::{BuddyMeta, Next};
 
-/// A node of a free list, which links a block in right after itself.
-#[group_trait(by = ListRole)]
+/// A block outside every free list, which links itself into one.
+#[group_trait(by = BuddyState)]
 pub trait Link {
-    /// Links `block` into this node's free list, right after this node.
+    /// Links this block in right after `at`, the `next` link of a free
+    /// list's head or of a block in it.
     fn link<'a>(
-        &mut self,
-        block: &'a mut BuddyMeta<Detached>,
+        &'a mut self,
+        at: &mut Next,
     ) -> &'a mut BuddyMeta<Attached>;
 }
 
 /// A block in a free list, which unlinks itself and returns itself
 /// outside the list.
-#[group_trait(by = (BuddyState, ListRole))]
+#[group_trait(by = BuddyState)]
 pub trait Unlink {
     /// Unlinks this block from its free list.
     fn unlink(&mut self) -> &mut BuddyMeta<Detached>;
 }
 
-/// Links a block after a head or a block. Both keep the link to the next
-/// block in `next`, so one impl covers them.
-#[group_impl(Linked, state = S)]
-impl<S: BuddyState + ListRole> Link for BuddyMeta<S> {
+#[group_impl(BuddyState = Nodes, state = Detached)]
+impl Link for BuddyMeta<Detached> {
     fn link<'a>(
-        &mut self,
-        block: &'a mut BuddyMeta<Detached>,
+        &'a mut self,
+        at: &mut Next,
     ) -> &'a mut BuddyMeta<Attached> {
         debug_assert!(
-            block.next.is_none() && block.prev.is_none(),
+            self.next.is_none() && self.prev.is_none(),
             "a detached block has no neighbours"
         );
-        let next = self.next;
-        let link = NonNull::from_mut(&mut self.next);
+        let next = *at;
+        let link = NonNull::from_mut(at);
 
         if let Some(mut next) = next {
-            // SAFETY: `next` is the block after `self` in its free list,
-            // which isn't `block`.
+            // SAFETY: `next` is the block after `at` in its free list,
+            // which isn't `self`.
             unsafe { next.as_mut() }.prev =
-                Some(NonNull::from_mut(&mut block.next));
+                Some(NonNull::from_mut(&mut self.next));
         }
-        block.next = next;
-        block.prev = Some(link);
+        self.next = next;
+        self.prev = Some(link);
 
-        let attached = block.cast_state_mut::<Attached>();
-        // SAFETY: `link` is `self.next`, which `self` lends to this call.
+        let attached = self.cast_state_mut::<Attached>();
+        // SAFETY: `link` is `at`, which the caller lends to this call.
         unsafe { link.write(Some(NonNull::from_mut(attached))) };
         attached
     }
 }
 
 /// Unlinks an attached block, through the link that points at it.
-#[group_impl(BuddyState = Nodes, ListRole = Linked, state = Attached)]
+#[group_impl(BuddyState = Nodes, state = Attached)]
 impl Unlink for BuddyMeta<Attached> {
     fn unlink(&mut self) -> &mut BuddyMeta<Detached> {
         debug_assert!(
