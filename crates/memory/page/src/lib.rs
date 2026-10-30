@@ -3,6 +3,7 @@
 
 pub mod arena;
 pub mod meta;
+mod placement;
 
 use core::{mem::ManuallyDrop, ptr::NonNull};
 

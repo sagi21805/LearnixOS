@@ -18,11 +18,10 @@ use core::{
 
 use libk::println;
 use sync::mutex::SpinMutex;
-use x86::{memory_map::MemoryMap, structures::paging::VirtualAddressExt};
+use x86::memory_map::MemoryMap;
 
 use common::{
     address_types::{Address, PhysicalAddress},
-    alloc::BumpAllocations,
     constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
     enums::{BuddyOrder, MemoryRegionType},
 };
@@ -30,8 +29,7 @@ use common::{
 use typestate_groups::Isomorphic;
 
 use crate::meta::{
-    Attached, BuddyArena, BuddyBlock, BuddyMeta, Detached, FreeList, Link,
-    Unlink,
+    Attached, BuddyArena, BuddyBlock, Detached, FreeList, Link, Unlink,
 };
 
 pub struct BuddyAllocator<Arena, Block>
@@ -67,15 +65,11 @@ where
     ///
     /// Every free list starts at its lowest address, so each list hands
     /// out low blocks first. Page tables rely on that, because the kernel
-    /// reaches them only through a window over the first 2 MiB.
-    pub fn initialize(
-        &'static self,
-        allocations: &BumpAllocations,
-        mmap: &MemoryMap,
-    ) {
+    /// reaches them only through a window over the first GiB.
+    pub fn initialize(&'static self, mmap: &MemoryMap) {
         let mut inner = self.inner.lock();
         inner.reserve_unusable_regions(mmap);
-        inner.reserve_bump_allocations(allocations);
+        inner.reserve_arena();
         inner.link_free_blocks();
         inner.merge_free_blocks();
     }
@@ -261,26 +255,8 @@ where
         }
     }
 
-    /// Reserves the bump allocator's allocation, which holds the arena.
-    fn reserve_bump_allocations(&mut self, allocations: &BumpAllocations) {
-        if allocations.index > 1 {
-            todo!(
-                "Currently does not implement passing allocations that \
-                 are not the arena of this allocator"
-            )
-        }
-
-        let allocation = allocations
-            .iter()
-            .next()
-            .expect("the bump allocator allocated the arena");
-        let start = allocation
-            .base
-            .translate()
-            .expect("the bump allocator hands out mapped memory");
-        let end = start.as_usize() + allocation.layout.size();
-        self.reserve(start..PhysicalAddress::from(end));
-    }
+    /// Reserves the memory that holds the arena itself.
+    fn reserve_arena(&mut self) { self.reserve(self.arena.storage()) }
 
     /// Marks every page that `range` touches allocated.
     fn reserve(&mut self, range: Range<PhysicalAddress>) {

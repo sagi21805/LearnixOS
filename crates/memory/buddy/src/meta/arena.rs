@@ -1,6 +1,6 @@
 //! The arena that holds every block's [`BuddyMeta`].
 
-use core::ptr::NonNull;
+use core::{ops::Range, ptr::NonNull};
 
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
@@ -46,6 +46,9 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
     /// An arena of free order-0 blocks covering `mmap`, in no free list.
     fn new(mmap: &MemoryMap) -> Self;
 
+    /// The physical memory that holds this arena's blocks.
+    fn storage(&self) -> Range<PhysicalAddress>;
+
     /// Returns an iterator over all blocks in this arena.
     fn iter(&self) -> impl ExactSizeIterator<Item = NonNull<Block>>;
 
@@ -79,6 +82,8 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
 
     /// The buddy of `block` when it is free, or `None` when it is
     /// allocated or `block` has no buddy.
+    ///
+    /// `block` must head a range of this arena.
     fn free_buddy_of(
         &self,
         block: NonNull<Block>,
@@ -90,7 +95,9 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
             Err(BuddyError::BuddyOutOfRange | BuddyError::MaxOrder) => {
                 None
             }
-            Err(e) => unreachable!("{block:?} heads no block: {e}"),
+            // SAFETY: `block` heads a range, so `buddy_of` fails only
+            // when the block has no buddy.
+            Err(_) => unsafe { core::hint::unreachable_unchecked() },
         }
     }
 

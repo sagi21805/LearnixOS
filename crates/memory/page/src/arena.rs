@@ -1,14 +1,10 @@
-extern crate alloc;
-
-use core::ptr::NonNull;
+use core::{mem::MaybeUninit, ops::Range, ptr::NonNull};
 
 use common::{
     address_types::{Address, PhysicalAddress},
     constants::REGULAR_PAGE_SIZE,
     enums::{BuddyOrder, MemoryRegionType},
 };
-
-use alloc::boxed::Box;
 
 use libk::println;
 use x86::memory_map::MemoryMap;
@@ -17,10 +13,11 @@ use buddy::meta::{
     BuddyArena, BuddyBlock, BuddyError, BuddyFlags, BuddyMeta, Regular,
 };
 
-use crate::Page;
+use crate::{Page, placement::ArenaPlacement};
 
 pub struct PageMap {
-    inner: Box<[Page]>,
+    inner: &'static mut [Page],
+    placement: ArenaPlacement,
 }
 
 impl BuddyArena<Page> for PageMap {
@@ -37,7 +34,23 @@ impl BuddyArena<Page> for PageMap {
         let total_pages = last_address / REGULAR_PAGE_SIZE;
         println!("Total pages: {}", total_pages);
 
-        let mut page_map = Box::new_uninit_slice(total_pages);
+        let placement =
+            ArenaPlacement::find(mmap, total_pages * size_of::<Page>());
+        // SAFETY: `find` places the arena in usable memory nothing uses
+        // yet, and the boot map maps nothing past the first GiB.
+        unsafe { placement.map() };
+
+        // SAFETY: the placement holds `total_pages` pages, mapped and
+        // unused.
+        let page_map = unsafe {
+            core::slice::from_raw_parts_mut(
+                placement
+                    .pages()
+                    .as_non_null::<MaybeUninit<Page>>()
+                    .as_ptr(),
+                total_pages,
+            )
+        };
         println!("Last Memory Address: {:?}", page_map.as_ptr_range());
         for page in page_map.iter_mut() {
             page.write(Page {
@@ -49,10 +62,15 @@ impl BuddyArena<Page> for PageMap {
             });
         }
 
-        // SAFETY: the loop wrote every page.
         PageMap {
-            inner: unsafe { page_map.assume_init() },
+            // SAFETY: the loop wrote every page.
+            inner: unsafe { page_map.assume_init_mut() },
+            placement,
         }
+    }
+
+    fn storage(&self) -> Range<PhysicalAddress> {
+        self.placement.storage()
     }
 
     fn address_of(&self, block: NonNull<Page>) -> PhysicalAddress {
