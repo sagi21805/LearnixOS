@@ -4,6 +4,8 @@ pub const REGULAR_PAGE_SIZE: usize = 4096;
 pub const BIG_PAGE_SIZE: usize =
     REGULAR_PAGE_SIZE * PAGE_DIRECTORY_ENTRIES;
 pub const HUGE_PAGE_SIZE: usize = BIG_PAGE_SIZE * PAGE_DIRECTORY_ENTRIES;
+/// The GiBs, from address 0, that the boot map identity-maps.
+pub const BOOT_MAPPED_GIBS: usize = 1;
 #[allow(non_upper_case_globals)]
 pub const KiB: usize = 1024;
 #[allow(non_upper_case_globals)]
