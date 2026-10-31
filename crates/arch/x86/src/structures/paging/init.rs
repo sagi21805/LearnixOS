@@ -3,9 +3,9 @@ use common::address_types::Address;
 use common::{
     address_types::PhysicalAddress,
     constants::{
-        BIG_PAGE_SIZE, IDENTITY_PAGE_TABLE_L2_OFFSET,
-        IDENTITY_PAGE_TABLE_L3_OFFSET, IDENTITY_PAGE_TABLE_L4_OFFSET,
-        TOP_IDENTITY_PAGE_TABLE_L2_OFFSET,
+        BIG_PAGE_SIZE, BOOT_MAPPED_GIBS, HUGE_PAGE_SIZE,
+        IDENTITY_PAGE_TABLE_L2_OFFSET, IDENTITY_PAGE_TABLE_L3_OFFSET,
+        IDENTITY_PAGE_TABLE_L4_OFFSET, TOP_IDENTITY_PAGE_TABLE_L2_OFFSET,
         TOP_IDENTITY_PAGE_TABLE_L3_OFFSET,
     },
 };
@@ -38,7 +38,7 @@ fn init_identity_tables() -> Option<&'static mut PageTable> {
             PageEntryFlags::table_flags(),
         );
     }
-    map_first_gib(
+    map_boot_memory(
         identity_page_table_l2,
         PageEntryFlags::huge_page_flags(),
     );
@@ -83,7 +83,7 @@ fn init_kernel_tables(pml4: &mut PageTable) -> Option<()> {
             PageEntryFlags::table_flags(),
         );
     }
-    map_first_gib(
+    map_boot_memory(
         top_identity_page_table_l2,
         PageEntryFlags::huge_io_page_flags(),
     );
@@ -91,17 +91,20 @@ fn init_kernel_tables(pml4: &mut PageTable) -> Option<()> {
     Some(())
 }
 
-/// Maps the first GiB of physical memory through every entry of `l2`,
-/// with one 2 MiB page per entry.
-fn map_first_gib(l2: &mut PageTable, flags: PageEntryFlags) {
-    for (i, entry) in l2.entries.iter_mut().enumerate() {
-        // SAFETY: `l2` is a fresh table, and `i * 2 MiB` is 2 MiB
-        // aligned.
+/// Maps the first `BOOT_MAPPED_GIBS` GiBs of physical memory through
+/// `l2`, with one 2 MiB page per entry.
+fn map_boot_memory(l2: &mut PageTable, flags: PageEntryFlags) {
+    const {
+        assert!(
+            BOOT_MAPPED_GIBS == 1,
+            "the boot map has one L2 table for each half"
+        )
+    };
+    let frames = (0..HUGE_PAGE_SIZE).step_by(BIG_PAGE_SIZE);
+    for (entry, frame) in l2.entries.iter_mut().zip(frames) {
+        // SAFETY: `l2` is a fresh table, and `frame` is 2 MiB aligned.
         unsafe {
-            entry.map_unchecked(
-                PhysicalAddress::new_unchecked(i * BIG_PAGE_SIZE),
-                flags,
-            )
+            entry.map_unchecked(PhysicalAddress::from(frame), flags)
         };
     }
 }
