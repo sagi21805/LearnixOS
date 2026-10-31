@@ -1,11 +1,14 @@
 //! Where the page arena lives in physical memory, and the page tables
 //! that map it.
 
-use core::ops::Range;
+use core::{iter::StepBy, ops::Range};
 
 use common::{
     address_types::{Address, PhysicalAddress},
-    constants::{BIG_PAGE_SIZE, HUGE_PAGE_SIZE, MiB, REGULAR_PAGE_SIZE},
+    constants::{
+        BIG_PAGE_SIZE, BOOT_MAPPED_GIBS, HUGE_PAGE_SIZE, MiB,
+        REGULAR_PAGE_SIZE,
+    },
     enums::MemoryRegionType,
 };
 use x86::{
@@ -16,49 +19,66 @@ use x86::{
 /// The memory that holds the arena. It starts with one L2 table for each
 /// GiB past the first that the pages reach, because the boot map covers
 /// only the first GiB, and the pages follow the tables.
+///
+/// The layout for the arena there for would be
+///
+/// |Table|Table|...|Page|Page|Page|...
+///
+/// *Note:* Extra tables may not be needed.
 pub struct ArenaPlacement {
     tables: Range<usize>,
     pages: Range<usize>,
 }
 
 impl ArenaPlacement {
-    /// The first place in a usable region, at or above 1 MiB, that holds
-    /// `size` bytes of pages and the tables that map them.
-    pub fn find(mmap: &MemoryMap, size: usize) -> ArenaPlacement {
-        mmap.regions
+    /// Places `size` bytes of pages, and the tables that map them, at the
+    /// start of the first usable region at or above 1 MiB, and maps them.
+    ///
+    /// # Safety
+    ///
+    /// Nothing may use the usable memory yet, and the identity L3 table
+    /// must map nothing past the first GiB.
+    pub unsafe fn find(mmap: &MemoryMap, size: usize) -> ArenaPlacement {
+        let placement = mmap
+            .regions
             .read()
             .iter()
             .filter(|r| r.region_type == MemoryRegionType::Usable)
-            .find_map(|r| ArenaPlacement::inside(r, size))
-            .expect("a usable region holds the page arena")
+            .find_map(|r| unsafe { ArenaPlacement::at_start_of(r, size) })
+            .expect("a usable region holds the page arena");
+        // SAFETY: the placement is in usable memory, which the caller
+        // promises is unused.
+        unsafe { placement.map() };
+        placement
     }
 
-    /// The placement at the start of `region`'s part at or above 1 MiB,
-    /// if it fits there.
+    /// The tables and pages at the start of `region`'s part at or above
+    /// 1 MiB, if `region` is usable and they fit in it.
     ///
-    /// The tables can only be written through the boot map, so a
-    /// placement that needs tables must start in the first GiB.
-    fn inside(region: &MemoryRegion, size: usize) -> Option<Self> {
-        let start = (region.base_address as usize)
+    /// # Safety
+    ///
+    /// Region must be a useable memory region.
+    unsafe fn at_start_of(
+        region: &MemoryRegion,
+        size: usize,
+    ) -> Option<Self> {
+        debug_assert!(region.region_type == MemoryRegionType::Usable);
+        let table_start = (region.base_address as usize)
             .max(MiB)
             .next_multiple_of(REGULAR_PAGE_SIZE);
         let end = (region.base_address + region.length) as usize;
 
-        let pages_after = |tables: usize| {
-            let pages = start + tables * REGULAR_PAGE_SIZE;
-            pages..pages + size
-        };
-        let tables = (0..)
-            .find(|&n| gibs_past_first(pages_after(n)).len() <= n)
-            .expect("one table per GiB is always enough");
+        let tables = tables_for(table_start, size);
+        let pages_start = table_start + tables * size_of::<PageTable>();
 
-        let placement = ArenaPlacement {
-            tables: start..start + tables * REGULAR_PAGE_SIZE,
-            pages: pages_after(tables),
-        };
-        (placement.pages.end <= end
-            && (tables == 0 || start < HUGE_PAGE_SIZE))
-            .then_some(placement)
+        let fits = pages_start + size <= end;
+        let tables_are_boot_mapped = tables == 0
+            || pages_start <= BOOT_MAPPED_GIBS * HUGE_PAGE_SIZE;
+
+        (fits && tables_are_boot_mapped).then(|| ArenaPlacement {
+            tables: table_start..pages_start,
+            pages: pages_start..pages_start + size,
+        })
     }
 
     /// The physical address of the first page.
@@ -72,14 +92,14 @@ impl ArenaPlacement {
             ..PhysicalAddress::from(self.pages.end)
     }
 
-    /// Identity-maps the pages past the first GiB with 2 MiB pages,
+    /// Identity-maps the unmapped GiBs of the pages with 2 MiB pages,
     /// through one carved L2 table per GiB.
     ///
     /// # Safety
     ///
     /// The placement's memory must be usable and unused, and the identity
     /// L3 table must map nothing past the first GiB.
-    pub unsafe fn map(&self) {
+    unsafe fn map(&self) {
         let pml4 = PageTable::current_table();
         // SAFETY: the boot map's PML4 maps the identity L3 table in its
         // first entry.
@@ -87,21 +107,18 @@ impl ArenaPlacement {
             .mapped_table()
             .expect("the boot map has an identity L3 table");
 
-        let tables = self.tables.clone().step_by(REGULAR_PAGE_SIZE);
-        for (gib, table) in gibs_past_first(self.pages.clone()).zip(tables)
-        {
-            let mut l2 =
-                PhysicalAddress::from(table).as_non_null::<PageTable>();
+        let tables = self.tables.clone().step_by(size_of::<PageTable>());
+        for (gib, table) in unmapped_gibs(self.pages.clone()).zip(tables) {
             // SAFETY: `table` is unused memory in the first GiB, which
             // the boot map identity-maps.
-            let l2 = unsafe {
-                l2.write(PageTable::empty());
-                l2.as_mut()
+            unsafe {
+                PhysicalAddress::from(table)
+                    .as_non_null::<PageTable>()
+                    .write(self.gib_table(gib))
             };
-            self.fill(l2, gib);
 
-            // SAFETY: nothing maps this GiB yet, and `l2` maps only the
-            // arena's pages in it.
+            // SAFETY: nothing maps this GiB yet, and `table` maps only
+            // the arena's pages in it.
             unsafe {
                 l3.as_mut()
                     .entries
@@ -115,31 +132,51 @@ impl ArenaPlacement {
         }
     }
 
-    /// Points the entries of `l2` that cover the pages inside `gib` at
-    /// the same physical memory.
-    fn fill(&self, l2: &mut PageTable, gib: usize) {
-        let gib_start = gib * HUGE_PAGE_SIZE;
-        let first = self.pages.start.max(gib_start) - gib_start;
-        let last = (self.pages.end - 1)
-            .min(gib_start + HUGE_PAGE_SIZE - 1)
-            - gib_start;
-
-        for i in first / BIG_PAGE_SIZE..=last / BIG_PAGE_SIZE {
-            // SAFETY: `l2` is fresh, and `gib_start + i * 2 MiB` is 2 MiB
-            // aligned.
+    /// An L2 table that identity-maps the 2 MiB pages of GiB `gib` that
+    /// the arena's pages touch.
+    fn gib_table(&self, gib: usize) -> PageTable {
+        let mut l2 = PageTable::empty();
+        let touched =
+            l2.entries.iter_mut().zip(big_frames_of(gib)).filter(
+                |&(_, frame)| {
+                    self.pages.start < frame + BIG_PAGE_SIZE
+                        && self.pages.end > frame
+                },
+            );
+        for (entry, frame) in touched {
+            // SAFETY: `l2` is fresh, and `frame` is 2 MiB aligned.
             unsafe {
-                l2.entries[i].map_unchecked(
-                    PhysicalAddress::from(gib_start + i * BIG_PAGE_SIZE),
+                entry.map_unchecked(
+                    PhysicalAddress::from(frame),
                     PageEntryFlags::huge_page_flags(),
                 )
             };
         }
+        l2
     }
 }
 
-/// The GiBs past the first that `range` touches.
-fn gibs_past_first(range: Range<usize>) -> Range<usize> {
-    let first = (range.start / HUGE_PAGE_SIZE).max(1);
-    let last = (range.end - 1) / HUGE_PAGE_SIZE;
-    first..(last + 1).max(first)
+/// The fewest L2 tables that map `size` bytes of pages placed at `start`
+/// right after those tables.
+fn tables_for(table_start: usize, size: usize) -> usize {
+    (0..)
+        .find(|&tables| {
+            let pages_start =
+                table_start + tables * size_of::<PageTable>();
+            unmapped_gibs(pages_start..pages_start + size).len() <= tables
+        })
+        .expect("one table per GiB is always enough")
+}
+
+/// The GiBs `pages` reaches that the boot map doesn't cover.
+fn unmapped_gibs(pages: Range<usize>) -> Range<usize> {
+    let first = (pages.start / HUGE_PAGE_SIZE).max(BOOT_MAPPED_GIBS);
+    let last = (pages.end - 1) / HUGE_PAGE_SIZE;
+    first..last + 1
+}
+
+/// The 2 MiB frames of GiB `gib`, in order.
+fn big_frames_of(gib: usize) -> StepBy<Range<usize>> {
+    let start = gib * HUGE_PAGE_SIZE;
+    (start..start + HUGE_PAGE_SIZE).step_by(BIG_PAGE_SIZE)
 }
