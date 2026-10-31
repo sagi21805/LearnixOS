@@ -34,11 +34,11 @@ impl BuddyArena<Page> for PageMap {
         let total_pages = last_address / REGULAR_PAGE_SIZE;
         println!("Total pages: {}", total_pages);
 
-        let placement =
-            ArenaPlacement::find(mmap, total_pages * size_of::<Page>());
-        // SAFETY: `find` places the arena in usable memory nothing uses
-        // yet, and the boot map maps nothing past the first GiB.
-        unsafe { placement.map() };
+        // SAFETY: nothing uses the usable memory yet, and the boot map
+        // maps nothing past the first GiB.
+        let placement = unsafe {
+            ArenaPlacement::find(mmap, total_pages * size_of::<Page>())
+        };
 
         // SAFETY: the placement holds `total_pages` pages, mapped and
         // unused.
