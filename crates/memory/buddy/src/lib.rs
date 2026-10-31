@@ -65,34 +65,8 @@ where
     /// order-0 list, and merges buddies from there. The lists point into
     /// `self`, so it takes a pinned `self` to keep the allocator from
     /// moving.
-    ///
-    /// Every free list starts at its lowest address, so each list hands
-    /// out low blocks first. Page tables rely on that, because the kernel
-    /// reaches them only through a window over the first GiB.
     pub fn initialize(self: Pin<&mut Self>, mmap: &MemoryMap) {
-        self.inner.lock().build_free_lists(mmap);
-    }
-
-    pub fn print_allocated_regions(&self) {
-        let inner = self.inner.lock();
-
-        let mut prev_address =
-            unsafe { PhysicalAddress::new_unchecked(0) };
-
-        for block in inner.arena.iter() {
-            let meta = unsafe { block.as_ref().meta() };
-
-            if meta.flags.is_allocated() {
-                let address = inner.arena.address_of(block);
-                if address.as_usize() - prev_address.as_usize()
-                    > REGULAR_PAGE_SIZE
-                {
-                    println!("");
-                }
-                println!("{:x?}", address);
-                prev_address = address;
-            }
-        }
+        self.inner.lock().initialize(mmap);
     }
 }
 
