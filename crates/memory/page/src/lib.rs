@@ -3,20 +3,35 @@
 
 pub mod arena;
 pub mod meta;
+mod placement;
 
-use core::ptr::NonNull;
+use core::{mem::ManuallyDrop, ptr::NonNull};
 
-use crate::meta::PageMeta;
 use buddy::meta::{BuddyBlock, BuddyMeta, Regular};
 
-#[derive(Debug)]
-pub struct Page {
-    pub meta: PageMeta,
+use core::fmt::Debug;
+
+use slab::{
+    descriptor::{SlabDescriptor, Used},
+    traits::Unknown,
+};
+
+pub union Page {
+    pub buddy: BuddyMeta<Regular>,
+    pub slab: ManuallyDrop<SlabDescriptor<Unknown, Used>>,
 }
 
-const impl BuddyBlock for Page {
+impl Debug for Page {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PageMeta")
+            .field("buddy", unsafe { &self.buddy })
+            .finish()
+    }
+}
+
+impl BuddyBlock for Page {
     fn from_meta(meta: NonNull<BuddyMeta<Regular>>) -> NonNull<Self> {
-        let offset = core::mem::offset_of!(Page, meta.buddy);
+        let offset = core::mem::offset_of!(Page, buddy);
         unsafe {
             NonNull::new_unchecked(
                 meta.as_ptr().cast::<u8>().sub(offset).cast::<Self>(),
@@ -25,14 +40,13 @@ const impl BuddyBlock for Page {
     }
 
     fn meta_mut(&mut self) -> &mut BuddyMeta<Regular> {
-        unsafe { NonNull::from_ref(&self.meta.buddy).as_mut() }
+        unsafe { NonNull::from_ref(&self.buddy).as_mut() }
     }
 
     fn meta(&self) -> &BuddyMeta<Regular> {
-        unsafe { NonNull::from_ref(&self.meta.buddy).as_ref() }
+        unsafe { NonNull::from_ref(&self.buddy).as_ref() }
     }
 }
-
 // impl AssignSlab for NonNull<Page<()>> {
 //     type Target<Unassigned: Slab> = NonNull<Page<Unassigned>>;
 

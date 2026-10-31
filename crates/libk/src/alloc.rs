@@ -2,58 +2,104 @@ extern crate alloc;
 
 use core::{alloc::Layout, ptr::NonNull};
 
-use alloc::alloc::{AllocError, GlobalAlloc, alloc};
+use alloc::alloc::{AllocError, Allocator, StaticAllocator, alloc};
 
 use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
     enums::{PageSize, PageTableLevel},
     error::{EntryError, MappingError},
-    late_init::LateInit,
 };
+use sync::once::Once;
 use x86::structures::paging::{PageEntryFlags, PageTable, PageTableEntry};
 
 use crate::println;
 
-pub type Allocator = dyn GlobalAlloc + Send + Sync;
+/// The allocator behind [`GlobalAllocator`].
+pub type DynAllocator = dyn Allocator + Send + Sync;
 
 pub struct GlobalAllocator<'a> {
-    allocator: LateInit<&'a Allocator>,
+    allocator: Once<&'a DynAllocator>,
 }
 
 impl<'a> GlobalAllocator<'a> {
-    pub fn set(&mut self, allocator: &'a Allocator) {
-        self.allocator = LateInit::new(allocator);
+    /// Routes every allocation and free to `allocator`.
+    ///
+    /// # Panics
+    ///
+    /// When an allocator was already set.
+    pub fn set(&self, allocator: &'a DynAllocator) {
+        self.allocator.init(allocator);
     }
 
     pub const fn uninit() -> Self {
         Self {
-            allocator: LateInit::uninit(),
+            allocator: Once::uninit(),
         }
     }
 }
 
-unsafe impl<'a> GlobalAlloc for GlobalAllocator<'a> {
-    unsafe fn alloc(&self, layout: alloc::alloc::Layout) -> *mut u8 {
-        unsafe { self.allocator.alloc(layout) }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: alloc::alloc::Layout) {
-        unsafe { self.allocator.dealloc(ptr, layout) }
-    }
-
-    unsafe fn alloc_zeroed(&self, layout: core::alloc::Layout) -> *mut u8 {
-        unsafe { self.allocator.alloc_zeroed(layout) }
-    }
-
-    unsafe fn realloc(
+// SAFETY: each method forwards to the one allocator `set` installs, so a
+// block stays valid until it is freed.
+unsafe impl Allocator for GlobalAllocator<'_> {
+    fn allocate(
         &self,
-        ptr: *mut u8,
-        layout: core::alloc::Layout,
-        new_size: usize,
-    ) -> *mut u8 {
-        unsafe { self.allocator.realloc(ptr, layout, new_size) }
+        layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        self.allocator.allocate(layout)
+    }
+
+    fn allocate_zeroed(
+        &self,
+        layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        self.allocator.allocate_zeroed(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        // SAFETY: the caller's guarantees carry over.
+        unsafe { self.allocator.deallocate(ptr, layout) }
+    }
+
+    unsafe fn grow(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        // SAFETY: the caller's guarantees carry over.
+        unsafe { self.allocator.grow(ptr, old_layout, new_layout) }
+    }
+
+    unsafe fn grow_zeroed(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        // SAFETY: the caller's guarantees carry over.
+        unsafe { self.allocator.grow_zeroed(ptr, old_layout, new_layout) }
+    }
+
+    unsafe fn shrink(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        // SAFETY: the caller's guarantees carry over.
+        unsafe { self.allocator.shrink(ptr, old_layout, new_layout) }
     }
 }
+
+// SAFETY: blocks are invalidated only by `deallocate`. Dropping the
+// wrapper frees nothing, and the allocator is set once, so it never
+// changes under a live block.
+unsafe impl StaticAllocator for GlobalAllocator<'static> {}
+
+// SAFETY: the buddy allocator behind it never allocates while
+// allocating or freeing, so a call never recurses into the global
+// allocator.
+unsafe impl core::alloc::GlobalAllocator for GlobalAllocator<'static> {}
 
 /// Allocate a new table, point to it from a given [`PageTableEntry`]
 pub fn alloc_table(

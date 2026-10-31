@@ -18,7 +18,7 @@ use common::{
     volatile::Volatile,
     write_volatile,
 };
-use macros::bitfields;
+use bitfields::bitfields;
 use num_enum::UnsafeFromPrimitive;
 use strum::IntoEnumIterator;
 use x86::structures::paging::PageEntryFlags;

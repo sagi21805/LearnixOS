@@ -1,6 +1,4 @@
-extern crate alloc;
-
-use core::ptr::NonNull;
+use core::{mem::MaybeUninit, ops::Range, ptr::NonNull};
 
 use common::{
     address_types::{Address, PhysicalAddress},
@@ -8,24 +6,22 @@ use common::{
     enums::{BuddyOrder, MemoryRegionType},
 };
 
-use alloc::boxed::Box;
-
 use libk::println;
 use x86::memory_map::MemoryMap;
 
 use buddy::meta::{
-    BuddyArena, BuddyBlock, BuddyError, BuddyFlags, BuddyMeta, Head,
-    Regular,
+    BuddyArena, BuddyBlock, BuddyError, BuddyFlags, BuddyMeta, Regular,
 };
 
-use crate::{Page, meta::PageMeta};
+use crate::{Page, placement::ArenaPlacement};
 
 pub struct PageMap {
-    inner: Box<[Page]>,
+    inner: &'static mut [Page],
+    placement: ArenaPlacement,
 }
 
 impl BuddyArena<Page> for PageMap {
-    fn new(mmap: &MemoryMap, head: &mut BuddyMeta<Head>) -> Self {
+    fn new(mmap: &MemoryMap) -> Self {
         let regions = mmap.regions.read();
 
         let last = regions
@@ -37,45 +33,44 @@ impl BuddyArena<Page> for PageMap {
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
         println!("Total pages: {}", total_pages);
-        unsafe {
-            let mut page_map =
-                Box::new_uninit_slice(total_pages).assume_init();
-            println!("Last Memory Address: {:?}", page_map.as_ptr_range());
 
-            let mut prev = &mut page_map[0];
+        // SAFETY: nothing uses the usable memory yet, and the boot map
+        // maps nothing past the first GiB.
+        let placement = unsafe {
+            ArenaPlacement::find(mmap, total_pages * size_of::<Page>())
+        };
 
-            *prev = Page {
-                meta: PageMeta {
-                    buddy: BuddyMeta::<Regular>::new(
-                        NonNull::from_ref(head),
-                        BuddyFlags::new()
-                            .order(BuddyOrder::Order0)
-                            .allocated(false),
-                    ),
-                },
-            };
-
-            head.attach_block(NonNull::from_ref(prev));
-
-            for i in 0..page_map.len().saturating_sub(1) {
-                let (left, right) = page_map.split_at_mut(i + 1);
-                prev = left.last_mut().unwrap();
-                let next = right.first_mut().unwrap();
-                *next = Page {
-                    meta: PageMeta {
-                        buddy: BuddyMeta::<Regular>::new(
-                            NonNull::from_ref(prev.meta()),
-                            BuddyFlags::new()
-                                .order(BuddyOrder::Order0)
-                                .allocated(false),
-                        ),
-                    },
-                };
-                prev.meta.buddy.attach_block(NonNull::from_mut(next));
-            }
-
-            PageMap { inner: page_map }
+        // SAFETY: the placement holds `total_pages` pages, mapped and
+        // unused.
+        let page_map = unsafe {
+            core::slice::from_raw_parts_mut(
+                placement
+                    .pages()
+                    .as_non_null::<MaybeUninit<Page>>()
+                    .as_ptr(),
+                total_pages,
+            )
+        };
+        println!("Last Memory Address: {:?}", page_map.as_ptr_range());
+        for page in page_map.iter_mut() {
+            page.write(Page {
+                buddy: BuddyMeta::<Regular>::new(
+                    BuddyFlags::new()
+                        .order(BuddyOrder::Order0)
+                        .allocated(false),
+                ),
+            });
         }
+
+        PageMap {
+            // SAFETY: the loop wrote every page.
+            inner: unsafe { page_map.assume_init_mut() },
+            placement,
+        }
+    }
+
+    fn storage(&self) -> Range<PhysicalAddress> {
+        self.placement.storage()
     }
 
     fn address_of(&self, block: NonNull<Page>) -> PhysicalAddress {
@@ -102,7 +97,7 @@ impl BuddyArena<Page> for PageMap {
         &self,
         block: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
-        let order = unsafe { block.as_ref().meta.buddy.flags.get_order() };
+        let order = unsafe { block.as_ref().buddy.flags.get_order() };
 
         let (section_idx, section_offset) =
             unsafe { self.section_index_of(block) };
@@ -125,29 +120,28 @@ impl BuddyArena<Page> for PageMap {
 
     fn merge(
         &self,
-        mut block: NonNull<Page>,
-        mut buddy: NonNull<Page>,
+        block: NonNull<Page>,
+        buddy: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
         debug_assert_eq!(self.buddy_of(block)?, buddy);
         debug_assert!(unsafe {
-            block.as_ref().meta.buddy.flags.get_order()
-                == buddy.as_ref().meta.buddy.flags.get_order()
+            block.as_ref().buddy.flags.get_order()
+                == buddy.as_ref().buddy.flags.get_order()
         });
         debug_assert!(
-            unsafe { block.as_ref().meta.buddy.flags.get_order() }
+            unsafe { block.as_ref().buddy.flags.get_order() }
                 != BuddyOrder::None
         );
         debug_assert!(unsafe {
-            !block.as_ref().meta.buddy.flags.is_allocated()
+            !block.as_ref().buddy.flags.is_allocated()
         });
         debug_assert!(unsafe {
-            !buddy.as_ref().meta.buddy.flags.is_allocated()
+            !buddy.as_ref().buddy.flags.is_allocated()
         });
 
         let next_order = unsafe {
             block
                 .as_ref()
-                .meta
                 .buddy
                 .flags
                 .get_order()
@@ -155,29 +149,40 @@ impl BuddyArena<Page> for PageMap {
                 .ok_or(BuddyError::MaxOrder)?
         };
 
-        let detached_block = unsafe { block.as_mut().meta_mut().detach() };
-        let detached_buddy = unsafe { buddy.as_mut().meta_mut().detach() };
+        debug_assert!(
+            unsafe {
+                !block.as_ref().buddy.is_linked()
+                    && !buddy.as_ref().buddy.is_linked()
+            },
+            "the blocks to merge are in no free list"
+        );
 
-        let (mut l, mut r) = if detached_block < detached_buddy {
-            (detached_block, detached_buddy)
+        let (mut l, mut r) = if block < buddy {
+            (block, buddy)
         } else {
-            (detached_buddy, detached_block)
+            (buddy, block)
         };
 
+        // SAFETY: `l` and `r` are live pages of this arena.
         unsafe {
-            l.as_mut().flags.set_order(next_order);
-
-            r.as_mut().flags.set_order(BuddyOrder::None);
+            l.as_mut().meta_mut().flags.set_order(next_order);
+            r.as_mut().meta_mut().flags.set_order(BuddyOrder::None);
         }
 
-        Ok(Page::from_meta(l))
+        Ok(l)
     }
 
     fn split(
         &self,
         mut block: NonNull<Page>,
     ) -> Result<(NonNull<Page>, NonNull<Page>), BuddyError> {
-        let mut detached = unsafe { block.as_mut().meta_mut().detach() };
+        // SAFETY: `block` is a live page of this arena.
+        let mut detached =
+            NonNull::from_mut(unsafe { block.as_mut() }.meta_mut());
+        debug_assert!(
+            !unsafe { detached.as_ref() }.is_linked(),
+            "the block to split is in no free list"
+        );
 
         let prev_order = unsafe {
             detached
@@ -197,7 +202,7 @@ impl BuddyArena<Page> for PageMap {
         let mut buddy = self.buddy_of(block)?;
 
         unsafe {
-            buddy.as_mut().meta.buddy.flags.set_order(prev_order);
+            buddy.as_mut().buddy.flags.set_order(prev_order);
         }
 
         Ok((block, buddy))

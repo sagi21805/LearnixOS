@@ -8,13 +8,12 @@ use common::{
         ProtectionLevel, Sections, SystemSegmentType,
         interrupts::{Interrupt, InterruptStackTable, InterruptType},
     },
-    late_init::LateInit,
 };
 
-use macros::bitfields;
+use bitfields::bitfields;
 
 use alloc::boxed::Box;
-use sync::mutex::SpinMutex;
+use sync::{mutex::SpinMutex, once::Once};
 
 /// Global TSS segment
 pub static TSS: TaskStateSegment = TaskStateSegment::default();
@@ -58,7 +57,7 @@ impl InterruptDescriptorTable {
     ///
     /// - `uninit`: An uninitialized IDT.
     /// - `base_address`: A virtual address that the IDT will be placed on.
-    pub fn init(uninit: &LateInit<SpinMutex<Box<Self>>>) {
+    pub fn init(uninit: &Once<SpinMutex<Box<Self>>>) {
         let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
             MaybeUninit::uninit();
         let gdt = unsafe {
@@ -98,9 +97,9 @@ impl InterruptDescriptorTable {
             );
         }
 
-        let init = unsafe {
-            uninit.init_const(SpinMutex::new(boxed.assume_init()))
-        };
+        // SAFETY: the write above initialized the table.
+        let init =
+            uninit.init(SpinMutex::new(unsafe { boxed.assume_init() }));
         init.lock().as_ref().load();
     }
 

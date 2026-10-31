@@ -9,12 +9,16 @@ x86 = { path = "../../arch/x86" }
 num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = [
     "complex-expressions",
 ] }
-macros = { path = "../../macros" }
+bitfields = { path = "../../macros/bitfields" }
 strum_macros = { version = "0.27", default-features = false }
 strum = { version = "0.27", default-features = false }
 thiserror = { version = "2.0.12", default-features = false }
 libk = { path = "../../libk" }
 sync = { path = "../../sync" }
+typestate-groups = { path = "../../macros/typestate-groups/typestate-groups", default-features = false }
+zerocopy = { version = "0.8.59", default-features = false, features = [
+    "derive",
+] }
 
 [features]
 host = []

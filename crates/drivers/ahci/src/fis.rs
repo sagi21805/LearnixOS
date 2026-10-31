@@ -4,7 +4,7 @@ use common::{
     enums::{AtaCommand, FisType},
     volatile::Volatile,
 };
-use macros::bitfields;
+use bitfields::bitfields;
 
 #[repr(C, align(4))]
 #[derive(Clone, Copy, Debug)]

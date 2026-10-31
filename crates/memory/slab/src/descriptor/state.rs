@@ -1,0 +1,129 @@
+//! The states of a [`SlabDescriptor`](super::SlabDescriptor) and the
+//! groups they form.
+
+use typestate_groups::{group, state, state_types};
+
+use crate::descriptor::meta::{FullFreeMeta, PartialMeta, RawMeta};
+
+/// The state of a slab descriptor, which sets the type of its metadata.
+#[state_types]
+pub trait SlabState {
+    /// The metadata in `SlabDescriptor::state`.
+    type Meta;
+}
+
+/// The first node of the partial list.
+#[state]
+pub struct PartialHead;
+
+/// A slab with some allocated objects and some free ones.
+#[state]
+pub struct Partial;
+
+/// A partial slab outside the partial list.
+#[state]
+pub struct PartialDetached;
+
+/// The first node of the free list.
+#[state]
+pub struct FreeHead;
+
+/// A slab that allocates no objects, whose first free index is 0.
+#[state]
+pub struct Free;
+
+/// A free slab outside the free list.
+#[state]
+pub struct FreeDetached;
+
+/// The first node of the full list.
+#[state]
+pub struct FullHead;
+
+/// A slab whose objects are all allocated.
+#[state]
+pub struct Full;
+
+/// A full slab outside the full list.
+#[state]
+pub struct FullDetached;
+
+/// A slab that is full or partial, found when freeing one of its objects.
+#[state]
+pub struct Used;
+
+/// Descriptor storage that holds no descriptor in use
+#[state]
+pub struct Unused;
+
+#[group(SinglyLinked)]
+impl SlabState for (PartialHead, Partial, PartialDetached) {
+    #[size(8)]
+    type Meta = PartialMeta;
+}
+
+#[group(DoublyLinked)]
+impl SlabState
+    for (FreeHead, Free, FreeDetached, FullHead, Full, FullDetached)
+{
+    #[size(8)]
+    type Meta = FullFreeMeta;
+}
+
+#[group(UnknownList)]
+impl SlabState for (Used, Unused) {
+    #[size(8)]
+    type Meta = RawMeta;
+}
+
+/// A state's place in its list.
+#[state_types]
+pub trait ListRole {}
+
+/// The first node of a list.
+#[group(Heads)]
+impl ListRole for (PartialHead, FreeHead, FullHead) {}
+
+/// A node in its list other than its head.
+#[group(Attached)]
+impl ListRole for (Partial, Free, Full) {}
+
+/// A node outside its list, with no previous or next node.
+#[group(Detached)]
+impl ListRole for (PartialDetached, FreeDetached, FullDetached) {}
+
+/// The states of the list a state belongs to, all in its group.
+pub trait ListState: SlabState {
+    /// The state of the list's first node.
+    type Head: SlabStateGroupMember<Self::Marker>;
+    /// The state of a node in the list.
+    type Attached: SlabStateGroupMember<Self::Marker>;
+    /// The state of a node outside the list.
+    type Detached: SlabStateGroupMember<Self::Marker>;
+}
+
+/// Implements [`ListState`] for the head, attached and detached states of
+/// one list.
+macro_rules! list_states {
+    ($head:ident, $attached:ident, $detached:ident) => {
+        impl ListState for $head {
+            type Head = $head;
+            type Attached = $attached;
+            type Detached = $detached;
+        }
+        impl ListState for $attached {
+            type Head = $head;
+            type Attached = $attached;
+            type Detached = $detached;
+        }
+        impl ListState for $detached {
+            type Head = $head;
+            type Attached = $attached;
+            type Detached = $detached;
+        }
+    };
+}
+
+list_states!(PartialHead, Partial, PartialDetached);
+list_states!(FreeHead, Free, FreeDetached);
+list_states!(FullHead, Full, FullDetached);

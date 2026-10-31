@@ -4,6 +4,8 @@ pub const REGULAR_PAGE_SIZE: usize = 4096;
 pub const BIG_PAGE_SIZE: usize =
     REGULAR_PAGE_SIZE * PAGE_DIRECTORY_ENTRIES;
 pub const HUGE_PAGE_SIZE: usize = BIG_PAGE_SIZE * PAGE_DIRECTORY_ENTRIES;
+/// The GiBs, from address 0, that the boot map identity-maps.
+pub const BOOT_MAPPED_GIBS: usize = 1;
 #[allow(non_upper_case_globals)]
 pub const KiB: usize = 1024;
 #[allow(non_upper_case_globals)]
@@ -18,4 +20,3 @@ pub const MEMORY_MAP_MAGIC_NUMBER: u32 =
     u32::from_le_bytes([b'P', b'A', b'M', b'S']); // 'SMAP' in little endian
 pub const ENTRY_ADDRESS_MASK: u64 = 0x0000_ffff_ffff_f000;
 pub const INIT_AREA_SIZE_BYTES: u64 = 256 * KiB as u64;
-pub const BUMP_TOTAL_ALLOCATIONS: usize = 64;
