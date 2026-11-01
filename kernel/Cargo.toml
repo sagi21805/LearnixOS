@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-num_enum = {
-    git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = ["complex-expressions"]
-}
+num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = [
+    "complex-expressions",
+] }
 common = { path = "../crates/common" }
 x86 = { path = "../crates/arch/x86" }
 derive_more = { version = "2.1.1", default-features = false, features = [
@@ -24,6 +24,7 @@ libk = { path = "../crates/libk" }
 buddy = { path = "../crates/memory/buddy" }
 sync = { path = "../crates/sync" }
 page = { path = "../crates/memory/page" }
+slab = { path = "../crates/memory/slab" }
 
 [features]
 host = ["vga_display/host", "buddy/host", "page/host"]

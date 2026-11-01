@@ -20,6 +20,7 @@ use common::{
 };
 use keyboard::ps2_keyboard::Keyboard;
 use page::{Page, arena::PageMap};
+use slab::SlabAllocator;
 use vga_display::{
     SCREEN,
     advanced_writer::AdvancedWriter,
@@ -79,6 +80,9 @@ static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
 pub static BUDDY_ALLOCATOR: Once<BuddyAllocator<PageMap, Page>> =
     Once::uninit();
 
+pub static SLAB_ALLOCATOR: Once<SlabAllocator<Page, PageMap>> =
+    Once::uninit();
+
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 #[allow(clippy::missing_safety_doc)]
@@ -111,6 +115,8 @@ pub unsafe extern "C" fn _start() -> ! {
     GLOBAL_ALLOCATOR.set(buddy);
 
     okprintln!("Initialized Buddy Allocator");
+    SLAB_ALLOCATOR.init(SlabAllocator::new(buddy));
+    okprintln!("Initialized Slab Allocator");
     unsafe {
         interrupts::disable();
         InterruptDescriptorTable::init(&IDT);
@@ -123,7 +129,7 @@ pub unsafe extern "C" fn _start() -> ! {
         let keyboard_buffer =
             KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
 
-        KEYBOARD
+        let kb = KEYBOARD
             .lock()
             .get_or_init(|| Keyboard::new(keyboard_buffer));
         okprintln!("Initialized Keyboard");
@@ -140,9 +146,8 @@ pub unsafe extern "C" fn _start() -> ! {
     }
 
     println!("{}", mmap);
-    BUDDY_ALLOCATOR.print_allocated_regions();
-    // unsafe { SLAB_ALLOCATOR.init() }
-    // okprintln!("Initialized slab allocator");
+
+    // BUDDY_ALLOCATOR.print_allocated_regions();
     // panic!("")
     // let mut pci_devices = pci::scan_pci();
     // println!("Press ENTER to enumerate PCI devices!");
