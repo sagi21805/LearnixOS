@@ -13,9 +13,7 @@ use common::{
 use libk::println;
 use x86::memory_map::MemoryMap;
 
-use buddy::meta::{
-    BuddyArena, BuddyBlock, BuddyError, BuddyFlags, BuddyMeta, Regular,
-};
+use buddy::meta::{BlockFlagBits, BuddyArena, BuddyBlock, BuddyError};
 use slab::{
     SlabArena,
     descriptor::{SlabDescriptor, SlabState},
@@ -63,13 +61,9 @@ impl BuddyArena<Page> for PageMap {
         };
         println!("Last Memory Address: {:?}", page_map.as_ptr_range());
         for page in page_map.iter_mut() {
-            page.write(Page {
-                buddy: BuddyMeta::<Regular>::new(
-                    BuddyFlags::new()
-                        .order(BuddyOrder::Order0)
-                        .allocated(false),
-                ),
-            });
+            page.write(Page::new(
+                BlockFlagBits::new().order(BuddyOrder::Order0),
+            ));
         }
 
         PageMap {
@@ -107,7 +101,7 @@ impl BuddyArena<Page> for PageMap {
         &self,
         block: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
-        let order = unsafe { block.as_ref().buddy.flags.get_order() };
+        let order = unsafe { block.as_ref() }.flags().order();
 
         let (section_idx, section_offset) =
             unsafe { self.section_index_of(block) };
@@ -134,86 +128,57 @@ impl BuddyArena<Page> for PageMap {
         buddy: NonNull<Page>,
     ) -> Result<NonNull<Page>, BuddyError> {
         debug_assert_eq!(self.buddy_of(block)?, buddy);
-        debug_assert!(unsafe {
-            block.as_ref().buddy.flags.get_order()
-                == buddy.as_ref().buddy.flags.get_order()
-        });
+        // SAFETY: `block` and `buddy` are live pages of this arena.
+        let (block_page, buddy_page) =
+            unsafe { (block.as_ref(), buddy.as_ref()) };
+        let order = block_page.flags().order();
+        debug_assert!(order == buddy_page.flags().order());
+        debug_assert!(order != BuddyOrder::None);
+        debug_assert!(!block_page.flags().is_allocated());
+        debug_assert!(!buddy_page.flags().is_allocated());
         debug_assert!(
-            unsafe { block.as_ref().buddy.flags.get_order() }
-                != BuddyOrder::None
-        );
-        debug_assert!(unsafe {
-            !block.as_ref().buddy.flags.is_allocated()
-        });
-        debug_assert!(unsafe {
-            !buddy.as_ref().buddy.flags.is_allocated()
-        });
-
-        let next_order = unsafe {
-            block
-                .as_ref()
-                .buddy
-                .flags
-                .get_order()
-                .next()
-                .ok_or(BuddyError::MaxOrder)?
-        };
-
-        debug_assert!(
+            // SAFETY: both pages are free, so buddy owns them.
             unsafe {
-                !block.as_ref().buddy.is_linked()
-                    && !buddy.as_ref().buddy.is_linked()
+                !block_page.links().as_ref().is_linked()
+                    && !buddy_page.links().as_ref().is_linked()
             },
             "the blocks to merge are in no free list"
         );
 
-        let (mut l, mut r) = if block < buddy {
-            (block, buddy)
+        let next_order = order.next().ok_or(BuddyError::MaxOrder)?;
+        let (l, r) = if block < buddy {
+            (block_page, buddy_page)
         } else {
-            (buddy, block)
+            (buddy_page, block_page)
         };
+        l.flags().modify(|bits| bits.set_order(next_order));
+        r.flags().modify(|bits| bits.set_order(BuddyOrder::None));
 
-        // SAFETY: `l` and `r` are live pages of this arena.
-        unsafe {
-            l.as_mut().meta_mut().flags.set_order(next_order);
-            r.as_mut().meta_mut().flags.set_order(BuddyOrder::None);
-        }
-
-        Ok(l)
+        Ok(NonNull::from_ref(l))
     }
 
     fn split(
         &self,
-        mut block: NonNull<Page>,
+        block: NonNull<Page>,
     ) -> Result<(NonNull<Page>, NonNull<Page>), BuddyError> {
         // SAFETY: `block` is a live page of this arena.
-        let mut detached =
-            NonNull::from_mut(unsafe { block.as_mut() }.meta_mut());
+        let page = unsafe { block.as_ref() };
         debug_assert!(
-            !unsafe { detached.as_ref() }.is_linked(),
+            // SAFETY: a block to split is free, so buddy owns it.
+            !unsafe { page.links().as_ref() }.is_linked(),
             "the block to split is in no free list"
         );
 
-        let prev_order = unsafe {
-            detached
-                .as_ref()
-                .flags
-                .get_order()
-                .prev()
-                .ok_or(BuddyError::Unsplitable)?
-        };
+        let prev_order =
+            page.flags().order().prev().ok_or(BuddyError::Unsplitable)?;
 
-        // First set the order of the current block to find the current
-        // buddy
-        unsafe {
-            detached.as_mut().flags.set_order(prev_order);
-        }
-
-        let mut buddy = self.buddy_of(block)?;
-
-        unsafe {
-            buddy.as_mut().buddy.flags.set_order(prev_order);
-        }
+        // The block's new order finds its buddy at that order.
+        page.flags().modify(|bits| bits.set_order(prev_order));
+        let buddy = self.buddy_of(block)?;
+        // SAFETY: `buddy_of` returns a live page of this arena.
+        unsafe { buddy.as_ref() }
+            .flags()
+            .modify(|bits| bits.set_order(prev_order));
 
         Ok((block, buddy))
     }
@@ -245,9 +210,9 @@ impl SlabArena for PageMap {
         &self,
         descriptor: &SlabDescriptor<T, S>,
     ) -> SlabObjects<T> {
-        // SAFETY: a descriptor lives in the `slab` field of its page.
+        // SAFETY: a descriptor lives in the body of its page.
         let page = unsafe {
-            NonNull::from_ref(descriptor).byte_sub(offset_of!(Page, slab))
+            NonNull::from_ref(descriptor).byte_sub(offset_of!(Page, body))
         }
         .cast::<Page>();
         debug_assert!(

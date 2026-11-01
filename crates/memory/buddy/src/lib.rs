@@ -29,11 +29,9 @@ use common::{
     enums::BuddyOrder,
 };
 
-use typestate_groups::Isomorphic;
-
 use crate::meta::{
-    Attached, BuddyArena, BuddyBlock, BuddyError, Detached, FreeList,
-    Link, Unlink,
+    Attached, BlockFlagBits, BuddyArena, BuddyBlock, BuddyError, Detached,
+    FreeList, Link, Unlink,
 };
 
 pub struct BuddyAllocator<Arena, Block>
@@ -187,16 +185,16 @@ where
         // accepted, so it has an order.
         let order = unsafe { order.unwrap_unchecked() };
 
-        let mut block = self
+        let block = self
             .block_of(ptr)
             .expect("an allocated block lies in the arena");
 
-        // SAFETY: `block` is the allocated block at `ptr`, which nothing
-        // else uses once it is freed.
-        let meta = unsafe { block.as_mut() }.meta_mut();
-        debug_assert!(meta.flags.is_allocated(), "{block:?} is allocated");
-        meta.flags.set_order(BuddyOrder::from(order as u8));
-        meta.flags.set_allocated(false);
+        // SAFETY: `block_of` returns a live block of the arena.
+        let flags = unsafe { block.as_ref() }.flags();
+        debug_assert!(flags.is_allocated(), "{block:?} is allocated");
+        flags.store(
+            BlockFlagBits::new().order(BuddyOrder::from(order as u8)),
+        );
 
         self.attach(block);
         self.merge(block);
@@ -229,7 +227,10 @@ where
         while let Some(buddy) = self.arena.free_buddy_of(block) {
             // SAFETY: `block` and its buddy are live blocks of the arena.
             let (order, buddy_order) = unsafe {
-                (block.as_ref().order(), buddy.as_ref().order())
+                (
+                    block.as_ref().flags().order(),
+                    buddy.as_ref().flags().order(),
+                )
             };
             block = match buddy_order.cmp(&order) {
                 Ordering::Less => buddy,
@@ -252,25 +253,31 @@ where
 
     /// Detaches the first block of the free list of `order`.
     fn pop(&mut self, order: usize) -> Option<NonNull<Block>> {
-        let block = Block::from_meta(self.freelist[order].first()?.cast());
+        let block =
+            Block::from_links(self.freelist[order].first()?.cast());
         self.detach(block);
         Some(block)
     }
 
     /// Links a block in no free list into the free list of its order.
-    fn attach(&mut self, mut block: NonNull<Block>) {
-        // SAFETY: the allocator attaches only live blocks of its arena.
-        let meta = unsafe { block.as_mut() }.meta_mut();
-        let order = meta.flags.get_order() as usize;
-        meta.cast_state_mut::<Detached>()
+    fn attach(&mut self, block: NonNull<Block>) {
+        // SAFETY: the allocator attaches only free blocks of its arena.
+        let block = unsafe { block.as_ref() };
+        let order = block.flags().order() as usize;
+        // SAFETY: a free block belongs to the allocator, whose lock
+        // `&mut self` holds.
+        unsafe { block.links().as_mut() }
+            .as_state_mut::<Detached>()
             .link(self.freelist[order].head_mut());
     }
 
     /// Unlinks a block from its free list.
-    fn detach(&mut self, mut block: NonNull<Block>) {
-        // SAFETY: free lists link only live blocks of the arena.
-        let meta = unsafe { block.as_mut() }.meta_mut();
-        meta.cast_state_mut::<Attached>().unlink();
+    fn detach(&mut self, block: NonNull<Block>) {
+        // SAFETY: free lists link only free blocks of the arena, which
+        // belong to the allocator.
+        unsafe { block.as_ref().links().as_mut() }
+            .as_state_mut::<Attached>()
+            .unlink();
     }
 
     /// Marks a detached block as allocated.
@@ -278,15 +285,16 @@ where
     /// # Safety
     ///
     /// `block` must be a free block of the arena, in no free list.
-    unsafe fn mark_allocated(&mut self, mut block: NonNull<Block>) {
-        // SAFETY: the caller guarantees `block` is a live block of the
+    unsafe fn mark_allocated(&mut self, block: NonNull<Block>) {
+        // SAFETY: the caller guarantees `block` is a free block of the
         // arena.
-        let meta = unsafe { block.as_mut() }.meta_mut();
+        let page = unsafe { block.as_ref() };
         debug_assert!(
-            !meta.flags.is_allocated() && !meta.is_linked(),
+            !page.flags().is_allocated()
+                && !unsafe { page.links().as_ref() }.is_linked(),
             "{block:?} is free and in no free list"
         );
-        meta.flags.set_allocated(true);
+        page.flags().modify(|bits| bits.set_allocated(true));
     }
 }
 

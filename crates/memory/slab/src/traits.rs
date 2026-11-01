@@ -133,12 +133,21 @@ pub trait SlabBlock {
 
     /// The [`SlabDescriptor`] of the slab this block holds, mutably.
     ///
+    /// The descriptor sits outside what a shared reference to the block
+    /// freezes, so buddy can read the block's flags meanwhile.
+    ///
     /// # Safety
     ///
-    /// The block must hold a slab of `T`, as the descriptor is cast to
-    /// `T` without a check.
+    /// The caller must own the block as a slab of `T`, as the descriptor
+    /// is cast to `T` without a check, and must hold no other reference
+    /// to the descriptor.
+    #[expect(
+        clippy::mut_from_ref,
+        reason = "the descriptor sits in an `UnsafeCell`, and only the \
+                  block's owner reaches it"
+    )]
     unsafe fn slab_descriptor_mut<T: Slab>(
-        &mut self,
+        &self,
     ) -> &mut SlabDescriptor<T, Used>;
 
     /// The descriptor storage of this block, ready for
@@ -146,10 +155,15 @@ pub trait SlabBlock {
     ///
     /// # Safety
     ///
-    /// The block must hold no slab in use, so no list or reference
-    /// reaches its descriptor.
+    /// The caller must own the block and hold no slab in use in it, so no
+    /// list or reference reaches its descriptor.
+    #[expect(
+        clippy::mut_from_ref,
+        reason = "the descriptor sits in an `UnsafeCell`, and only the \
+                  block's owner reaches it"
+    )]
     unsafe fn unused_slab_descriptor_mut(
-        &mut self,
+        &self,
     ) -> &mut SlabDescriptor<Unknown, Unused> {
         // SAFETY: any block's descriptor storage reads as `Unknown`.
         unsafe { self.slab_descriptor_mut::<Unknown>() }

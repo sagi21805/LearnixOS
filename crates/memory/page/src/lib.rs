@@ -5,46 +5,81 @@ pub mod arena;
 pub mod meta;
 mod placement;
 
-use core::{mem::ManuallyDrop, ptr::NonNull};
+use core::{
+    cell::UnsafeCell,
+    fmt::Debug,
+    mem::{ManuallyDrop, offset_of},
+    ptr::NonNull,
+};
 
-use buddy::meta::{BuddyBlock, BuddyMeta, Regular};
-
-use core::fmt::Debug;
+use buddy::meta::{
+    BlockFlagBits, BlockFlags, BuddyBlock, BuddyLinks, Regular,
+};
 
 use slab::{
     descriptor::{SlabDescriptor, Used},
     traits::{Slab, SlabBlock, Unknown},
 };
 
-pub union Page {
-    pub buddy: BuddyMeta<Regular>,
-    pub slab: ManuallyDrop<SlabDescriptor<Unknown, Used>>,
+/// The arena's entry for one physical page.
+///
+/// The flags are the part anyone may read. The body is the part only the
+/// page's owner may touch, buddy's links while the page is free, or its
+/// slab descriptor while a slab owns it.
+#[repr(C)]
+pub struct Page {
+    flags: BlockFlags,
+    body: UnsafeCell<PageBody>,
+}
+
+/// What the owner of a page keeps in it.
+#[repr(C)]
+union PageBody {
+    buddy: BuddyLinks<Regular>,
+    slab: ManuallyDrop<SlabDescriptor<Unknown, Used>>,
+}
+
+impl Page {
+    /// A page with `bits`, in no free list.
+    pub const fn new(bits: BlockFlagBits) -> Page {
+        Page {
+            flags: BlockFlags::new(bits),
+            body: UnsafeCell::new(PageBody {
+                buddy: BuddyLinks::new(),
+            }),
+        }
+    }
 }
 
 impl Debug for Page {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("PageMeta")
-            .field("buddy", unsafe { &self.buddy })
-            .finish()
+        let mut ds = f.debug_struct("Page");
+        ds.field("flags", &self.flags);
+        if !self.flags.is_allocated() {
+            // SAFETY: a free page's body holds its links.
+            ds.field("links", unsafe { self.links().as_ref() });
+        }
+        ds.finish()
     }
 }
 
 impl BuddyBlock for Page {
-    fn from_meta(meta: NonNull<BuddyMeta<Regular>>) -> NonNull<Self> {
-        let offset = core::mem::offset_of!(Page, buddy);
+    fn flags(&self) -> &BlockFlags { &self.flags }
+
+    unsafe fn links(&self) -> NonNull<BuddyLinks<Regular>> {
+        debug_assert!(
+            !self.flags.is_allocated(),
+            "only a free page has links"
+        );
+        // SAFETY: the body sits inside `self`, so its address isn't null.
         unsafe {
-            NonNull::new_unchecked(
-                meta.as_ptr().cast::<u8>().sub(offset).cast::<Self>(),
-            )
+            NonNull::new_unchecked(&raw mut (*self.body.get()).buddy)
         }
     }
 
-    fn meta_mut(&mut self) -> &mut BuddyMeta<Regular> {
-        unsafe { NonNull::from_ref(&self.buddy).as_mut() }
-    }
-
-    fn meta(&self) -> &BuddyMeta<Regular> {
-        unsafe { NonNull::from_ref(&self.buddy).as_ref() }
+    fn from_links(links: NonNull<BuddyLinks<Regular>>) -> NonNull<Self> {
+        // SAFETY: links live in the body of their page.
+        unsafe { links.byte_sub(offset_of!(Page, body)) }.cast()
     }
 }
 
@@ -52,15 +87,15 @@ impl SlabBlock for Page {
     unsafe fn slab_descriptor<T: Slab>(&self) -> &SlabDescriptor<T, Used> {
         // SAFETY: a descriptor's layout doesn't depend on `T`, and the
         // caller guarantees this page holds a slab of `T`.
-        unsafe { &*(&raw const self.slab).cast() }
+        unsafe { &*(&raw const (*self.body.get()).slab).cast() }
     }
 
     unsafe fn slab_descriptor_mut<T: Slab>(
-        &mut self,
+        &self,
     ) -> &mut SlabDescriptor<T, Used> {
         // SAFETY: a descriptor's layout doesn't depend on `T`, and the
-        // caller guarantees this page holds a slab of `T`.
-        unsafe { &mut *(&raw mut self.slab).cast() }
+        // caller owns this page as a slab of `T`.
+        unsafe { &mut *(&raw mut (*self.body.get()).slab).cast() }
     }
 }
 // impl AssignSlab for NonNull<Page<()>> {

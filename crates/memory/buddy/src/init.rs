@@ -69,16 +69,15 @@ where
         let end = range.end.align_up(REGULAR_PAGE_ALIGNMENT).as_usize();
 
         for address in (start..end).step_by(REGULAR_PAGE_SIZE) {
-            let mut block = self
+            let block = self
                 .arena
                 .page_with_address(PhysicalAddress::from(address))
                 .expect("reserved memory lies inside the arena");
             // SAFETY: `page_with_address` returns a live block of the
             // arena.
-            unsafe { block.as_mut() }
-                .meta_mut()
-                .flags
-                .set_allocated(true);
+            unsafe { block.as_ref() }
+                .flags()
+                .modify(|bits| bits.set_allocated(true));
         }
     }
 
@@ -89,7 +88,7 @@ where
         for n in (0..len).rev() {
             let block = self.arena.at(n).expect("`n` is inside the arena");
             // SAFETY: `at` returns a live block of the arena.
-            if !unsafe { block.as_ref() }.is_allocated() {
+            if !unsafe { block.as_ref() }.flags().is_allocated() {
                 self.attach(block);
             }
         }
@@ -102,8 +101,9 @@ where
         for n in (0..len).rev() {
             let block = self.arena.at(n).expect("`n` is inside the arena");
             // SAFETY: `at` returns a live block of the arena.
-            let page = unsafe { block.as_ref() };
-            if !page.is_allocated() && page.order() != BuddyOrder::None {
+            let bits = unsafe { block.as_ref() }.flags().load();
+            if !bits.is_allocated() && bits.get_order() != BuddyOrder::None
+            {
                 self.merge(block);
             }
         }

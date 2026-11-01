@@ -1,15 +1,12 @@
-//! The arena that holds every block's [`BuddyMeta`].
+//! The arena that holds every block's flags and [`BuddyLinks`].
 
 use core::{ops::Range, ptr::NonNull};
 
-use common::{
-    address_types::{PhysicalAddress, VirtualAddress},
-    enums::BuddyOrder,
-};
+use common::address_types::{PhysicalAddress, VirtualAddress};
 use thiserror::Error;
 use x86::{memory_map::MemoryMap, structures::paging::VirtualAddressExt};
 
-use crate::meta::{BuddyMeta, Regular};
+use crate::meta::{BlockFlags, BuddyLinks, Regular};
 
 #[derive(Debug, Error)]
 pub enum BuddyError {
@@ -27,19 +24,21 @@ pub enum BuddyError {
     AddressNotMapped,
 }
 
+/// One page's entry in the arena, its flags and the body that buddy's
+/// links share with whatever owns the page.
 pub trait BuddyBlock: Sized {
-    fn meta(&self) -> &BuddyMeta<Regular>;
+    /// The block's flags, which anyone may read.
+    fn flags(&self) -> &BlockFlags;
 
-    fn meta_mut(&mut self) -> &mut BuddyMeta<Regular>;
+    /// The block's free-list links.
+    ///
+    /// # Safety
+    ///
+    /// Buddy must own the block, so it's free and the buddy lock is held.
+    unsafe fn links(&self) -> NonNull<BuddyLinks<Regular>>;
 
-    fn from_meta(meta: NonNull<BuddyMeta<Regular>>) -> NonNull<Self>;
-
-    /// The order of the range this block heads, or [`BuddyOrder::None`]
-    /// when it lies inside a larger block.
-    fn order(&self) -> BuddyOrder { self.meta().flags.get_order() }
-
-    /// Whether this block is handed out.
-    fn is_allocated(&self) -> bool { self.meta().flags.is_allocated() }
+    /// The block whose links are at `links`.
+    fn from_links(links: NonNull<BuddyLinks<Regular>>) -> NonNull<Self>;
 }
 
 pub trait BuddyArena<Block: BuddyBlock>: Sized {
@@ -90,8 +89,10 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
     ) -> Option<NonNull<Block>> {
         match self.buddy_of(block) {
             // SAFETY: `buddy_of` returns a live block of this arena.
-            Ok(buddy) => (!unsafe { buddy.as_ref() }.is_allocated())
-                .then_some(buddy),
+            Ok(buddy) => {
+                (!unsafe { buddy.as_ref() }.flags().is_allocated())
+                    .then_some(buddy)
+            }
             Err(BuddyError::BuddyOutOfRange | BuddyError::MaxOrder) => {
                 None
             }
