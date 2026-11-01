@@ -16,7 +16,7 @@ use crate::{
     meta::{BuddyArena, BuddyBlock},
 };
 
-impl<Arena, Block> BuddyAllocatorInner<Arena, Block>
+impl<Arena, Block> BuddyAllocatorInner<'_, Arena, Block>
 where
     Arena: BuddyArena<Block>,
     Block: BuddyBlock,

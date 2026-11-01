@@ -39,6 +39,11 @@ union PageBody {
     slab: ManuallyDrop<SlabDescriptor<Unknown, Used>>,
 }
 
+// SAFETY: anyone may read the flags, as they're atomic. Only the page's
+// owner reaches the body, and ownership changes hands only inside buddy's
+// `allocate` and `deallocate`, under the buddy lock.
+unsafe impl Sync for Page {}
+
 impl Page {
     /// A page with `bits`, in no free list.
     pub const fn new(bits: BlockFlagBits) -> Page {

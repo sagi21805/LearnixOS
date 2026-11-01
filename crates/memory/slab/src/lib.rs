@@ -45,7 +45,7 @@ use core::{
 use sync::mutex::SpinMutex;
 
 use buddy::{
-    BuddyAllocator, BuddyAllocatorInner,
+    BuddyAllocator,
     meta::{BuddyArena, BuddyBlock},
 };
 
@@ -164,14 +164,22 @@ where
         )
     }
 
-    /// A new free slab of `T`s on `T::PAGES_PER_SLAB` fresh pages from the
-    /// locked buddy allocator, whose descriptor lives in the block of its
-    /// first page.
+    /// A new free slab of `T`s on `T::PAGES_PER_SLAB` fresh pages from
+    /// buddy, whose descriptor lives in the block of its first page.
+    ///
+    /// Buddy locks only to hand the pages out. No list reaches the new
+    /// slab, so its descriptor is written with no lock held.
+    #[expect(
+        clippy::mut_from_ref,
+        reason = "the descriptor is in pages buddy just handed out, \
+                  which nothing else reaches"
+    )]
     pub(crate) fn new_slab<T: Slab>(
-        buddy: &mut BuddyAllocatorInner<Arena, Block>,
+        &self,
     ) -> Result<&mut SlabDescriptor<T, FreeDetached>, AllocError> {
-        let pages = buddy.allocate(T::SLAB_LAYOUT)?.cast::<u8>();
-        let block = buddy
+        let pages = self.buddy.allocate(T::SLAB_LAYOUT)?.cast::<u8>();
+        let block = self
+            .buddy
             .block_of(pages)
             .expect("the buddy allocator's pages are in its arena");
 

@@ -13,10 +13,10 @@ use crate::{
 
 /// Allocates `T`s from their slab cache.
 ///
-/// `allocate` and `deallocate` hold the buddy lock and then the slab lock
-/// for their whole run, because the buddy allocator reads the metadata of
-/// a slab's first page when it frees that page's buddy. Every path takes
-/// the two in that order, so they can't deadlock.
+/// No path holds the buddy lock and the slab lock together. Buddy reads
+/// only the shared flags of a page it doesn't own, and a slab's
+/// descriptor sits in its page's body, which only the slab reaches. The
+/// slab lock alone guards the descriptors and their lists.
 ///
 /// ```ignore
 /// let inode = Box::new_in(Inode::default(), SLAB.cache::<Inode>());
@@ -78,20 +78,18 @@ where
             return Err(AllocError);
         }
 
-        let mut buddy = self.slab.buddy.lock();
-        let mut caches = self.slab.caches.lock();
-        let cache = caches.cache::<T>();
-        let object = match cache.try_allocate(buddy.arena()) {
+        let arena = self.slab.buddy.arena();
+        let cached =
+            self.slab.caches.lock().cache::<T>().try_allocate(arena);
+        let object = match cached {
             Some(object) => object,
             None => {
-                let mut free = NonNull::from_mut(
-                    SlabAllocator::new_slab::<T>(&mut buddy)?,
-                );
-                // SAFETY: the new slab is in no list, so nothing else
-                // reaches it while the buddy lock is held.
-                cache.allocate_and_link(buddy.arena(), unsafe {
-                    free.as_mut()
-                })
+                let free = self.slab.new_slab::<T>()?;
+                self.slab
+                    .caches
+                    .lock()
+                    .cache::<T>()
+                    .allocate_and_link(arena, free)
             }
         };
         Ok(NonNull::slice_from_raw_parts(object.cast(), size_of::<T>()))
@@ -108,15 +106,16 @@ where
         // `ptr`, in the same pages.
         let page = unsafe { ptr.byte_sub(offset) };
 
-        let buddy = self.slab.buddy.lock();
+        let page =
+            self.slab.buddy.block_of(page).expect(
+                "an allocated object's page is in the buddy arena",
+            );
+
         let mut caches = self.slab.caches.lock();
-        let page = buddy
-            .block_of(page)
-            .expect("an allocated object's page is in the buddy arena");
         // SAFETY: the page holds a `T` object, so its descriptor is a `T`
-        // one.
+        // one, and the slab lock keeps the lists off it.
         let slab = unsafe { page.as_ref().slab_descriptor_mut::<T>() };
-        let arena = buddy.arena();
+        let arena = self.slab.buddy.arena();
         let idx = arena
             .objects_of(slab)
             .index_of(object)

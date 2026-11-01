@@ -24,7 +24,7 @@ use slab::{
 use crate::{Page, placement::ArenaPlacement};
 
 pub struct PageMap {
-    inner: &'static mut [Page],
+    inner: &'static [Page],
     placement: ArenaPlacement,
 }
 
@@ -66,9 +66,10 @@ impl BuddyArena<Page> for PageMap {
             ));
         }
 
+        let page_map: &'static [MaybeUninit<Page>] = page_map;
         PageMap {
             // SAFETY: the loop wrote every page.
-            inner: unsafe { page_map.assume_init_mut() },
+            inner: unsafe { page_map.assume_init_ref() },
             placement,
         }
     }
@@ -119,7 +120,7 @@ impl BuddyArena<Page> for PageMap {
 
     #[inline]
     fn iter(&self) -> impl ExactSizeIterator<Item = NonNull<Page>> {
-        self.inner.as_ref().iter().map(NonNull::from_ref)
+        self.inner.iter().map(NonNull::from_ref)
     }
 
     fn merge(
