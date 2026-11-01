@@ -6,11 +6,11 @@ pub mod page_table_entry;
 
 use core::ptr::NonNull;
 
+#[cfg(target_arch = "x86_64")]
+use common::constants::PHYSICAL_MEMORY_OFFSET;
 use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
-    constants::{
-        BOOT_MAPPED_GIBS, HUGE_PAGE_SIZE, PHYSICAL_MEMORY_OFFSET,
-    },
+    constants::{BOOT_MAPPED_GIBS, HUGE_PAGE_SIZE},
     enums::PageTableLevel,
 };
 pub use entry_flags::*;
