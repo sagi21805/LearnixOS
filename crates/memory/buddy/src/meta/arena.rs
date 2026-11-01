@@ -102,24 +102,6 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
         }
     }
 
-    /// Split a block into two smaller blocks of previous order.
-    ///
-    /// The block must be in no free list.
-    fn split(
-        &self,
-        block: NonNull<Block>,
-    ) -> Result<(NonNull<Block>, NonNull<Block>), BuddyError>;
-
-    /// Merge two blocks with the same order to a next order block.
-    ///
-    /// The two blocks must be buddies, have the same order, be free, and
-    /// be in no free list.
-    fn merge(
-        &self,
-        block: NonNull<Block>,
-        buddy: NonNull<Block>,
-    ) -> Result<NonNull<Block>, BuddyError>;
-
     // /// Detach a block from the middle of the arena, returning the
     // detached /// block.
     // fn detach_mid(&self, block: NonNull<Block>) -> NonNull<Block>;

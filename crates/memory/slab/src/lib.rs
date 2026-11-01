@@ -167,7 +167,9 @@ where
     /// buddy, whose descriptor lives in the block of its first page.
     ///
     /// Buddy locks only to hand the pages out. No list reaches the new
-    /// slab, so its descriptor is written with no lock held.
+    /// slab, so its descriptor is written with no lock held. The slab
+    /// gives the block's token up, and its lists hold the block by index
+    /// from then on.
     #[expect(
         clippy::mut_from_ref,
         reason = "the descriptor is in pages buddy just handed out, \
@@ -176,11 +178,7 @@ where
     pub(crate) fn new_slab<T: Slab>(
         &self,
     ) -> Result<&mut SlabDescriptor<T, FreeDetached>, AllocError> {
-        let pages = self.buddy.allocate(T::SLAB_LAYOUT)?.cast::<u8>();
-        let block = self
-            .buddy
-            .block_of(pages)
-            .expect("the buddy allocator's pages are in its arena");
+        let block = self.buddy.allocate_block(T::SLAB_LAYOUT)?.into_raw();
 
         // SAFETY: the buddy allocator gave `block` out for this slab, so
         // it holds no slab in use.

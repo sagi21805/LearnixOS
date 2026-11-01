@@ -8,6 +8,9 @@
 
 mod init;
 pub mod meta;
+mod owned_block;
+
+pub use owned_block::OwnedBlock;
 
 use core::{
     alloc::{AllocError, Allocator, Layout},
@@ -90,6 +93,22 @@ where
         ))
     }
 
+    /// Takes a block of the smallest order that fits `layout`, and returns
+    /// the right to write it.
+    pub fn allocate_block(
+        &self,
+        layout: Layout,
+    ) -> Result<OwnedBlock<Block>, AllocError> {
+        let order = order_of(layout).ok_or(AllocError)?;
+        self.locked().allocate_block(order).ok_or(AllocError)
+    }
+
+    /// Puts `block` back in its free list, and merges it with its free
+    /// buddies.
+    pub fn deallocate_block(&self, block: OwnedBlock<Block>) {
+        self.locked().deallocate_block(block);
+    }
+
     /// The arena and the locked free lists, until the result is dropped.
     fn locked(&self) -> BuddyAllocatorInner<'_, Arena, Block> {
         BuddyAllocatorInner {
@@ -121,18 +140,37 @@ where
     Arena: BuddyArena<Block>,
     Block: BuddyBlock,
 {
+    /// Takes a block of the smallest order that fits `layout`, and
+    /// returns all of it, through the higher-half map of physical memory.
     fn allocate(
         &self,
         layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        self.locked().allocate(layout)
+        let block = self.allocate_block(layout)?.into_raw();
+        // SAFETY: `allocate_block` returns a live block of the arena.
+        let order = unsafe { block.as_ref() }.flags().order();
+        let start =
+            self.arena.address_of(block).translate().as_non_null::<u8>();
+        Ok(NonNull::slice_from_raw_parts(
+            start,
+            REGULAR_PAGE_SIZE << order as usize,
+        ))
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         let block = self
             .block_of(ptr)
             .expect("an allocated block lies in the arena");
-        unsafe { self.locked().deallocate(block, layout) }
+        // SAFETY: `ptr` came from `allocate`, which gave the block's token
+        // up.
+        let block = unsafe { OwnedBlock::from_raw(block) };
+        debug_assert_eq!(
+            order_of(layout),
+            Some(unsafe { block.as_ptr().as_ref() }.flags().order()
+                as usize),
+            "`layout` came from `allocate`"
+        );
+        self.deallocate_block(block);
     }
 }
 
@@ -148,54 +186,27 @@ where
     Arena: BuddyArena<Block>,
     Block: BuddyBlock,
 {
-    /// Takes a block of the smallest order that fits `layout`, and
-    /// returns all of it, through the higher-half map of physical memory.
-    fn allocate(
+    /// Takes a block of `order`, and returns the right to write it, or
+    /// `None` when no free block is large enough.
+    fn allocate_block(
         &mut self,
-        layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        let order = order_of(layout).ok_or(AllocError)?;
-
-        let block = self
-            .pop(order)
-            .or_else(|| self.split_until(order))
-            .ok_or(AllocError)?;
+        order: usize,
+    ) -> Option<OwnedBlock<Block>> {
+        let block = self.pop(order).or_else(|| self.split_until(order))?;
         // SAFETY: `pop` and `split_until` return a free block of the
         // arena, which they detached.
         unsafe { self.mark_allocated(block) };
-
-        let start =
-            self.arena.address_of(block).translate().as_non_null::<u8>();
-        Ok(NonNull::slice_from_raw_parts(
-            start,
-            REGULAR_PAGE_SIZE << order,
-        ))
+        // SAFETY: the block was free until now, so nothing else owns it.
+        Some(unsafe { OwnedBlock::from_raw(block) })
     }
 
-    /// Puts `block` back in its free list, and merges it with its free
-    /// buddies.
-    ///
-    /// # Safety
-    ///
-    /// `allocate` must have handed `block` out for `layout`, and the block
-    /// must not have been freed since.
-    unsafe fn deallocate(
-        &mut self,
-        block: NonNull<Block>,
-        layout: Layout,
-    ) {
-        let order = order_of(layout);
-        debug_assert!(order.is_some(), "`layout` came from `allocate`");
-        // SAFETY: the caller guarantees `layout` is the one `allocate`
-        // accepted, so it has an order.
-        let order = unsafe { order.unwrap_unchecked() };
-
-        // SAFETY: the caller guarantees `block` is a block of the arena.
+    /// Puts `block` back in the free list of its order, and merges it with
+    /// its free buddies.
+    fn deallocate_block(&mut self, block: OwnedBlock<Block>) {
+        let block = block.into_raw();
+        // SAFETY: a token points at a live block of the arena.
         let flags = unsafe { block.as_ref() }.flags();
-        debug_assert!(flags.is_allocated(), "{block:?} is allocated");
-        flags.store(
-            BlockFlagBits::new().order(BuddyOrder::from(order as u8)),
-        );
+        flags.store(BlockFlagBits::new().order(flags.order()));
 
         self.attach(block);
         self.merge(block);
@@ -210,10 +221,7 @@ where
             .find_map(|i| Some((i, self.pop(i)?)))?;
 
         while current > order {
-            let (lhs, rhs) = self
-                .arena
-                .split(block)
-                .expect("a block above `order` splits into two");
+            let (lhs, rhs) = self.split(block);
             current -= 1;
             self.attach(rhs);
             block = lhs;
@@ -238,10 +246,7 @@ where
                 Ordering::Equal => {
                     self.detach(block);
                     self.detach(buddy);
-                    let merged = self
-                        .arena
-                        .merge(block, buddy)
-                        .expect("free buddies of one order merge");
+                    let merged = self.merge_pair(block, buddy);
                     self.attach(merged);
                     merged
                 }
@@ -250,6 +255,77 @@ where
                 }
             };
         }
+    }
+
+    /// Splits `block`, a free block above order 0 in no free list, into
+    /// its two halves one order down.
+    fn split(
+        &mut self,
+        block: NonNull<Block>,
+    ) -> (NonNull<Block>, NonNull<Block>) {
+        // SAFETY: the allocator splits only free blocks of its arena.
+        let page = unsafe { block.as_ref() };
+        debug_assert!(
+            // SAFETY: a free block belongs to the allocator.
+            !unsafe { page.links().as_ref() }.is_linked(),
+            "the block to split is in no free list"
+        );
+        let half = page
+            .flags()
+            .order()
+            .prev()
+            .expect("a block to split is above order 0");
+
+        // The block's new order finds its buddy at that order.
+        page.flags().modify(|bits| bits.set_order(half));
+        let buddy = self
+            .arena
+            .buddy_of(block)
+            .expect("the first half of a split block has a buddy");
+        // SAFETY: `buddy_of` returns a live block of the arena.
+        unsafe { buddy.as_ref() }
+            .flags()
+            .modify(|bits| bits.set_order(half));
+        (block, buddy)
+    }
+
+    /// Merges `block` and `buddy`, free buddies of one order in no free
+    /// list, into one block an order up.
+    fn merge_pair(
+        &mut self,
+        block: NonNull<Block>,
+        buddy: NonNull<Block>,
+    ) -> NonNull<Block> {
+        // SAFETY: the allocator merges only free blocks of its arena.
+        let (block_page, buddy_page) =
+            unsafe { (block.as_ref(), buddy.as_ref()) };
+        let order = block_page.flags().order();
+        debug_assert!(order == buddy_page.flags().order());
+        debug_assert!(
+            !block_page.flags().is_allocated()
+                && !buddy_page.flags().is_allocated()
+        );
+        debug_assert!(
+            // SAFETY: both blocks are free, so they belong to the
+            // allocator.
+            unsafe {
+                !block_page.links().as_ref().is_linked()
+                    && !buddy_page.links().as_ref().is_linked()
+            },
+            "the blocks to merge are in no free list"
+        );
+
+        let next_order = order
+            .next()
+            .expect("a block with a buddy is below the top order");
+        let (l, r) = if block < buddy {
+            (block_page, buddy_page)
+        } else {
+            (buddy_page, block_page)
+        };
+        l.flags().modify(|bits| bits.set_order(next_order));
+        r.flags().modify(|bits| bits.set_order(BuddyOrder::None));
+        NonNull::from_ref(l)
     }
 
     /// Detaches the first block of the free list of `order`.
