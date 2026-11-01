@@ -30,8 +30,9 @@ pub struct BlockFlagBits {
 }
 
 /// A block's flags, which anyone holding the arena may read and only the
-/// block's owner may write. Buddy owns a free block, and whoever
-/// allocated a block owns it until they free it.
+/// block's owner may write. Buddy owns a free block, and whoever holds a
+/// block's [`OwnedBlock`](crate::OwnedBlock) owns an allocated one, so
+/// outside buddy only that token writes the flags.
 ///
 /// Each block has one writer at a time, so a write is a load, a change
 /// and a store, with no read-modify-write instruction. The word is atomic
@@ -57,13 +58,13 @@ impl BlockFlags {
         BlockFlagBits::from(self.0.load(Ordering::Relaxed))
     }
 
-    /// Replaces every flag with `bits`. Only the block's owner calls this.
-    pub fn store(&self, bits: BlockFlagBits) {
+    /// Replaces every flag with `bits`.
+    pub(crate) fn store(&self, bits: BlockFlagBits) {
         self.0.store(u64::from(bits), Ordering::Relaxed);
     }
 
-    /// Changes the flags with `f`. Only the block's owner calls this.
-    pub fn modify(&self, f: impl FnOnce(&mut BlockFlagBits)) {
+    /// Changes the flags with `f`.
+    pub(crate) fn modify(&self, f: impl FnOnce(&mut BlockFlagBits)) {
         let mut bits = self.load();
         f(&mut bits);
         self.store(bits);
@@ -78,12 +79,6 @@ impl BlockFlags {
 
     /// The bits the block's owner keeps here.
     pub fn owner(&self) -> u8 { self.load().get_owner() }
-
-    /// Replaces the owner's bits with `owner`. Only the block's owner
-    /// calls this.
-    pub fn set_owner(&self, owner: u8) {
-        self.modify(|bits| bits.set_owner(owner));
-    }
 }
 
 impl Debug for BlockFlags {

@@ -68,14 +68,13 @@ pub trait SlabArena {
     }
 
     /// Replaces the list bits of the slab whose descriptor is
-    /// `descriptor`. Only the slab's manager calls this.
+    /// `descriptor`. The `&mut` descriptor shows the caller manages the
+    /// slab, so it owns the slab's page.
     fn set_slab_flags_of<T: Slab, S: SlabState>(
         &self,
-        descriptor: &SlabDescriptor<T, S>,
+        descriptor: &mut SlabDescriptor<T, S>,
         flags: SlabFlags,
-    ) {
-        self.flags_of(descriptor).set_owner(u8::from(flags));
-    }
+    );
 }
 
 /// A slab's list bits, in the owner byte of its page's flags.

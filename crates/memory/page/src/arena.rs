@@ -14,11 +14,14 @@ use common::{
 use libk::println;
 use x86::memory_map::MemoryMap;
 
-use buddy::meta::{
-    BlockFlagBits, BlockFlags, BuddyArena, BuddyBlock, BuddyError,
+use buddy::{
+    OwnedBlock,
+    meta::{
+        BlockFlagBits, BlockFlags, BuddyArena, BuddyBlock, BuddyError,
+    },
 };
 use slab::{
-    SlabArena,
+    SlabArena, SlabFlags,
     descriptor::{SlabDescriptor, SlabState},
     slab_objects::SlabObjects,
     traits::Slab,
@@ -133,67 +136,6 @@ impl BuddyArena<Page> for PageMap {
         self.inner.iter().map(NonNull::from_ref)
     }
 
-    fn merge(
-        &self,
-        block: NonNull<Page>,
-        buddy: NonNull<Page>,
-    ) -> Result<NonNull<Page>, BuddyError> {
-        debug_assert_eq!(self.buddy_of(block)?, buddy);
-        // SAFETY: `block` and `buddy` are live pages of this arena.
-        let (block_page, buddy_page) =
-            unsafe { (block.as_ref(), buddy.as_ref()) };
-        let order = block_page.flags().order();
-        debug_assert!(order == buddy_page.flags().order());
-        debug_assert!(order != BuddyOrder::None);
-        debug_assert!(!block_page.flags().is_allocated());
-        debug_assert!(!buddy_page.flags().is_allocated());
-        debug_assert!(
-            // SAFETY: both pages are free, so buddy owns them.
-            unsafe {
-                !block_page.links().as_ref().is_linked()
-                    && !buddy_page.links().as_ref().is_linked()
-            },
-            "the blocks to merge are in no free list"
-        );
-
-        let next_order = order.next().ok_or(BuddyError::MaxOrder)?;
-        let (l, r) = if block < buddy {
-            (block_page, buddy_page)
-        } else {
-            (buddy_page, block_page)
-        };
-        l.flags().modify(|bits| bits.set_order(next_order));
-        r.flags().modify(|bits| bits.set_order(BuddyOrder::None));
-
-        Ok(NonNull::from_ref(l))
-    }
-
-    fn split(
-        &self,
-        block: NonNull<Page>,
-    ) -> Result<(NonNull<Page>, NonNull<Page>), BuddyError> {
-        // SAFETY: `block` is a live page of this arena.
-        let page = unsafe { block.as_ref() };
-        debug_assert!(
-            // SAFETY: a block to split is free, so buddy owns it.
-            !unsafe { page.links().as_ref() }.is_linked(),
-            "the block to split is in no free list"
-        );
-
-        let prev_order =
-            page.flags().order().prev().ok_or(BuddyError::Unsplitable)?;
-
-        // The block's new order finds its buddy at that order.
-        page.flags().modify(|bits| bits.set_order(prev_order));
-        let buddy = self.buddy_of(block)?;
-        // SAFETY: `buddy_of` returns a live page of this arena.
-        unsafe { buddy.as_ref() }
-            .flags()
-            .modify(|bits| bits.set_order(prev_order));
-
-        Ok((block, buddy))
-    }
-
     /// Returns the page at the given index, if one exists.
     fn at(&self, n: usize) -> Option<NonNull<Page>> {
         if n >= self.inner.len() {
@@ -253,6 +195,19 @@ impl SlabArena for PageMap {
         descriptor: &SlabDescriptor<T, S>,
     ) -> PageIndex {
         BuddyArena::index_of(self, self.page_of(descriptor))
+    }
+
+    fn set_slab_flags_of<T: Slab, S: SlabState>(
+        &self,
+        descriptor: &mut SlabDescriptor<T, S>,
+        flags: SlabFlags,
+    ) {
+        // SAFETY: only the slab that owns a page holds its descriptor by
+        // `&mut`, and the slab gave the page's token up into its lists.
+        let mut block =
+            unsafe { OwnedBlock::from_raw(self.page_of(descriptor)) };
+        block.set_owner(u8::from(flags));
+        let _ = block.into_raw();
     }
 
     unsafe fn descriptor_at<T: Slab, S: SlabState>(
