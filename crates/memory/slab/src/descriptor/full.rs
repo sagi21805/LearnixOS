@@ -5,7 +5,6 @@ use crate::{
         FullDetached, ListState, PartialDetached, SlabDescriptor,
         meta::FullFreeMeta,
     },
-    slab_address::SlabAddress,
     traits::Slab,
 };
 use typestate_groups::MorphFrom;
@@ -18,12 +17,12 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, PartialDetached>>
     fn morph_from(src: SlabDescriptor<T, PartialDetached>) -> Self {
         debug_assert_eq!(
             src.state.get_total_allocated(),
-            T::OBJECT_PER_SLAB as u32
+            T::OBJECT_PER_SLAB as u16
         );
 
         SlabDescriptor {
             state: FullFreeMeta::default(),
-            next: SlabAddress::default(),
+            next: None,
             _object: PhantomData,
         }
     }
@@ -39,7 +38,7 @@ where
     fn morph_from(_src: SlabDescriptor<T, S>) -> Self {
         SlabDescriptor {
             state: FullFreeMeta::default(),
-            next: SlabAddress::default(),
+            next: None,
             _object: PhantomData,
         }
     }

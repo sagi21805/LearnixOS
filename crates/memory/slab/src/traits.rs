@@ -58,9 +58,17 @@ pub trait SlabGeometry: SlabFamily + Sized {
 
     const PAGES_PER_SLAB: usize = 1 << Self::BUDDY_ORDER;
 
-    const OBJECT_PER_SLAB: usize = Self::PAGES_PER_SLAB
-        * Self::PSIZE.size()
-        / size_of::<PreAllocated<Self>>();
+    /// The objects in one slab. It fits a `u16`, which slot indices and
+    /// allocation counts are.
+    const OBJECT_PER_SLAB: usize = {
+        let objects = Self::PAGES_PER_SLAB * Self::PSIZE.size()
+            / size_of::<PreAllocated<Self>>();
+        assert!(
+            objects <= u16::MAX as usize,
+            "a slab's objects fit a `u16`"
+        );
+        objects
+    };
     /// All `OBJECT_PER_SLAB` objects of one slab as one array, so a thin
     /// pointer to it covers every object. Only an array unsizes to a
     /// slice.

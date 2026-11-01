@@ -4,7 +4,6 @@ use crate::{
         FreeDetached, FullDetached, ListState, PartialDetached,
         SlabDescriptor, SlabState, meta::PartialMeta,
     },
-    slab_address::SlabAddress,
     slot_index::SlotIndex,
     traits::Slab,
 };
@@ -19,7 +18,7 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, FreeDetached>>
     fn morph_from(_src: SlabDescriptor<T, FreeDetached>) -> Self {
         SlabDescriptor {
             state: PartialMeta::default(),
-            next: SlabAddress::default(),
+            next: None,
             _object: PhantomData,
         }
     }
@@ -34,16 +33,15 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, FullDetached>>
         SlabDescriptor {
             state: PartialMeta::new()
                 .next_free_idx(u16::MAX)
-                .total_allocated(T::OBJECT_PER_SLAB as u32)
-                .partial(true),
-            next: SlabAddress::default(),
+                .total_allocated(T::OBJECT_PER_SLAB as u16),
+            next: None,
             _object: PhantomData,
         }
     }
 }
 
-/// A slab leaving the partial list keeps its slots, without its head
-/// bit or next node.
+/// A slab leaving the partial list keeps its free list and count,
+/// without its next node.
 impl<T: Slab, S> MorphFrom<SlabDescriptor<T, S>>
     for SlabDescriptor<T, PartialDetached>
 where
@@ -51,8 +49,8 @@ where
 {
     fn morph_from(src: SlabDescriptor<T, S>) -> Self {
         SlabDescriptor {
-            state: src.state.head(false),
-            next: SlabAddress::default(),
+            state: src.state,
+            next: None,
             _object: PhantomData,
         }
     }

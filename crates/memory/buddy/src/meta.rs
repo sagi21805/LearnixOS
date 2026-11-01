@@ -23,7 +23,10 @@ pub struct BlockFlagBits {
     pub order: B4,
     pub allocated: B1,
     #[flag(r)]
-    pub reserved: B59,
+    pub reserved: B51,
+    /// Bits the block's owner gives its own meaning. Buddy zeroes them
+    /// when the block comes back.
+    pub owner: B8,
 }
 
 /// A block's flags, which anyone holding the arena may read and only the
@@ -72,6 +75,15 @@ impl BlockFlags {
 
     /// Whether this block is handed out.
     pub fn is_allocated(&self) -> bool { self.load().is_allocated() }
+
+    /// The bits the block's owner keeps here.
+    pub fn owner(&self) -> u8 { self.load().get_owner() }
+
+    /// Replaces the owner's bits with `owner`. Only the block's owner
+    /// calls this.
+    pub fn set_owner(&self, owner: u8) {
+        self.modify(|bits| bits.set_owner(owner));
+    }
 }
 
 impl Debug for BlockFlags {

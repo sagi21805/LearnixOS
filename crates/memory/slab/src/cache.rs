@@ -26,8 +26,8 @@ pub struct SlabCache<T: Slab> {
 // with the cache.
 unsafe impl<T: Slab> Send for SlabCache<T> {}
 
-// The cache is three head pointers, whatever `T` is.
-const _: () = assert!(size_of::<SlabCache<Generic64>>() == 24);
+// The cache is three head indices, whatever `T` is.
+const _: () = assert!(size_of::<SlabCache<Generic64>>() == 12);
 
 /// The slab caches, each slab type `T`'s at `T::SLAB_POSITION`, stored as
 /// [`Unknown`] caches so they fit in one array.
@@ -82,14 +82,14 @@ impl<T: Slab> SlabCache<T> {
     ) -> Option<NonNull<T>> {
         // SAFETY: `&mut self` is the only path to the cache's lists, so
         // nothing else references the head or frees its page meanwhile.
-        let head = unsafe { self.partial.first() }?;
+        let head = unsafe { self.partial.first(arena) }?;
         let (object, allocated) = head.allocate_slot(arena);
         match allocated {
             Allocated::Partial => {}
             Allocated::Full => {
-                head.unlink(&mut self.partial)
+                head.unlink(arena, &mut self.partial)
                     .morph_mut::<FullDetached>()
-                    .link(&mut self.full);
+                    .link(arena, &mut self.full);
             }
         }
         Some(object)
@@ -105,8 +105,8 @@ impl<T: Slab> SlabCache<T> {
     ) -> Option<NonNull<T>> {
         // SAFETY: `&mut self` is the only path to the cache's lists, so
         // nothing else references the head or frees its page meanwhile.
-        let head = unsafe { self.free.first() }?;
-        let free = head.unlink(&mut self.free);
+        let head = unsafe { self.free.first(arena) }?;
+        let free = head.unlink(arena, &mut self.free);
         Some(self.allocate_and_link(arena, free))
     }
 
@@ -123,10 +123,10 @@ impl<T: Slab> SlabCache<T> {
         let partial = free.morph_mut::<PartialDetached>();
         let (object, allocated) = partial.allocate_slot(arena);
         match allocated {
-            Allocated::Partial => partial.link(&mut self.partial),
-            Allocated::Full => {
-                partial.morph_mut::<FullDetached>().link(&mut self.full)
-            }
+            Allocated::Partial => partial.link(arena, &mut self.partial),
+            Allocated::Full => partial
+                .morph_mut::<FullDetached>()
+                .link(arena, &mut self.full),
         }
         object
     }
@@ -144,7 +144,7 @@ impl<T: Slab> SlabCache<T> {
         idx: SlotIndex,
         slab: &mut SlabDescriptor<T, Used>,
     ) {
-        match slab.classify_mut() {
+        match slab.classify_mut(arena) {
             UsedSlab::PartialHead(partial) => unsafe {
                 self.deallocate_from_partial(arena, idx, partial)
             },
@@ -178,9 +178,9 @@ impl<T: Slab> SlabCache<T> {
             Deallocated::Partial => {}
             Deallocated::Free => {
                 partial
-                    .unlink(&mut self.partial)
+                    .unlink(arena, &mut self.partial)
                     .morph_mut::<FreeDetached>()
-                    .link(&mut self.free);
+                    .link(arena, &mut self.free);
             }
         }
     }
@@ -199,14 +199,17 @@ impl<T: Slab> SlabCache<T> {
         S: SlabState,
         SlabDescriptor<T, S>: InList<T, FullHead>,
     {
-        let partial =
-            full.unlink(&mut self.full).morph_mut::<PartialDetached>();
+        let partial = full
+            .unlink(arena, &mut self.full)
+            .morph_mut::<PartialDetached>();
         match unsafe { partial.deallocate_slot(arena, idx) } {
             Deallocated::Partial => {
-                partial.link(&mut self.partial);
+                partial.link(arena, &mut self.partial);
             }
             Deallocated::Free => {
-                partial.morph_mut::<FreeDetached>().link(&mut self.free);
+                partial
+                    .morph_mut::<FreeDetached>()
+                    .link(arena, &mut self.free);
             }
         }
     }

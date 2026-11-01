@@ -9,8 +9,7 @@ pub mod state;
 pub use state::*;
 
 use crate::{
-    Generic64,
-    slab_address::SlabAddress,
+    Generic64, SlabArena, SlabFlags,
     traits::{Slab, Unknown},
 };
 use core::{
@@ -18,21 +17,25 @@ use core::{
     marker::PhantomData,
     ptr::NonNull,
 };
+
+use common::page_index::PageIndex;
 use typestate_groups::{
     Isomorphic, MorphFrom, Morphic, group_impl, group_trait, typestate,
 };
 
 #[typestate(state = S, unsafe_transmute = true)]
 pub struct SlabDescriptor<T: Slab, S: SlabState> {
+    /// The next node of the slab's list.
+    pub next: Option<PageIndex>,
     pub state: S::Meta,
-    pub next: SlabAddress,
     _object: PhantomData<fn() -> T>,
 }
 
-// A descriptor is its metadata and its `next` link, in every state.
+// A descriptor is its `next` link and its metadata, in every state.
 const _: () = {
-    assert!(size_of::<SlabDescriptor<Generic64, Partial>>() == 16);
-    assert!(size_of::<SlabDescriptor<Generic64, Free>>() == 16);
+    assert!(size_of::<SlabDescriptor<Generic64, Partial>>() == 8);
+    assert!(size_of::<SlabDescriptor<Generic64, Free>>() == 8);
+    assert!(size_of::<SlabDescriptor<Unknown, Used>>() == 8);
 };
 
 impl SlabDescriptor<Unknown, Unused> {
@@ -64,24 +67,20 @@ impl SlabDescriptor<Unknown, Unused> {
     }
 }
 
-/// The head of a slab list, the first descriptor in it or `None` when the
-/// list is empty.
+/// The head of a slab list, the index of the first descriptor in it or
+/// `None` when the list is empty.
 ///
-/// Only [`Link`] and [`Unlink`] set it, so a head that isn't `None`
-/// points at a live descriptor in the list. It stores an address like
-/// every `next` and `prev`, so all of a list's links rebuild their
-/// pointers the same way.
+/// Only [`Link`] and [`Unlink`] set it, so a head that isn't `None` is
+/// the index of a live descriptor in the list.
 #[repr(transparent)]
 pub(crate) struct ListHead<T: Slab, H: SlabState>(
-    SlabAddress,
+    Option<PageIndex>,
     PhantomData<*mut SlabDescriptor<T, H>>,
 );
 
 impl<T: Slab, H: SlabState> ListHead<T, H> {
     /// A list with no descriptors.
-    pub(crate) const fn empty() -> Self {
-        Self(SlabAddress::default(), PhantomData)
-    }
+    pub(crate) const fn empty() -> Self { Self(None, PhantomData) }
 
     /// The first descriptor, or `None` when the list is empty.
     ///
@@ -91,9 +90,10 @@ impl<T: Slab, H: SlabState> ListHead<T, H> {
     /// caller must hold no other reference to it while this one is used.
     pub(crate) unsafe fn first<'a>(
         self,
+        arena: &impl SlabArena,
     ) -> Option<&'a mut SlabDescriptor<T, H>> {
         // SAFETY: only `link` and `unlink` set the head, so it is live.
-        unsafe { self.0.node_mut() }
+        unsafe { arena.node_mut(self.0) }
     }
 }
 
@@ -114,8 +114,12 @@ pub(crate) trait Link<T: Slab> {
     type Head: SlabState;
 
     /// Links this descriptor into the list after its head, or as its head
-    /// when the list is empty.
-    fn link(&mut self, head: &mut ListHead<T, Self::Head>);
+    /// when the list is empty, and sets the slab's list bits.
+    fn link(
+        &mut self,
+        arena: &impl SlabArena,
+        head: &mut ListHead<T, Self::Head>,
+    );
 }
 
 /// A slab in its list, which unlinks itself from the list at `head` and
@@ -130,6 +134,7 @@ pub(crate) trait Unlink<T: Slab> {
     /// Unlinks this descriptor from the list.
     fn unlink(
         &mut self,
+        arena: &impl SlabArena,
         head: &mut ListHead<T, Self::Head>,
     ) -> &mut Self::Detached;
 }
@@ -151,22 +156,27 @@ impl<T: Slab, H: ListState, D> InList<T, H> for D where
 impl<T: Slab, S: ListState> Link<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
 
-    fn link(&mut self, head: &mut ListHead<T, S::Head>) {
+    fn link(
+        &mut self,
+        arena: &impl SlabArena,
+        head: &mut ListHead<T, S::Head>,
+    ) {
         debug_assert!(
-            self.next == SlabAddress::default(),
+            self.next.is_none(),
             "a detached node has no next node"
         );
+        let index = arena.index_of(self);
         // SAFETY: a detached node isn't the head.
-        match unsafe { head.first() } {
-            None => {
-                self.state.set_head(true);
-                head.0 =
-                    SlabAddress::from_non_null(NonNull::from_mut(self));
-            }
+        let first = unsafe { head.first(arena) };
+        arena.set_slab_flags_of(
+            self,
+            SlabFlags::new().partial(true).head(first.is_none()),
+        );
+        match first {
+            None => head.0 = Some(index),
             Some(first) => {
                 self.next = first.next;
-                first.next =
-                    SlabAddress::from_non_null(NonNull::from_mut(self));
+                first.next = Some(index);
             }
         }
     }
@@ -179,33 +189,30 @@ impl<T: Slab, S: ListState> Link<T> for SlabDescriptor<T, S> {
 impl<T: Slab, S: ListState> Link<T> for SlabDescriptor<T, S> {
     type Head = S::Head;
 
-    fn link(&mut self, head: &mut ListHead<T, S::Head>) {
+    fn link(
+        &mut self,
+        arena: &impl SlabArena,
+        head: &mut ListHead<T, S::Head>,
+    ) {
         debug_assert!(
-            self.next == SlabAddress::default()
-                && self.state.get_prev() == SlabAddress::default(),
+            self.next.is_none() && self.state.prev().is_none(),
             "a detached node has no neighbours"
         );
+        let index = arena.index_of(self);
+        arena.set_slab_flags_of(self, SlabFlags::new());
         // SAFETY: a detached node isn't the head.
-        match unsafe { head.first() } {
-            None => {
-                head.0 =
-                    SlabAddress::from_non_null(NonNull::from_mut(self))
-            }
+        match unsafe { head.first(arena) } {
+            None => head.0 = Some(index),
             Some(first) => {
-                let address =
-                    SlabAddress::from_non_null(NonNull::from_mut(self));
-
                 // SAFETY: `next` is the node after the head, not `self`.
-                let next = unsafe { first.next.node_mut::<T, S>() };
+                let next = unsafe { arena.node_mut::<T, S>(first.next) };
                 if let Some(next) = next {
-                    next.state.set_prev(address);
+                    next.state.set_prev(Some(index));
                 }
 
                 self.next = first.next;
-                self.state.set_prev(SlabAddress::from_non_null(
-                    NonNull::from_mut(first),
-                ));
-                first.next = address;
+                self.state.set_prev(Some(arena.index_of(first)));
+                first.next = Some(index);
             }
         }
     }
@@ -223,19 +230,22 @@ where
 
     fn unlink(
         &mut self,
+        arena: &impl SlabArena,
         head: &mut ListHead<T, S::Head>,
     ) -> &mut SlabDescriptor<T, S::Detached> {
         debug_assert!(
-            self.state.is_head()
-                && head.0
-                    == SlabAddress::from_non_null(NonNull::from_mut(self)),
+            arena.slab_flags_of(self).is_head()
+                && head.0 == Some(arena.index_of(self)),
             "the list starts at its head, whose head bit is set"
         );
 
         head.0 = self.next;
         // SAFETY: the new head is the node after `self`.
-        if let Some(first) = unsafe { head.first() } {
-            first.state.set_head(true);
+        if let Some(first) = unsafe { head.first(arena) } {
+            arena.set_slab_flags_of(
+                first,
+                SlabFlags::new().partial(true).head(true),
+            );
         }
 
         self.morph_mut::<S::Detached>()
@@ -254,19 +264,19 @@ where
 
     fn unlink(
         &mut self,
+        arena: &impl SlabArena,
         head: &mut ListHead<T, S::Head>,
     ) -> &mut SlabDescriptor<T, S::Detached> {
         debug_assert!(
-            self.state.get_prev() == SlabAddress::default()
-                && head.0
-                    == SlabAddress::from_non_null(NonNull::from_mut(self)),
+            self.state.prev().is_none()
+                && head.0 == Some(arena.index_of(self)),
             "the list starts at its head, which has no previous node"
         );
 
         head.0 = self.next;
         // SAFETY: the new head is the node after `self`.
-        if let Some(first) = unsafe { head.first() } {
-            first.state.set_prev(SlabAddress::default());
+        if let Some(first) = unsafe { head.first(arena) } {
+            first.state.set_prev(None);
         }
 
         self.morph_mut::<S::Detached>()
@@ -286,22 +296,24 @@ where
 
     fn unlink(
         &mut self,
+        arena: &impl SlabArena,
         head: &mut ListHead<T, S::Head>,
     ) -> &mut SlabDescriptor<T, S::Detached> {
         debug_assert!(
-            !self.state.is_head(),
+            !arena.slab_flags_of(self).is_head(),
             "an attached node isn't the head"
         );
-        let address = SlabAddress::from_non_null(NonNull::from_mut(self));
+        let index = Some(arena.index_of(self));
         // SAFETY: an attached node isn't the head, and its list has one.
-        let first = unsafe { head.first().unwrap_unchecked() };
+        let first = unsafe { head.first(arena).unwrap_unchecked() };
 
         let mut link = &mut first.next;
-        while *link != address {
+        while *link != index {
             // SAFETY: `link` points at a node before `self`, which is in
             // the list.
-            let node =
-                unsafe { link.node_mut::<T, S>().unwrap_unchecked() };
+            let node = unsafe {
+                arena.node_mut::<T, S>(*link).unwrap_unchecked()
+            };
             link = &mut node.next;
         }
         *link = self.next;
@@ -322,17 +334,18 @@ where
 
     fn unlink(
         &mut self,
+        arena: &impl SlabArena,
         _head: &mut ListHead<T, S::Head>,
     ) -> &mut SlabDescriptor<T, S::Detached> {
-        let prev = self.state.get_prev();
+        let prev = self.state.prev();
 
         // SAFETY: `prev` is the node before `self`, which an attached node
         // always has.
-        unsafe { prev.node_mut::<T, S>().unwrap_unchecked() }.next =
+        unsafe { arena.node_mut::<T, S>(prev).unwrap_unchecked() }.next =
             self.next;
 
         // SAFETY: `next` is the node after `self`.
-        if let Some(next) = unsafe { self.next.node_mut::<T, S>() } {
+        if let Some(next) = unsafe { arena.node_mut::<T, S>(self.next) } {
             next.state.set_prev(prev);
         }
 
@@ -355,10 +368,14 @@ impl<T: Slab> SlabDescriptor<T, Used> {
     /// Reads this slab's list from its partial bit, and whether it heads
     /// that list from its head bit or, for a full slab, from it having no
     /// previous node.
-    pub fn classify_mut(&mut self) -> UsedSlab<'_, T> {
-        if self.state.is_partial() {
+    pub fn classify_mut(
+        &mut self,
+        arena: &impl SlabArena,
+    ) -> UsedSlab<'_, T> {
+        let flags = arena.slab_flags_of(self);
+        if flags.is_partial() {
             let partial = self.cast_state_mut::<Partial>();
-            if partial.state.is_head() {
+            if flags.is_head() {
                 UsedSlab::PartialHead(
                     partial.cast_state_mut::<PartialHead>(),
                 )
@@ -367,7 +384,7 @@ impl<T: Slab> SlabDescriptor<T, Used> {
             }
         } else {
             let full = self.cast_state_mut::<Full>();
-            if full.state.get_prev() == SlabAddress::default() {
+            if full.state.prev().is_none() {
                 UsedSlab::FullHead(full.cast_state_mut::<FullHead>())
             } else {
                 UsedSlab::Full(full)
