@@ -11,7 +11,6 @@ pub use state::*;
 use crate::{
     Generic64,
     slab_address::SlabAddress,
-    slab_objects::SlabObjects,
     traits::{Slab, Unknown},
 };
 use core::{
@@ -26,15 +25,14 @@ use typestate_groups::{
 #[typestate(state = S, unsafe_transmute = true)]
 pub struct SlabDescriptor<T: Slab, S: SlabState> {
     pub state: S::Meta,
-    pub objects: SlabObjects<T>,
     pub next: SlabAddress,
+    _object: PhantomData<fn() -> T>,
 }
 
-// A descriptor is its metadata, its objects pointer and its `next` link,
-// in every state.
+// A descriptor is its metadata and its `next` link, in every state.
 const _: () = {
-    assert!(size_of::<SlabDescriptor<Generic64, Partial>>() == 24);
-    assert!(size_of::<SlabDescriptor<Generic64, Free>>() == 24);
+    assert!(size_of::<SlabDescriptor<Generic64, Partial>>() == 16);
+    assert!(size_of::<SlabDescriptor<Generic64, Free>>() == 16);
 };
 
 impl SlabDescriptor<Unknown, Unused> {

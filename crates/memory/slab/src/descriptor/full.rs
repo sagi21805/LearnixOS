@@ -1,3 +1,5 @@
+use core::marker::PhantomData;
+
 use crate::{
     descriptor::{
         FullDetached, ListState, PartialDetached, SlabDescriptor,
@@ -21,8 +23,8 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, PartialDetached>>
 
         SlabDescriptor {
             state: FullFreeMeta::default(),
-            objects: src.objects,
             next: SlabAddress::default(),
+            _object: PhantomData,
         }
     }
 }
@@ -34,11 +36,11 @@ impl<T: Slab, S> MorphFrom<SlabDescriptor<T, S>>
 where
     S: ListState<Detached = FullDetached>,
 {
-    fn morph_from(src: SlabDescriptor<T, S>) -> Self {
+    fn morph_from(_src: SlabDescriptor<T, S>) -> Self {
         SlabDescriptor {
             state: FullFreeMeta::default(),
-            objects: src.objects,
             next: SlabAddress::default(),
+            _object: PhantomData,
         }
     }
 }
