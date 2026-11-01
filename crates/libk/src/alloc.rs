@@ -2,15 +2,17 @@ extern crate alloc;
 
 use core::{alloc::Layout, ptr::NonNull};
 
-use alloc::alloc::{AllocError, Allocator, StaticAllocator, alloc};
+use alloc::alloc::{AllocError, Allocator, StaticAllocator, alloc_zeroed};
 
 use common::{
-    address_types::{Address, PhysicalAddress, VirtualAddress},
+    address_types::{PhysicalAddress, VirtualAddress},
     enums::{PageSize, PageTableLevel},
     error::{EntryError, MappingError},
 };
 use sync::once::Once;
-use x86::structures::paging::{PageEntryFlags, PageTable, PageTableEntry};
+use x86::structures::paging::{
+    PageEntryFlags, PageTable, PageTableEntry, VirtualAddressExt,
+};
 
 use crate::println;
 
@@ -101,17 +103,17 @@ unsafe impl StaticAllocator for GlobalAllocator<'static> {}
 // allocator.
 unsafe impl core::alloc::GlobalAllocator for GlobalAllocator<'static> {}
 
-/// Allocate a new table, point to it from a given [`PageTableEntry`]
+/// Allocates a zeroed table, and points `entry` at its physical address.
 pub fn alloc_table(
     entry: &mut PageTableEntry,
 ) -> Result<NonNull<PageTable>, AllocError> {
-    let ptr = unsafe { alloc(Layout::new::<PageTable>()) };
+    let ptr = unsafe { alloc_zeroed(Layout::new::<PageTable>()) };
     let table = NonNull::new(ptr).ok_or(AllocError)?.cast::<PageTable>();
+    let address = VirtualAddress::from(ptr.addr())
+        .translate()
+        .expect("the global allocator returns mapped memory");
     unsafe {
-        entry.map(
-            PhysicalAddress::new_unchecked(ptr as usize),
-            PageEntryFlags::table_flags(),
-        );
+        entry.map(address, PageEntryFlags::table_flags());
     }
     Ok(table)
 }
