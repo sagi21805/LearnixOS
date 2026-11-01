@@ -29,6 +29,8 @@ pub struct Page {
     body: UnsafeCell<PageBody>,
 }
 
+const _: () = assert!(size_of::<Page>() == 16);
+
 /// What the owner of a page keeps in it.
 #[repr(C)]
 union PageBody {

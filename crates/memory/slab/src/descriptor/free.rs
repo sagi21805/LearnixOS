@@ -5,7 +5,6 @@ use crate::{
         FreeDetached, ListState, PartialDetached, SlabDescriptor,
         meta::FullFreeMeta,
     },
-    slab_address::SlabAddress,
     traits::Slab,
 };
 use typestate_groups::MorphFrom;
@@ -19,7 +18,7 @@ impl<T: Slab> SlabDescriptor<T, FreeDetached> {
     pub fn new() -> Self {
         SlabDescriptor {
             state: FullFreeMeta::default(),
-            next: SlabAddress::default(),
+            next: None,
             _object: PhantomData,
         }
     }

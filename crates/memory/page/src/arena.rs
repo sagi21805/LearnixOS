@@ -14,7 +14,9 @@ use common::{
 use libk::println;
 use x86::memory_map::MemoryMap;
 
-use buddy::meta::{BlockFlagBits, BuddyArena, BuddyBlock, BuddyError};
+use buddy::meta::{
+    BlockFlagBits, BlockFlags, BuddyArena, BuddyBlock, BuddyError,
+};
 use slab::{
     SlabArena,
     descriptor::{SlabDescriptor, SlabState},
@@ -219,7 +221,7 @@ impl BuddyArena<Page> for PageMap {
         &self,
         page: NonNull<Page>,
     ) -> (usize, usize) {
-        let offset = self.index_of(page).get() as usize;
+        let offset = BuddyArena::index_of(self, page).get() as usize;
         let section_offset = offset % (1 << BuddyOrder::MAX as usize);
         let section_idx = offset / (1 << BuddyOrder::MAX as usize);
 
@@ -234,6 +236,43 @@ impl SlabArena for PageMap {
         &self,
         descriptor: &SlabDescriptor<T, S>,
     ) -> SlabObjects<T> {
+        let page = self.page_of(descriptor);
+        SlabObjects::new(self.address_of(page).translate().as_non_null())
+    }
+
+    fn flags_of<T: Slab, S: SlabState>(
+        &self,
+        descriptor: &SlabDescriptor<T, S>,
+    ) -> &BlockFlags {
+        // SAFETY: `page_of` returns a live page of this arena.
+        unsafe { self.page_of(descriptor).as_ref() }.flags()
+    }
+
+    fn index_of<T: Slab, S: SlabState>(
+        &self,
+        descriptor: &SlabDescriptor<T, S>,
+    ) -> PageIndex {
+        BuddyArena::index_of(self, self.page_of(descriptor))
+    }
+
+    unsafe fn descriptor_at<T: Slab, S: SlabState>(
+        &self,
+        index: PageIndex,
+    ) -> NonNull<SlabDescriptor<T, S>> {
+        let page = self
+            .at(index.get() as usize)
+            .expect("a slab's index is inside the arena");
+        // SAFETY: `at` returns a live page of this arena.
+        NonNull::from_ref(&unsafe { page.as_ref() }.body).cast()
+    }
+}
+
+impl PageMap {
+    /// The page whose body holds `descriptor`.
+    fn page_of<T: Slab, S: SlabState>(
+        &self,
+        descriptor: &SlabDescriptor<T, S>,
+    ) -> NonNull<Page> {
         // SAFETY: a descriptor lives in the body of its page.
         let page = unsafe {
             NonNull::from_ref(descriptor).byte_sub(offset_of!(Page, body))
@@ -245,12 +284,9 @@ impl SlabArena for PageMap {
                 .contains(&page.as_ptr().cast_const()),
             "the descriptor is in a page of this arena"
         );
-
-        SlabObjects::new(self.address_of(page).translate().as_non_null())
+        page
     }
-}
 
-impl PageMap {
     /// Returns the (section index, section offset) of the given page.
     ///
     /// A section is a contiguous range of pages aligned to
@@ -263,7 +299,7 @@ impl PageMap {
         &self,
         page: NonNull<Page>,
     ) -> (usize, usize) {
-        let offset = self.index_of(page).get() as usize;
+        let offset = BuddyArena::index_of(self, page).get() as usize;
         let section_offset = offset % (1 << BuddyOrder::MAX as usize);
         let section_idx = offset / (1 << BuddyOrder::MAX as usize);
 

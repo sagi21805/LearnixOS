@@ -24,12 +24,11 @@ pub mod cache_allocator;
 pub mod descriptor;
 pub mod local_macros;
 pub mod preallocated;
-pub mod slab_address;
 pub mod slab_objects;
 pub mod slot_index;
 pub mod traits;
 
-pub use arena::SlabArena;
+pub use arena::{SlabArena, SlabFlags};
 
 use crate::{
     cache::SlabCaches,
