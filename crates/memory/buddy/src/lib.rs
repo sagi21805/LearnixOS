@@ -17,12 +17,14 @@ use core::{
     ptr::NonNull,
 };
 
-use libk::println;
-use sync::mutex::SpinMutex;
+use sync::{
+    mutex::{MutexGuard, SpinMutex},
+    strategy::Spin,
+};
 use x86::memory_map::MemoryMap;
 
 use common::{
-    address_types::{Address, PhysicalAddress},
+    address_types::{Address, VirtualAddress},
     constants::{REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE},
     enums::BuddyOrder,
 };
@@ -30,7 +32,8 @@ use common::{
 use typestate_groups::Isomorphic;
 
 use crate::meta::{
-    Attached, BuddyArena, BuddyBlock, Detached, FreeList, Link, Unlink,
+    Attached, BuddyArena, BuddyBlock, BuddyError, Detached, FreeList,
+    Link, Unlink,
 };
 
 pub struct BuddyAllocator<Arena, Block>
@@ -68,6 +71,19 @@ where
     pub fn initialize(self: Pin<&mut Self>, mmap: &MemoryMap) {
         self.inner.lock().initialize(mmap);
     }
+
+    /// Locks the allocator until the guard is dropped.
+    ///
+    /// Hold this lock while writing the metadata of a block you allocated,
+    /// such as a slab descriptor. Freeing a block reads the metadata of
+    /// its buddy to check whether the two can merge, and that buddy may be
+    /// your block. The lock keeps that read from running in the middle of
+    /// your write.
+    pub fn lock(
+        &self,
+    ) -> MutexGuard<'_, BuddyAllocatorInner<Arena, Block>, Spin> {
+        self.inner.lock()
+    }
 }
 
 impl<Arena, Block> ::core::fmt::Debug for BuddyAllocator<Arena, Block>
@@ -94,59 +110,21 @@ where
     Arena: BuddyArena<Block>,
     Block: BuddyBlock,
 {
-    /// Takes a block of the smallest order that fits `layout`, and
-    /// returns all of it.
     fn allocate(
         &self,
         layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        let order = order_of(layout).ok_or(AllocError)?;
-
-        let mut inner = self.inner.lock();
-        let block = inner
-            .pop(order)
-            .or_else(|| inner.split_until(order))
-            .ok_or(AllocError)?;
-        // SAFETY: `pop` and `split_until` return a free block of the
-        // arena, which they detached.
-        unsafe { inner.mark_allocated(block) };
-
-        let start = inner.arena.address_of(block).as_non_null::<u8>();
-        Ok(NonNull::slice_from_raw_parts(
-            start,
-            REGULAR_PAGE_SIZE << order,
-        ))
+        self.inner.lock().allocate(layout)
     }
 
-    /// Puts the block back in its free list, and merges it with its free
-    /// buddies.
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        let order = order_of(layout);
-        debug_assert!(order.is_some(), "`layout` came from `allocate`");
-        // SAFETY: the caller guarantees `layout` is the one `allocate`
-        // accepted, so it has an order.
-        let order = unsafe { order.unwrap_unchecked() };
-
-        let mut inner = self.inner.lock();
-        let mut block = inner
-            .arena
-            .page_with_address(PhysicalAddress::from(ptr.addr().get()))
-            .expect("an allocated block lies in the arena");
-
-        // SAFETY: `block` is the allocated block at `ptr`, which nothing
-        // else uses once it is freed.
-        let meta = unsafe { block.as_mut() }.meta_mut();
-        debug_assert!(meta.flags.is_allocated(), "{block:?} is allocated");
-        meta.flags.set_order(BuddyOrder::from(order as u8));
-        meta.flags.set_allocated(false);
-
-        inner.attach(block);
-        inner.merge(block);
+        unsafe { self.inner.lock().deallocate(ptr, layout) }
     }
 }
 
-/// An arena and the free lists that link its blocks.
-struct BuddyAllocatorInner<Arena, Block> {
+/// An arena and the free lists that link its blocks, reached through
+/// [`BuddyAllocator::lock`].
+pub struct BuddyAllocatorInner<Arena, Block> {
     arena: Arena,
     freelist: [FreeList; BuddyOrder::MAX as usize + 1],
     _block: PhantomData<Block>,
@@ -157,6 +135,70 @@ where
     Arena: BuddyArena<Block>,
     Block: BuddyBlock,
 {
+    /// Takes a block of the smallest order that fits `layout`, and
+    /// returns all of it, through the higher-half map of physical memory.
+    pub fn allocate(
+        &mut self,
+        layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        let order = order_of(layout).ok_or(AllocError)?;
+
+        let block = self
+            .pop(order)
+            .or_else(|| self.split_until(order))
+            .ok_or(AllocError)?;
+        // SAFETY: `pop` and `split_until` return a free block of the
+        // arena, which they detached.
+        unsafe { self.mark_allocated(block) };
+
+        let start =
+            self.arena.address_of(block).translate().as_non_null::<u8>();
+        Ok(NonNull::slice_from_raw_parts(
+            start,
+            REGULAR_PAGE_SIZE << order,
+        ))
+    }
+
+    /// The block of the page at `ptr`, a pointer into memory that
+    /// `allocate` handed out.
+    pub fn block_of(
+        &self,
+        ptr: NonNull<u8>,
+    ) -> Result<NonNull<Block>, BuddyError> {
+        self.arena.page_with_virtual_address(VirtualAddress::from(
+            ptr.addr().get(),
+        ))
+    }
+
+    /// Puts the block at `ptr` back in its free list, and merges it with
+    /// its free buddies.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` and `layout` must come from one call to `allocate`, and the
+    /// block must not have been freed since.
+    unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) {
+        let order = order_of(layout);
+        debug_assert!(order.is_some(), "`layout` came from `allocate`");
+        // SAFETY: the caller guarantees `layout` is the one `allocate`
+        // accepted, so it has an order.
+        let order = unsafe { order.unwrap_unchecked() };
+
+        let mut block = self
+            .block_of(ptr)
+            .expect("an allocated block lies in the arena");
+
+        // SAFETY: `block` is the allocated block at `ptr`, which nothing
+        // else uses once it is freed.
+        let meta = unsafe { block.as_mut() }.meta_mut();
+        debug_assert!(meta.flags.is_allocated(), "{block:?} is allocated");
+        meta.flags.set_order(BuddyOrder::from(order as u8));
+        meta.flags.set_allocated(false);
+
+        self.attach(block);
+        self.merge(block);
+    }
+
     /// Splits the smallest free block above `order` down to `order`, and
     /// returns its first half, detached. Each split puts the second half
     /// in the free list one order down.

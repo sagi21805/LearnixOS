@@ -5,7 +5,6 @@ use core::{
 };
 
 use buddy::meta::{BuddyArena, BuddyBlock};
-use common::address_types::VirtualAddress;
 
 use crate::{
     SlabAllocator,
@@ -14,15 +13,17 @@ use crate::{
 
 /// Allocates `T`s from their slab cache.
 ///
-/// Freeing locks the buddy arena before the slab array. Every other path
-/// that takes both locks must take them in that order.
+/// `allocate` and `deallocate` hold the buddy lock and then the slab lock
+/// for their whole run, because the buddy allocator reads the metadata of
+/// a slab's first page when it frees that page's buddy. Every path takes
+/// the two in that order, so they can't deadlock.
 ///
 /// ```ignore
 /// let inode = Box::new_in(Inode::default(), SLAB.cache::<Inode>());
 /// ```
 pub struct CacheAllocator<'a, T: Slab, Block, Arena>
 where
-    Block: BuddyBlock + SlabBlock,
+    Block: BuddyBlock + SlabBlock + 'static,
     Arena: BuddyArena<Block> + 'static,
 {
     slab: &'a SlabAllocator<Block, Arena>,
@@ -31,7 +32,7 @@ where
 
 impl<'a, T: Slab, Block, Arena> CacheAllocator<'a, T, Block, Arena>
 where
-    Block: BuddyBlock + SlabBlock,
+    Block: BuddyBlock + SlabBlock + 'static,
     Arena: BuddyArena<Block> + 'static,
 {
     pub(crate) const fn new(
@@ -46,7 +47,7 @@ where
 
 impl<T: Slab, Block, Arena> Clone for CacheAllocator<'_, T, Block, Arena>
 where
-    Block: BuddyBlock + SlabBlock,
+    Block: BuddyBlock + SlabBlock + 'static,
     Arena: BuddyArena<Block> + 'static,
 {
     fn clone(&self) -> Self { *self }
@@ -54,7 +55,7 @@ where
 
 impl<T: Slab, Block, Arena> Copy for CacheAllocator<'_, T, Block, Arena>
 where
-    Block: BuddyBlock + SlabBlock,
+    Block: BuddyBlock + SlabBlock + 'static,
     Arena: BuddyArena<Block> + 'static,
 {
 }
@@ -64,7 +65,7 @@ where
 unsafe impl<T: Slab, Block, Arena> Allocator
     for CacheAllocator<'_, T, Block, Arena>
 where
-    Block: BuddyBlock + SlabBlock,
+    Block: BuddyBlock + SlabBlock + 'static,
     Arena: BuddyArena<Block> + 'static,
 {
     /// Allocates one object, and returns all of it, so any size up to
@@ -77,18 +78,15 @@ where
             return Err(AllocError);
         }
 
-        // The slab lock is released at the end of this statement, before
-        // `new_slab` takes the buddy lock.
-        let object =
-            self.slab.slab_arena.lock().cache::<T>().try_allocate();
-        let object = object.unwrap_or_else(|| {
-            let slab = self.slab.new_slab::<T>();
-            self.slab
-                .slab_arena
-                .lock()
-                .cache::<T>()
-                .allocate_and_link(slab)
-        });
+        let mut buddy = self.slab.buddy.lock();
+        let mut caches = self.slab.caches.lock();
+        let cache = caches.cache::<T>();
+        let object = match cache.try_allocate() {
+            Some(object) => object,
+            None => cache.allocate_and_link(SlabAllocator::new_slab::<T>(
+                &mut buddy,
+            )?),
+        };
         Ok(NonNull::slice_from_raw_parts(object.cast(), size_of::<T>()))
     }
 
@@ -96,12 +94,17 @@ where
         debug_assert!(T::fits(layout), "the layout fits in a `T`");
         let object = ptr.cast::<T>();
 
-        let arena = self.slab.buddy_arena.lock();
-        let mut caches = self.slab.slab_arena.lock();
+        // A slab is one buddy block, which is aligned to its size, so its
+        // first page is `ptr` rounded down to the slab's size.
+        let offset = ptr.addr().get() % T::SLAB_LAYOUT.size();
+        // SAFETY: the slab's first page starts `offset` bytes before
+        // `ptr`, in the same pages.
+        let page = unsafe { ptr.byte_sub(offset) };
 
-        let address = VirtualAddress::from(object.addr().get());
-        let mut page = arena
-            .page_with_virtual_address(address)
+        let buddy = self.slab.buddy.lock();
+        let mut caches = self.slab.caches.lock();
+        let mut page = buddy
+            .block_of(page)
             .expect("an allocated object's page is in the buddy arena");
         // SAFETY: the page holds a `T` object, so its descriptor is a `T`
         // one.
