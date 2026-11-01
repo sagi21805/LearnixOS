@@ -13,7 +13,7 @@ use core::fmt::Debug;
 
 use slab::{
     descriptor::{SlabDescriptor, Used},
-    traits::Unknown,
+    traits::{Slab, SlabBlock, Unknown},
 };
 
 pub union Page {
@@ -45,6 +45,22 @@ impl BuddyBlock for Page {
 
     fn meta(&self) -> &BuddyMeta<Regular> {
         unsafe { NonNull::from_ref(&self.buddy).as_ref() }
+    }
+}
+
+impl SlabBlock for Page {
+    unsafe fn slab_descriptor<T: Slab>(&self) -> &SlabDescriptor<T, Used> {
+        // SAFETY: a descriptor's layout doesn't depend on `T`, and the
+        // caller guarantees this page holds a slab of `T`.
+        unsafe { &*(&raw const self.slab).cast() }
+    }
+
+    unsafe fn slab_descriptor_mut<T: Slab>(
+        &mut self,
+    ) -> &mut SlabDescriptor<T, Used> {
+        // SAFETY: a descriptor's layout doesn't depend on `T`, and the
+        // caller guarantees this page holds a slab of `T`.
+        unsafe { &mut *(&raw mut self.slab).cast() }
     }
 }
 // impl AssignSlab for NonNull<Page<()>> {

@@ -1,6 +1,6 @@
 use core::{alloc::Layout, marker::Unsize, mem::Alignment};
 
-use common::{address_types::VirtualAddress, enums::PageSize};
+use common::enums::PageSize;
 use typestate_groups::{Isomorphic, group, state, state_types};
 use x86::structures::paging::PageEntryFlags;
 
@@ -123,8 +123,6 @@ pub trait SlabFamily {
 // `regular_io_page_flags()`.
 
 pub trait SlabBlock {
-    fn from_address(address: VirtualAddress) -> Self;
-
     /// The [`SlabDescriptor`] of the slab this block holds.
     ///
     /// # Safety
