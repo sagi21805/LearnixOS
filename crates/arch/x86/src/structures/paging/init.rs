@@ -69,7 +69,6 @@ fn init_kernel_tables(pml4: &mut PageTable) -> Option<()> {
         // 0xffff80003fffffff to the physical addresses of
         // 0x00000000-0x3fffffff
         // This mapping will allow the kernel to access physical addresses
-        // without any dependency on the current mapping
         pml4.entries[256].map_unchecked(
             PhysicalAddress::new_unchecked(
                 TOP_IDENTITY_PAGE_TABLE_L3_OFFSET,
@@ -85,7 +84,7 @@ fn init_kernel_tables(pml4: &mut PageTable) -> Option<()> {
     }
     map_boot_memory(
         top_identity_page_table_l2,
-        PageEntryFlags::huge_io_page_flags(),
+        PageEntryFlags::huge_page_flags(),
     );
 
     Some(())
