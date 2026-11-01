@@ -159,6 +159,9 @@ where
         ))
     }
 
+    /// The arena whose blocks this allocator hands out.
+    pub fn arena(&self) -> &Arena { &self.arena }
+
     /// The block of the page at `ptr`, a pointer into memory that
     /// `allocate` handed out.
     pub fn block_of(

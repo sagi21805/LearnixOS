@@ -1,4 +1,8 @@
-use core::{mem::MaybeUninit, ops::Range, ptr::NonNull};
+use core::{
+    mem::{MaybeUninit, offset_of},
+    ops::Range,
+    ptr::NonNull,
+};
 
 use common::{
     address_types::{Address, PhysicalAddress},
@@ -11,6 +15,12 @@ use x86::memory_map::MemoryMap;
 
 use buddy::meta::{
     BuddyArena, BuddyBlock, BuddyError, BuddyFlags, BuddyMeta, Regular,
+};
+use slab::{
+    SlabArena,
+    descriptor::{SlabDescriptor, SlabState},
+    slab_objects::SlabObjects,
+    traits::Slab,
 };
 
 use crate::{Page, placement::ArenaPlacement};
@@ -225,6 +235,29 @@ impl BuddyArena<Page> for PageMap {
         let section_idx = offset / (1 << BuddyOrder::MAX as usize);
 
         (section_idx, section_offset)
+    }
+}
+
+impl SlabArena for PageMap {
+    /// The slots at the address buddy handed out for the descriptor's
+    /// page.
+    fn objects_of<T: Slab, S: SlabState>(
+        &self,
+        descriptor: &SlabDescriptor<T, S>,
+    ) -> SlabObjects<T> {
+        // SAFETY: a descriptor lives in the `slab` field of its page.
+        let page = unsafe {
+            NonNull::from_ref(descriptor).byte_sub(offset_of!(Page, slab))
+        }
+        .cast::<Page>();
+        debug_assert!(
+            self.inner
+                .as_ptr_range()
+                .contains(&page.as_ptr().cast_const()),
+            "the descriptor is in a page of this arena"
+        );
+
+        SlabObjects::new(self.address_of(page).translate().as_non_null())
     }
 }
 

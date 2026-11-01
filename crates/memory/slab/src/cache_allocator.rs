@@ -7,7 +7,7 @@ use core::{
 use buddy::meta::{BuddyArena, BuddyBlock};
 
 use crate::{
-    SlabAllocator,
+    SlabAllocator, SlabArena,
     traits::{Slab, SlabBlock},
 };
 
@@ -24,7 +24,7 @@ use crate::{
 pub struct CacheAllocator<'a, T: Slab, Block, Arena>
 where
     Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + 'static,
+    Arena: BuddyArena<Block> + SlabArena + 'static,
 {
     slab: &'a SlabAllocator<Block, Arena>,
     _object: PhantomData<fn() -> T>,
@@ -33,7 +33,7 @@ where
 impl<'a, T: Slab, Block, Arena> CacheAllocator<'a, T, Block, Arena>
 where
     Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + 'static,
+    Arena: BuddyArena<Block> + SlabArena + 'static,
 {
     pub(crate) const fn new(
         slab: &'a SlabAllocator<Block, Arena>,
@@ -48,7 +48,7 @@ where
 impl<T: Slab, Block, Arena> Clone for CacheAllocator<'_, T, Block, Arena>
 where
     Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + 'static,
+    Arena: BuddyArena<Block> + SlabArena + 'static,
 {
     fn clone(&self) -> Self { *self }
 }
@@ -56,7 +56,7 @@ where
 impl<T: Slab, Block, Arena> Copy for CacheAllocator<'_, T, Block, Arena>
 where
     Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + 'static,
+    Arena: BuddyArena<Block> + SlabArena + 'static,
 {
 }
 
@@ -66,7 +66,7 @@ unsafe impl<T: Slab, Block, Arena> Allocator
     for CacheAllocator<'_, T, Block, Arena>
 where
     Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + 'static,
+    Arena: BuddyArena<Block> + SlabArena + 'static,
 {
     /// Allocates one object, and returns all of it, so any size up to
     /// `size_of::<T>()` frees it again.
@@ -81,11 +81,18 @@ where
         let mut buddy = self.slab.buddy.lock();
         let mut caches = self.slab.caches.lock();
         let cache = caches.cache::<T>();
-        let object = match cache.try_allocate() {
+        let object = match cache.try_allocate(buddy.arena()) {
             Some(object) => object,
-            None => cache.allocate_and_link(SlabAllocator::new_slab::<T>(
-                &mut buddy,
-            )?),
+            None => {
+                let mut free = NonNull::from_mut(
+                    SlabAllocator::new_slab::<T>(&mut buddy)?,
+                );
+                // SAFETY: the new slab is in no list, so nothing else
+                // reaches it while the buddy lock is held.
+                cache.allocate_and_link(buddy.arena(), unsafe {
+                    free.as_mut()
+                })
+            }
         };
         Ok(NonNull::slice_from_raw_parts(object.cast(), size_of::<T>()))
     }
@@ -109,13 +116,14 @@ where
         // SAFETY: the page holds a `T` object, so its descriptor is a `T`
         // one.
         let slab = unsafe { page.as_mut().slab_descriptor_mut::<T>() };
-        let idx = slab
-            .objects
+        let arena = buddy.arena();
+        let idx = arena
+            .objects_of(slab)
             .index_of(object)
             .expect("an allocated object is a slot of its page's slab");
 
         // SAFETY: an allocated object's slab is in one of the cache's
         // lists.
-        unsafe { caches.cache::<T>().deallocate_object(idx, slab) };
+        unsafe { caches.cache::<T>().deallocate_object(arena, idx, slab) };
     }
 }

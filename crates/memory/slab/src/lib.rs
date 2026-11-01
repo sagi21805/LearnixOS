@@ -18,6 +18,7 @@
     reason = "`SlotIndex` is a pattern type, which is an internal feature"
 )]
 
+mod arena;
 pub mod cache;
 pub mod cache_allocator;
 pub mod descriptor;
@@ -28,11 +29,12 @@ pub mod slab_objects;
 pub mod slot_index;
 pub mod traits;
 
+pub use arena::SlabArena;
+
 use crate::{
     cache::SlabCaches,
     cache_allocator::CacheAllocator,
     descriptor::{FreeDetached, SlabDescriptor},
-    slab_objects::SlabObjects,
     traits::{Slab, SlabBlock},
 };
 use core::{
@@ -76,7 +78,7 @@ define_slab_system!();
 pub struct SlabAllocator<Block, Arena>
 where
     Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + 'static,
+    Arena: BuddyArena<Block> + SlabArena + 'static,
 {
     caches: SpinMutex<SlabCaches<SLAB_COUNT>>,
     buddy: &'static BuddyAllocator<Arena, Block>,
@@ -85,7 +87,7 @@ where
 impl<Block, Arena> SlabAllocator<Block, Arena>
 where
     Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + 'static,
+    Arena: BuddyArena<Block> + SlabArena + 'static,
 {
     /// A slab allocator with empty caches, which takes its pages from
     /// `buddy`.
@@ -172,14 +174,14 @@ where
         let mut block = buddy
             .block_of(pages)
             .expect("the buddy allocator's pages are in its arena");
-        // SAFETY: the pages are fresh, so nothing else points at them and
-        // no slot is allocated.
-        let free = unsafe { SlabDescriptor::new(SlabObjects::new(pages)) };
 
         // SAFETY: the buddy allocator gave `block` out for this slab, so
         // it holds no slab in use.
         Ok(unsafe {
-            block.as_mut().unused_slab_descriptor_mut().assign(free)
+            block
+                .as_mut()
+                .unused_slab_descriptor_mut()
+                .assign(SlabDescriptor::new())
         })
     }
 }
@@ -189,7 +191,7 @@ where
 unsafe impl<Block, Arena> Allocator for SlabAllocator<Block, Arena>
 where
     Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + 'static,
+    Arena: BuddyArena<Block> + SlabArena + 'static,
 {
     /// Serves `layout` from the smallest generic size that fits it.
     fn allocate(

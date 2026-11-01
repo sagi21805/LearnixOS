@@ -1,56 +1,49 @@
+use core::marker::PhantomData;
+
 use crate::{
     descriptor::{
         FreeDetached, ListState, PartialDetached, SlabDescriptor,
         meta::FullFreeMeta,
     },
     slab_address::SlabAddress,
-    slab_objects::SlabObjects,
     traits::Slab,
 };
 use typestate_groups::MorphFrom;
 
 impl<T: Slab> SlabDescriptor<T, FreeDetached> {
-    /// A free slab over `objects`, in no list, with every slot on its
-    /// free list.
+    /// A free slab in no list.
     ///
-    /// # Safety
-    ///
-    /// No slot of `objects` may be allocated.
-    pub unsafe fn new(mut objects: SlabObjects<T>) -> Self {
-        // SAFETY: the caller guarantees no slot is allocated.
-        unsafe { objects.link_all() };
+    /// Its slots aren't linked into a free list until
+    /// [`SlabCache::allocate_and_link`](crate::cache::SlabCache::allocate_and_link)
+    /// makes it partial.
+    pub fn new() -> Self {
         SlabDescriptor {
             state: FullFreeMeta::default(),
-            objects,
             next: SlabAddress::default(),
+            _object: PhantomData,
         }
     }
 }
 
-/// A partial slab whose last object was freed becomes free, with its
-/// free list starting at index 0 again.
+impl<T: Slab> Default for SlabDescriptor<T, FreeDetached> {
+    fn default() -> Self { Self::new() }
+}
+
+/// A partial slab whose last object was freed becomes free.
 impl<T: Slab> MorphFrom<SlabDescriptor<T, PartialDetached>>
     for SlabDescriptor<T, FreeDetached>
 {
     fn morph_from(src: SlabDescriptor<T, PartialDetached>) -> Self {
         debug_assert_eq!(src.state.get_total_allocated(), 0);
-        // SAFETY: the slab's last object was freed.
-        unsafe { Self::new(src.objects) }
+        Self::new()
     }
 }
 
-/// A slab leaving the free list keeps its slots, without its previous
-/// or next node.
+/// A slab leaving the free list, without its previous or next node.
 impl<T: Slab, S> MorphFrom<SlabDescriptor<T, S>>
     for SlabDescriptor<T, FreeDetached>
 where
     S: ListState<Detached = FreeDetached>,
 {
-    fn morph_from(src: SlabDescriptor<T, S>) -> Self {
-        SlabDescriptor {
-            state: FullFreeMeta::default(),
-            objects: src.objects,
-            next: SlabAddress::default(),
-        }
-    }
+    fn morph_from(_src: SlabDescriptor<T, S>) -> Self { Self::new() }
 }

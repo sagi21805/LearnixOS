@@ -1,4 +1,5 @@
 use crate::{
+    SlabArena,
     descriptor::{
         FreeDetached, FullDetached, ListState, PartialDetached,
         SlabDescriptor, SlabState, meta::PartialMeta,
@@ -7,7 +8,7 @@ use crate::{
     slot_index::SlotIndex,
     traits::Slab,
 };
-use core::ptr::NonNull;
+use core::{marker::PhantomData, ptr::NonNull};
 use typestate_groups::MorphFrom;
 
 /// A free slab allocating its first object becomes partial, starting at
@@ -15,11 +16,11 @@ use typestate_groups::MorphFrom;
 impl<T: Slab> MorphFrom<SlabDescriptor<T, FreeDetached>>
     for SlabDescriptor<T, PartialDetached>
 {
-    fn morph_from(src: SlabDescriptor<T, FreeDetached>) -> Self {
+    fn morph_from(_src: SlabDescriptor<T, FreeDetached>) -> Self {
         SlabDescriptor {
             state: PartialMeta::default(),
-            objects: src.objects,
             next: SlabAddress::default(),
+            _object: PhantomData,
         }
     }
 }
@@ -29,14 +30,14 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, FreeDetached>>
 impl<T: Slab> MorphFrom<SlabDescriptor<T, FullDetached>>
     for SlabDescriptor<T, PartialDetached>
 {
-    fn morph_from(src: SlabDescriptor<T, FullDetached>) -> Self {
+    fn morph_from(_src: SlabDescriptor<T, FullDetached>) -> Self {
         SlabDescriptor {
             state: PartialMeta::new()
                 .next_free_idx(u16::MAX)
                 .total_allocated(T::OBJECT_PER_SLAB as u32)
                 .partial(true),
-            objects: src.objects,
             next: SlabAddress::default(),
+            _object: PhantomData,
         }
     }
 }
@@ -51,8 +52,8 @@ where
     fn morph_from(src: SlabDescriptor<T, S>) -> Self {
         SlabDescriptor {
             state: src.state.head(false),
-            objects: src.objects,
             next: SlabAddress::default(),
+            _object: PhantomData,
         }
     }
 }
@@ -60,9 +61,14 @@ where
 impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     /// Allocates the first free slot, and returns its object with the
     /// slab's state afterwards.
-    pub(crate) fn allocate_slot(&mut self) -> (NonNull<T>, Allocated) {
+    pub(crate) fn allocate_slot(
+        &mut self,
+        arena: &impl SlabArena,
+    ) -> (NonNull<T>, Allocated) {
         let slot = unsafe {
-            self.objects.slot(self.state.get_next_free_idx() as usize)
+            arena
+                .objects_of(self)
+                .slot(self.state.get_next_free_idx() as usize)
         };
         // SAFETY: the free-list head is free, and `repr(C)` puts
         // `next_free_idx` first.
@@ -90,9 +96,11 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     /// `idx` must be an allocated object of this slab.
     pub(crate) unsafe fn deallocate_slot(
         &mut self,
+        arena: &impl SlabArena,
         idx: SlotIndex,
     ) -> Deallocated {
-        let slot = unsafe { self.objects.slot(idx.get() as usize) };
+        let slot =
+            unsafe { arena.objects_of(self).slot(idx.get() as usize) };
         let next = SlotIndex::new(self.state.get_next_free_idx());
         // SAFETY: the owner is done with slot `idx`, and `repr(C)` puts
         // `next_free_idx` first.

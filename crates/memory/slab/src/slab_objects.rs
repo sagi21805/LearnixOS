@@ -6,24 +6,22 @@ use crate::{
     preallocated::PreAllocated, slot_index::SlotIndex, traits::Slab,
 };
 
-/// The object slots of one slab, in pages that no other value manages.
+/// The object slots of one slab, which
+/// [`SlabArena::objects_of`](crate::SlabArena::objects_of) rebuilds from
+/// the slab's descriptor.
 ///
-/// It is neither `Copy` nor `Clone` and its pointer is private, so each
-/// slab's pages have exactly one manager.
+/// Many values may point at the same slots. Whoever holds the slab's
+/// descriptor by `&mut` is its one manager, so only that code writes the
+/// free slots.
 #[repr(transparent)]
 pub struct SlabObjects<T: Slab>(NonNull<T::PreAllocatedArray>);
 
-// SAFETY: only this value reaches its free slots, and no method reads the
-// `T` in an allocated one.
-unsafe impl<T: Slab> Send for SlabObjects<T> {}
-
 impl<T: Slab> SlabObjects<T> {
-    /// Takes over the `T::PAGES_PER_SLAB` pages at `pages`.
+    /// The slots on the `T::PAGES_PER_SLAB` pages at `pages`.
     ///
     /// # Safety
     ///
-    /// `pages` must start `T::PAGES_PER_SLAB` live pages that nothing else
-    /// points at.
+    /// `pages` must start the `T::PAGES_PER_SLAB` live pages of one slab.
     pub fn new(pages: NonNull<u8>) -> Self {
         debug_assert!(
             pages.is_aligned_to(T::PSIZE.alignment().as_usize()),
