@@ -12,8 +12,7 @@ pub mod meta;
 use core::{
     alloc::{AllocError, Allocator, Layout},
     cmp::Ordering,
-    marker::{PhantomData, PhantomPinned},
-    pin::Pin,
+    marker::PhantomData,
     ptr::NonNull,
 };
 
@@ -51,7 +50,6 @@ where
     arena: Arena,
     freelist: SpinMutex<FreeLists>,
     _block: PhantomData<Block>,
-    _pinned: PhantomPinned,
 }
 
 impl<Arena, Block> BuddyAllocator<Arena, Block>
@@ -67,17 +65,14 @@ where
                     BuddyOrder::MAX as usize + 1],
             ),
             _block: PhantomData,
-            _pinned: PhantomPinned,
         }
     }
 
     /// Builds the free lists from the arena.
     ///
     /// Reserves the memory that isn't free, links every free page into the
-    /// order-0 list, and merges buddies from there. The lists point into
-    /// `self`, so it takes a pinned `self` to keep the allocator from
-    /// moving.
-    pub fn initialize(self: Pin<&mut Self>, mmap: &MemoryMap) {
+    /// order-0 list, and merges buddies from there.
+    pub fn initialize(&mut self, mmap: &MemoryMap) {
         self.locked().initialize(mmap);
     }
 
@@ -259,31 +254,38 @@ where
 
     /// Detaches the first block of the free list of `order`.
     fn pop(&mut self, order: usize) -> Option<NonNull<Block>> {
-        let block =
-            Block::from_links(self.freelist[order].first()?.cast());
+        let first = self.freelist[order].first()?;
+        let block = self
+            .arena
+            .at(first.get() as usize)
+            .expect("a free list links only blocks of its arena");
         self.detach(block);
         Some(block)
     }
 
     /// Links a block in no free list into the free list of its order.
     fn attach(&mut self, block: NonNull<Block>) {
+        let index = self.arena.index_of(block);
         // SAFETY: the allocator attaches only free blocks of its arena.
-        let block = unsafe { block.as_ref() };
-        let order = block.flags().order() as usize;
+        let page = unsafe { block.as_ref() };
+        let order = page.flags().order() as usize;
         // SAFETY: a free block belongs to the allocator, whose lock
         // `&mut self` holds.
-        unsafe { block.links().as_mut() }
+        unsafe { page.links().as_mut() }
             .as_state_mut::<Detached>()
-            .link(self.freelist[order].head_mut());
+            .link(index, &mut self.freelist[order], self.arena);
     }
 
     /// Unlinks a block from its free list.
     fn detach(&mut self, block: NonNull<Block>) {
-        // SAFETY: free lists link only free blocks of the arena, which
-        // belong to the allocator.
-        unsafe { block.as_ref().links().as_mut() }
+        // SAFETY: free lists link only free blocks of the arena.
+        let page = unsafe { block.as_ref() };
+        let order = page.flags().order() as usize;
+        // SAFETY: a free block belongs to the allocator, whose lock
+        // `&mut self` holds.
+        unsafe { page.links().as_mut() }
             .as_state_mut::<Attached>()
-            .unlink();
+            .unlink(&mut self.freelist[order], self.arena);
     }
 
     /// Marks a detached block as allocated.

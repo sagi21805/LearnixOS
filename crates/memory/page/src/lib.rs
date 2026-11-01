@@ -6,10 +6,7 @@ pub mod meta;
 mod placement;
 
 use core::{
-    cell::UnsafeCell,
-    fmt::Debug,
-    mem::{ManuallyDrop, offset_of},
-    ptr::NonNull,
+    cell::UnsafeCell, fmt::Debug, mem::ManuallyDrop, ptr::NonNull,
 };
 
 use buddy::meta::{
@@ -80,11 +77,6 @@ impl BuddyBlock for Page {
         unsafe {
             NonNull::new_unchecked(&raw mut (*self.body.get()).buddy)
         }
-    }
-
-    fn from_links(links: NonNull<BuddyLinks<Regular>>) -> NonNull<Self> {
-        // SAFETY: links live in the body of their page.
-        unsafe { links.byte_sub(offset_of!(Page, body)) }.cast()
     }
 }
 

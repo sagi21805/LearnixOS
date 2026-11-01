@@ -8,6 +8,7 @@ use common::{
     address_types::{Address, PhysicalAddress},
     constants::REGULAR_PAGE_SIZE,
     enums::{BuddyOrder, MemoryRegionType},
+    page_index::PageIndex,
 };
 
 use libk::println;
@@ -41,6 +42,13 @@ impl BuddyArena<Page> for PageMap {
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
         println!("Total pages: {}", total_pages);
+        assert!(
+            u32::try_from(total_pages - 1)
+                .ok()
+                .and_then(PageIndex::new)
+                .is_some(),
+            "every page has a `PageIndex`"
+        );
 
         // SAFETY: nothing uses the usable memory yet, and the boot map
         // maps nothing past the first GiB.
@@ -192,11 +200,26 @@ impl BuddyArena<Page> for PageMap {
         Some(unsafe { NonNull::from_ref(self.inner.get_unchecked(n)) })
     }
 
+    fn index_of(&self, page: NonNull<Page>) -> PageIndex {
+        debug_assert!(
+            self.inner
+                .as_ptr_range()
+                .contains(&page.as_ptr().cast_const()),
+            "the page is in this arena"
+        );
+        // SAFETY: `page` is a page of this arena.
+        let offset = unsafe {
+            page.as_ptr().offset_from_unsigned(self.inner.as_ptr())
+        };
+        PageIndex::new(offset as u32)
+            .expect("`new` gives every page an index")
+    }
+
     unsafe fn section_index_of(
         &self,
         page: NonNull<Page>,
     ) -> (usize, usize) {
-        let offset = unsafe { self.index_of(page) };
+        let offset = self.index_of(page).get() as usize;
         let section_offset = offset % (1 << BuddyOrder::MAX as usize);
         let section_idx = offset / (1 << BuddyOrder::MAX as usize);
 
@@ -228,22 +251,6 @@ impl SlabArena for PageMap {
 }
 
 impl PageMap {
-    /// Returns the index of the given page in the arena.
-    ///
-    /// # Safety
-    ///
-    /// The page must be contained within the arena's memory range.
-    pub unsafe fn index_of(&self, page: NonNull<Page>) -> usize {
-        debug_assert!(
-            self.inner
-                .as_ptr_range()
-                .contains(&(page.as_ptr() as *const _))
-        );
-        unsafe { page.as_ptr().offset_from_unsigned(self.inner.as_ptr()) }
-    }
-}
-
-impl PageMap {
     /// Returns the (section index, section offset) of the given page.
     ///
     /// A section is a contiguous range of pages aligned to
@@ -256,7 +263,7 @@ impl PageMap {
         &self,
         page: NonNull<Page>,
     ) -> (usize, usize) {
-        let offset = unsafe { self.index_of(page) };
+        let offset = self.index_of(page).get() as usize;
         let section_offset = offset % (1 << BuddyOrder::MAX as usize);
         let section_idx = offset / (1 << BuddyOrder::MAX as usize);
 
