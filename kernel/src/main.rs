@@ -110,7 +110,7 @@ pub unsafe extern "C" fn _start() -> ! {
 
     let buddy = BUDDY_ALLOCATOR
         .init_with(BuddyAllocator::<PageMap, Page>::new(mmap), |buddy| {
-            buddy.initialize(mmap)
+            buddy.get_mut().initialize(mmap)
         });
     GLOBAL_ALLOCATOR.set(buddy);
 

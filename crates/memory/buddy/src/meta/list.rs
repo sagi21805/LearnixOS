@@ -1,80 +1,87 @@
 //! Linking blocks into and out of a free list.
 
-use core::ptr::NonNull;
-
+use common::page_index::PageIndex;
 use typestate_groups::{group_impl, group_trait};
 
 use super::state::*;
-use crate::meta::{BuddyLinks, Next, UNLINKED};
+use crate::meta::{BuddyArena, BuddyBlock, BuddyLinks, FreeList, Prev};
 
 /// A block outside every free list, which links itself into one.
 #[group_trait(by = BuddyState)]
 pub trait Link {
-    /// Links this block in right after `at`, the `next` link of a free
-    /// list's head or of a block in it.
-    fn link<'a>(
-        &'a mut self,
-        at: &mut Next,
-    ) -> &'a mut BuddyLinks<Attached>;
+    /// Links this block, the one at `index` in `arena`, in as the first
+    /// block of `list`.
+    fn link<Block: BuddyBlock>(
+        &mut self,
+        index: PageIndex,
+        list: &mut FreeList,
+        arena: &impl BuddyArena<Block>,
+    ) -> &mut BuddyLinks<Attached>;
 }
 
 /// A block in a free list, which unlinks itself and returns itself
 /// outside the list.
 #[group_trait(by = BuddyState)]
 pub trait Unlink {
-    /// Unlinks this block from its free list.
-    fn unlink(&mut self) -> &mut BuddyLinks<Detached>;
+    /// Unlinks this block from `list`, the free list it is in.
+    fn unlink<Block: BuddyBlock>(
+        &mut self,
+        list: &mut FreeList,
+        arena: &impl BuddyArena<Block>,
+    ) -> &mut BuddyLinks<Detached>;
 }
 
 #[group_impl(BuddyState = Nodes, state = Detached)]
 impl Link for BuddyLinks<Detached> {
-    fn link<'a>(
-        &'a mut self,
-        at: &mut Next,
-    ) -> &'a mut BuddyLinks<Attached> {
+    fn link<Block: BuddyBlock>(
+        &mut self,
+        index: PageIndex,
+        list: &mut FreeList,
+        arena: &impl BuddyArena<Block>,
+    ) -> &mut BuddyLinks<Attached> {
         debug_assert!(
             self.next.is_none() && !self.is_linked(),
             "a detached block has no neighbours"
         );
-        let next = *at;
-        let link = NonNull::from_mut(at);
-
-        if let Some(mut next) = next {
-            // SAFETY: `next` is the block after `at` in its free list,
-            // which isn't `self`.
-            unsafe { next.as_mut() }.prev =
-                NonNull::from_mut(&mut self.next);
+        if let Some(first) = list.first() {
+            // SAFETY: `first` is in `list`, and it isn't `self`.
+            unsafe { arena.links_at(first).as_mut() }.prev =
+                Prev::After(index);
         }
-        self.next = next;
-        self.prev = link;
+        self.next = list.first();
+        self.prev = Prev::First;
+        list.set_first(Some(index));
 
-        let attached = self.as_state_mut::<Attached>();
-        // SAFETY: `link` is `at`, which the caller lends to this call.
-        unsafe { link.write(Some(NonNull::from_mut(attached))) };
-        attached
+        self.as_state_mut::<Attached>()
     }
 }
 
-/// Unlinks an attached block, through the link that points at it.
+/// Unlinks an attached block, through the block or list that points at
+/// it.
 #[group_impl(BuddyState = Nodes, state = Attached)]
 impl Unlink for BuddyLinks<Attached> {
-    fn unlink(&mut self) -> &mut BuddyLinks<Detached> {
-        debug_assert!(
-            self.is_linked(),
-            "an attached block has a previous link"
-        );
-        let prev = self.prev;
-
-        // SAFETY: `prev` is the `next` link of the node before `self`.
-        unsafe { prev.write(self.next) };
-        if let Some(mut next) = self.next {
-            // SAFETY: `next` is the block after `self`, which isn't
-            // `self`.
-            unsafe { next.as_mut() }.prev = prev;
+    fn unlink<Block: BuddyBlock>(
+        &mut self,
+        list: &mut FreeList,
+        arena: &impl BuddyArena<Block>,
+    ) -> &mut BuddyLinks<Detached> {
+        match self.prev {
+            Prev::First => list.set_first(self.next),
+            Prev::After(prev) => {
+                // SAFETY: `prev` is the block before `self` in the list.
+                unsafe { arena.links_at(prev).as_mut() }.next = self.next
+            }
+            Prev::Unlinked => {
+                unreachable!("an attached block is in a list")
+            }
+        }
+        if let Some(next) = self.next {
+            // SAFETY: `next` is the block after `self` in the list.
+            unsafe { arena.links_at(next).as_mut() }.prev = self.prev;
         }
 
         self.next = None;
-        self.prev = UNLINKED;
+        self.prev = Prev::Unlinked;
         self.as_state_mut::<Detached>()
     }
 }

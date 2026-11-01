@@ -2,11 +2,14 @@
 
 use core::{ops::Range, ptr::NonNull};
 
-use common::address_types::{PhysicalAddress, VirtualAddress};
+use common::{
+    address_types::{PhysicalAddress, VirtualAddress},
+    page_index::PageIndex,
+};
 use thiserror::Error;
 use x86::{memory_map::MemoryMap, structures::paging::VirtualAddressExt};
 
-use crate::meta::{BlockFlags, BuddyLinks, Regular};
+use crate::meta::{Attached, BlockFlags, BuddyLinks, Regular};
 
 #[derive(Debug, Error)]
 pub enum BuddyError {
@@ -36,9 +39,6 @@ pub trait BuddyBlock: Sized {
     ///
     /// Buddy must own the block, so it's free and the buddy lock is held.
     unsafe fn links(&self) -> NonNull<BuddyLinks<Regular>>;
-
-    /// The block whose links are at `links`.
-    fn from_links(links: NonNull<BuddyLinks<Regular>>) -> NonNull<Self>;
 }
 
 pub trait BuddyArena<Block: BuddyBlock>: Sized {
@@ -126,6 +126,28 @@ pub trait BuddyArena<Block: BuddyBlock>: Sized {
 
     /// Returns the block nth block of the arena, if one exists.
     fn at(&self, n: usize) -> Option<NonNull<Block>>;
+
+    /// The index of `block`, a block of this arena, the reverse of
+    /// [`at`](Self::at).
+    fn index_of(&self, block: NonNull<Block>) -> PageIndex;
+
+    /// The links of the block at `index`, which is in a free list.
+    ///
+    /// # Safety
+    ///
+    /// The block at `index` must be in a free list, so it's free and
+    /// buddy owns it, and the caller must hold the buddy lock.
+    unsafe fn links_at(
+        &self,
+        index: PageIndex,
+    ) -> NonNull<BuddyLinks<Attached>> {
+        let block = self
+            .at(index.get() as usize)
+            .expect("a free list links only blocks of its arena");
+        // SAFETY: `at` returns a live block, which the caller guarantees
+        // buddy owns.
+        unsafe { block.as_ref().links() }.cast()
+    }
 
     /// Returns the (section index, section offset) of the given page.
     ///

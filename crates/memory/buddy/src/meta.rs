@@ -14,15 +14,8 @@ use core::{
 };
 
 use bitfields::bitfields;
-use common::enums::BuddyOrder;
+use common::{enums::BuddyOrder, page_index::PageIndex};
 use typestate_groups::typestate;
-
-/// The link from a node to the first free block after it.
-pub type Next = Option<NonNull<BuddyLinks<Attached>>>;
-
-/// The `prev` of a block in no free list. No link lives at this address,
-/// so a real `prev` never equals it.
-pub const UNLINKED: NonNull<Next> = NonNull::dangling();
 
 #[bitfields]
 pub struct BlockFlagBits {
@@ -95,19 +88,33 @@ impl Debug for BlockFlags {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BuddyLinks<S: BuddyState> {
-    pub next: Next,
-    /// The `next` link that points at this block, or [`UNLINKED`] while
-    /// it is in no free list.
-    pub prev: NonNull<Next>,
+    /// The block after this one in its free list.
+    pub next: Option<PageIndex>,
+    pub prev: Prev,
     _state: PhantomData<S>,
 }
+
+const _: () = assert!(size_of::<BuddyLinks<Regular>>() == 8);
+
+/// Where a block sits in its free list.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Prev {
+    /// In no free list.
+    Unlinked,
+    /// First in its list, which the free list of its order points at.
+    First,
+    /// Right after the block at this index.
+    After(PageIndex),
+}
+
+const _: () = assert!(size_of::<Prev>() == 4);
 
 impl BuddyLinks<Regular> {
     /// The links of a block in no free list.
     pub const fn new() -> BuddyLinks<Regular> {
         BuddyLinks {
             next: None,
-            prev: UNLINKED,
+            prev: Prev::Unlinked,
             _state: PhantomData,
         }
     }
@@ -119,7 +126,7 @@ impl Default for BuddyLinks<Regular> {
 
 impl<S: BuddyState> BuddyLinks<S> {
     /// Whether this block is in a free list.
-    pub fn is_linked(&self) -> bool { self.prev != UNLINKED }
+    pub fn is_linked(&self) -> bool { self.prev != Prev::Unlinked }
 
     /// These links, as links in state `To`.
     ///
@@ -146,49 +153,23 @@ impl<S: BuddyStateGroupMember<Nodes>> Debug for BuddyLinks<S> {
     }
 }
 
-/// A free list, as the link to its first block.
-///
-/// Blocks in the list point back at this link, so a list must not move
-/// while it holds blocks.
+/// A free list, as the index of its first block.
 #[repr(transparent)]
-pub struct FreeList(Next);
-
-const _: () = assert!(size_of::<FreeList>() == size_of::<Next>());
+pub struct FreeList(Option<PageIndex>);
 
 impl FreeList {
     /// A list with no blocks.
     pub const fn empty() -> FreeList { FreeList(None) }
 
     /// The first block of the list.
-    pub fn first(&self) -> Next { self.0 }
+    pub fn first(&self) -> Option<PageIndex> { self.0 }
 
-    /// The link to the first block, which a block links in after.
-    pub fn head_mut(&mut self) -> &mut Next { &mut self.0 }
+    /// Makes `first` the first block of the list.
+    fn set_first(&mut self, first: Option<PageIndex>) { self.0 = first; }
 }
 
 impl Debug for FreeList {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut list_fmt = f.debug_list();
-
-        let mut next = self.0;
-        let mut i = 0;
-        while let Some(n) = next {
-            list_fmt.entry(unsafe { n.as_ref() });
-            next = unsafe { n.as_ref().next };
-            if i == 32 {
-                return list_fmt.finish();
-            }
-            i += 1;
-        }
-
-        list_fmt.finish()
+        f.debug_tuple("FreeList").field(&self.0).finish()
     }
 }
-
-// SAFETY: a node's links point only into its allocator's arena and free
-// lists, which the allocator's locks guard.
-unsafe impl<S: BuddyState> Send for BuddyLinks<S> {}
-
-// SAFETY: a free list links only blocks of its allocator's arena, which
-// the allocator's locks guard.
-unsafe impl Send for FreeList {}
