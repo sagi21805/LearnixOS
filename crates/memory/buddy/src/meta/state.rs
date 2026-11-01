@@ -1,16 +1,11 @@
-//! The states of a [`BuddyMeta`](super::BuddyMeta) and the groups they
+//! The states of a [`BuddyLinks`](super::BuddyLinks) and the groups they
 //! form.
 
 use typestate_groups::{group, state, state_types};
 
-use crate::meta::BuddyFlags;
-
-/// The state of a block, which sets the type of its flags.
+/// Where a block stands relative to the free lists.
 #[state_types]
-pub trait BuddyState {
-    /// The block's order and allocation bit.
-    type Flags;
-}
+pub trait BuddyState {}
 
 /// A block in a free list.
 #[state]
@@ -28,7 +23,4 @@ pub struct Detached;
 pub struct Regular;
 
 #[group(Nodes)]
-impl BuddyState for (Regular, Attached, Detached) {
-    #[size(8)]
-    type Flags = BuddyFlags;
-}
+impl BuddyState for (Regular, Attached, Detached) {}

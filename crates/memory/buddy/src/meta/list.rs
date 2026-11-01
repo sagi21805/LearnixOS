@@ -2,12 +2,10 @@
 
 use core::ptr::NonNull;
 
-use typestate_groups::{
-    Isomorphic, MorphFrom, Morphic, group_impl, group_trait,
-};
+use typestate_groups::{group_impl, group_trait};
 
 use super::state::*;
-use crate::meta::{BuddyMeta, Next, UNLINKED};
+use crate::meta::{BuddyLinks, Next, UNLINKED};
 
 /// A block outside every free list, which links itself into one.
 #[group_trait(by = BuddyState)]
@@ -17,7 +15,7 @@ pub trait Link {
     fn link<'a>(
         &'a mut self,
         at: &mut Next,
-    ) -> &'a mut BuddyMeta<Attached>;
+    ) -> &'a mut BuddyLinks<Attached>;
 }
 
 /// A block in a free list, which unlinks itself and returns itself
@@ -25,15 +23,15 @@ pub trait Link {
 #[group_trait(by = BuddyState)]
 pub trait Unlink {
     /// Unlinks this block from its free list.
-    fn unlink(&mut self) -> &mut BuddyMeta<Detached>;
+    fn unlink(&mut self) -> &mut BuddyLinks<Detached>;
 }
 
 #[group_impl(BuddyState = Nodes, state = Detached)]
-impl Link for BuddyMeta<Detached> {
+impl Link for BuddyLinks<Detached> {
     fn link<'a>(
         &'a mut self,
         at: &mut Next,
-    ) -> &'a mut BuddyMeta<Attached> {
+    ) -> &'a mut BuddyLinks<Attached> {
         debug_assert!(
             self.next.is_none() && !self.is_linked(),
             "a detached block has no neighbours"
@@ -50,7 +48,7 @@ impl Link for BuddyMeta<Detached> {
         self.next = next;
         self.prev = link;
 
-        let attached = self.cast_state_mut::<Attached>();
+        let attached = self.as_state_mut::<Attached>();
         // SAFETY: `link` is `at`, which the caller lends to this call.
         unsafe { link.write(Some(NonNull::from_mut(attached))) };
         attached
@@ -59,8 +57,8 @@ impl Link for BuddyMeta<Detached> {
 
 /// Unlinks an attached block, through the link that points at it.
 #[group_impl(BuddyState = Nodes, state = Attached)]
-impl Unlink for BuddyMeta<Attached> {
-    fn unlink(&mut self) -> &mut BuddyMeta<Detached> {
+impl Unlink for BuddyLinks<Attached> {
+    fn unlink(&mut self) -> &mut BuddyLinks<Detached> {
         debug_assert!(
             self.is_linked(),
             "an attached block has a previous link"
@@ -75,17 +73,8 @@ impl Unlink for BuddyMeta<Attached> {
             unsafe { next.as_mut() }.prev = prev;
         }
 
-        self.morph_mut::<Detached>()
-    }
-}
-
-/// A block leaving its free list keeps its flags, without its links.
-impl MorphFrom<BuddyMeta<Attached>> for BuddyMeta<Detached> {
-    fn morph_from(src: BuddyMeta<Attached>) -> Self {
-        BuddyMeta {
-            next: None,
-            prev: UNLINKED,
-            flags: src.flags,
-        }
+        self.next = None;
+        self.prev = UNLINKED;
+        self.as_state_mut::<Detached>()
     }
 }

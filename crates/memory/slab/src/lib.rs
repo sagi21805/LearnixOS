@@ -171,7 +171,7 @@ where
         buddy: &mut BuddyAllocatorInner<Arena, Block>,
     ) -> Result<&mut SlabDescriptor<T, FreeDetached>, AllocError> {
         let pages = buddy.allocate(T::SLAB_LAYOUT)?.cast::<u8>();
-        let mut block = buddy
+        let block = buddy
             .block_of(pages)
             .expect("the buddy allocator's pages are in its arena");
 
@@ -179,7 +179,7 @@ where
         // it holds no slab in use.
         Ok(unsafe {
             block
-                .as_mut()
+                .as_ref()
                 .unused_slab_descriptor_mut()
                 .assign(SlabDescriptor::new())
         })

@@ -110,12 +110,12 @@ where
 
         let buddy = self.slab.buddy.lock();
         let mut caches = self.slab.caches.lock();
-        let mut page = buddy
+        let page = buddy
             .block_of(page)
             .expect("an allocated object's page is in the buddy arena");
         // SAFETY: the page holds a `T` object, so its descriptor is a `T`
         // one.
-        let slab = unsafe { page.as_mut().slab_descriptor_mut::<T>() };
+        let slab = unsafe { page.as_ref().slab_descriptor_mut::<T>() };
         let arena = buddy.arena();
         let idx = arena
             .objects_of(slab)
