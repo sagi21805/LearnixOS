@@ -1,8 +1,8 @@
 use core::{fmt, pattern_type};
 
 /// The index of a page in the buddy arena. The two largest `u32`s are
-/// never an index, so `Option<PageIndex>` uses one for `None` and an enum
-/// with two unit variants and one index variant uses both, in 4 bytes.
+/// never an index, so `Option<PageIndex>` uses one for `None` and
+/// `Option<`[`Prev`]`>` uses both, in 4 bytes.
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct PageIndex(Indices);
@@ -42,5 +42,34 @@ impl Eq for PageIndex {}
 impl fmt::Debug for PageIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.get().fmt(f)
+    }
+}
+
+/// Where a node sits in its list, with `None` for a node in no list.
+///
+/// Every `u32` is an `Option<Prev>`, because [`After`](Prev::After) takes
+/// every index, and [`First`](Prev::First) and `None` take the two `u32`s
+/// that aren't one.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Prev {
+    /// First in its list, which the list's head points at.
+    First,
+    /// Right after the node at this index.
+    Page(PageIndex),
+}
+
+const _: () = assert!(size_of::<Option<Prev>>() == 4);
+
+impl Prev {
+    /// The place stored in `bits`, or `None` for no list.
+    pub const fn from_bits(bits: u32) -> Option<Prev> {
+        // SAFETY: every `u32` is an `Option<Prev>`.
+        unsafe { core::mem::transmute::<u32, Option<Prev>>(bits) }
+    }
+
+    /// The bits that store `prev`.
+    pub const fn to_bits(prev: Option<Prev>) -> u32 {
+        // SAFETY: an `Option<Prev>` is 4 initialized bytes.
+        unsafe { core::mem::transmute::<Option<Prev>, u32>(prev) }
     }
 }

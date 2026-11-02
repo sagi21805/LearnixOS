@@ -14,7 +14,10 @@ use core::{
 };
 
 use bitfields::bitfields;
-use common::{enums::BuddyOrder, page_index::PageIndex};
+use common::{
+    enums::BuddyOrder,
+    page_index::{PageIndex, Prev},
+};
 use typestate_groups::typestate;
 
 #[bitfields]
@@ -38,12 +41,6 @@ pub struct BlockFlagBits {
 /// and a store, with no read-modify-write instruction. The word is atomic
 /// so a read that overlaps the owner's write is a race on a value, not
 /// undefined behaviour.
-///
-/// Every access is `Relaxed`, because no flag publishes other memory.
-/// Locks and the handoff of a block in `allocate` and `deallocate` order
-/// every access to a block's body. Code that reads a flag without a lock
-/// and then reads the body because of it needs an `Acquire` load, paired
-/// with a `Release` store of that flag.
 #[repr(transparent)]
 pub struct BlockFlags(AtomicU64);
 
@@ -91,37 +88,25 @@ impl Debug for BlockFlags {
 ///
 /// The state lives only in a `PhantomData` and the struct is `repr(C)`,
 /// so every state has the same layout.
-#[typestate]
 #[repr(C)]
+#[typestate]
 #[derive(Clone, Copy)]
 pub struct BuddyLinks<S: BuddyState> {
     /// The block after this one in its free list.
     pub next: Option<PageIndex>,
-    pub prev: Prev,
+    /// Where this block sits in its free list, or `None` in no list.
+    pub prev: Option<Prev>,
     _state: PhantomData<S>,
 }
 
 const _: () = assert!(size_of::<BuddyLinks<Regular>>() == 8);
-
-/// Where a block sits in its free list.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Prev {
-    /// In no free list.
-    Unlinked,
-    /// First in its list, which the free list of its order points at.
-    First,
-    /// Right after the block at this index.
-    After(PageIndex),
-}
-
-const _: () = assert!(size_of::<Prev>() == 4);
 
 impl BuddyLinks<Regular> {
     /// The links of a block in no free list.
     pub const fn new() -> BuddyLinks<Regular> {
         BuddyLinks {
             next: None,
-            prev: Prev::Unlinked,
+            prev: None,
             _state: PhantomData,
         }
     }
@@ -133,7 +118,7 @@ impl Default for BuddyLinks<Regular> {
 
 impl<S: BuddyState> BuddyLinks<S> {
     /// Whether this block is in a free list.
-    pub fn is_linked(&self) -> bool { self.prev != Prev::Unlinked }
+    pub fn is_linked(&self) -> bool { self.prev.is_some() }
 
     /// These links, as links in state `To`.
     ///
