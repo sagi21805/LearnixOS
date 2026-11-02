@@ -6,7 +6,10 @@
 #![feature(unsafe_cell_access)]
 #![feature(ptr_alignment_type)]
 #![deny(clippy::all)]
-use common::{constants::addresses::KERNEL_OFFSET, enums::Sections};
+use common::{
+    constants::{KERNEL_STACK_TOP, addresses::KERNEL_OFFSET},
+    enums::Sections,
+};
 use core::{arch::asm, panic::PanicInfo};
 use x86::structures::global_descriptor_table::GlobalDescriptorTableLong;
 
@@ -26,10 +29,12 @@ pub unsafe extern "C" fn second_stage() -> ! {
     x86::structures::paging::enable();
     // Load the global descriptor table for long mode
     GLOBAL_DESCRIPTOR_TABLE_LONG_MODE.load();
-    // Update global descriptor table to enable long mode
-    // and jump to kernel code
+    // Move to the kernel's own stack, then update global descriptor table
+    // to enable long mode and jump to kernel code
     asm!(
+        "mov ${stack}, %esp",
         "ljmp ${section}, ${next_stage}",
+        stack = const KERNEL_STACK_TOP,
         section = const Sections::KernelCode as u8,
         next_stage = const KERNEL_OFFSET,
         options(att_syntax)
