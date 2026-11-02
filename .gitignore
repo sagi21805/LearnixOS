@@ -1,9 +1,10 @@
 **/target
 **/*.img
 **/*.lock
-backup/**
+backup/
 build/bin
 **/image.bin
-.vscode/*
-.zed/*
-graphify-out/*
+.vscode/
+.zed/
+graphify-out/
+.claude/plans/done/

@@ -13,6 +13,18 @@ LearnixOS is a hobby operating system written from scratch in Rust. I build it t
 - **rust-style**: load it before writing, editing or reviewing any Rust code in this repo, including one-line fixes. Its no_std/kernel and proc-macro sections apply here.
 - **unslop**: apply it to all prose you write: replies, doc comments, commit messages, PR descriptions, and book text. Never apply it to code, compiler output or anything quoted verbatim.
 
+### graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+
+
 ## Documentation: the LearnixOS book
 
 The book that explains this kernel chapter by chapter lives in a separate repository, `../LearnixOS-book` (mdBook, chapters in `src/`), and is published at https://www.learnix-os.com/. Each chapter covers one subsystem: bootloader, synchronization, memory management, interrupts and so on.
@@ -46,3 +58,13 @@ cargo xtask run --release --debug-package <crate>   # keep debug assertions for 
 ```
 
 Each stage is built against its own JSON target spec with `-Z build-std`, so a plain `cargo build` at the workspace root won't produce a bootable image. Use `xtask`.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
