@@ -1,6 +1,7 @@
 extern crate alloc;
 
 use core::{
+    alloc::Allocator,
     ptr::NonNull,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
@@ -21,7 +22,11 @@ unsafe impl<T: Clone + Copy> Send for SpscRingBuffer<T> {}
 unsafe impl<T: Clone + Copy> Sync for SpscRingBuffer<T> {}
 
 impl<T: Clone + Copy> SpscRingBuffer<T> {
-    pub fn new(buf: Box<[T]>) -> SpscRingBuffer<T> {
+    /// A ring buffer over `buf`, which it keeps for good, so `A` must
+    /// live for good too.
+    pub fn new<A: Allocator + 'static>(
+        buf: Box<[T], A>,
+    ) -> SpscRingBuffer<T> {
         SpscRingBuffer {
             capacity: buf.len(),
             buffer: Box::leak(buf).into(),

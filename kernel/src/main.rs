@@ -115,7 +115,7 @@ pub unsafe extern "C" fn _start() -> ! {
     GLOBAL_ALLOCATOR.set(buddy);
 
     okprintln!("Initialized Buddy Allocator");
-    SLAB_ALLOCATOR.init(SlabAllocator::new(buddy));
+    let slab = SLAB_ALLOCATOR.init(SlabAllocator::new(buddy));
     okprintln!("Initialized Slab Allocator");
     unsafe {
         interrupts::disable();
@@ -125,14 +125,15 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized interrupts handlers");
         PIC.lock().init();
         okprintln!("Initialized Programmable Interrupt Controller");
-        let buffer = Box::new([0u8; 4096]);
+        let buffer: Box<[u8], _> = Box::new_in([0u8; 4096], slab);
+        let buffer_address = buffer.as_ptr();
         let keyboard_buffer =
             KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
 
         let kb = KEYBOARD
             .lock()
             .get_or_init(|| Keyboard::new(keyboard_buffer));
-        okprintln!("Initialized Keyboard");
+        okprintln!("Initialized Keyboard at {:p}", buffer_address);
         interrupts::enable();
     }
     let w = ADVANCED_WRITER.leak();
