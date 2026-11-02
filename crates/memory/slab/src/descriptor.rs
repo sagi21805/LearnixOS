@@ -18,7 +18,8 @@ use core::{
     ptr::NonNull,
 };
 
-use common::page_index::PageIndex;
+use common::page_index::{PageIndex, Prev};
+use extend::ext;
 use typestate_groups::{
     Isomorphic, MorphFrom, Morphic, group_impl, group_trait, typestate,
 };
@@ -202,16 +203,20 @@ impl<T: Slab, S: ListState> Link<T> for SlabDescriptor<T, S> {
         arena.set_slab_flags_of(self, SlabFlags::new());
         // SAFETY: a detached node isn't the head.
         match unsafe { head.first(arena) } {
-            None => head.0 = Some(index),
+            None => {
+                head.0 = Some(index);
+                self.state.set_prev(Some(Prev::First));
+            }
             Some(first) => {
                 // SAFETY: `next` is the node after the head, not `self`.
                 let next = unsafe { arena.node_mut::<T, S>(first.next) };
                 if let Some(next) = next {
-                    next.state.set_prev(Some(index));
+                    next.state.set_prev(Some(Prev::Page(index)));
                 }
 
                 self.next = first.next;
-                self.state.set_prev(Some(arena.index_of(first)));
+                self.state
+                    .set_prev(Some(Prev::Page(arena.index_of(first))));
                 first.next = Some(index);
             }
         }
@@ -252,8 +257,8 @@ where
     }
 }
 
-/// Unlinks the head of a doubly-linked free or full list, and leaves the
-/// next node without a previous one.
+/// Unlinks the head of a doubly-linked free or full list, and makes the
+/// next node first.
 #[group_impl(SlabState = DoublyLinked, ListRole = Heads, state = S)]
 impl<T: Slab, S: ListState> Unlink<T> for SlabDescriptor<T, S>
 where
@@ -268,15 +273,15 @@ where
         head: &mut ListHead<T, S::Head>,
     ) -> &mut SlabDescriptor<T, S::Detached> {
         debug_assert!(
-            self.state.prev().is_none()
+            self.state.prev() == Some(Prev::First)
                 && head.0 == Some(arena.index_of(self)),
-            "the list starts at its head, which has no previous node"
+            "the list starts at its head, which comes first"
         );
 
         head.0 = self.next;
         // SAFETY: the new head is the node after `self`.
         if let Some(first) = unsafe { head.first(arena) } {
-            first.state.set_prev(None);
+            first.state.set_prev(Some(Prev::First));
         }
 
         self.morph_mut::<S::Detached>()
@@ -338,10 +343,14 @@ where
         _head: &mut ListHead<T, S::Head>,
     ) -> &mut SlabDescriptor<T, S::Detached> {
         let prev = self.state.prev();
+        let Some(Prev::Page(prev_index)) = prev else {
+            // SAFETY: an attached node isn't the head, so a node comes
+            // before it.
+            unsafe { core::hint::unreachable_unchecked() }
+        };
 
-        // SAFETY: `prev` is the node before `self`, which an attached node
-        // always has.
-        unsafe { arena.node_mut::<T, S>(prev).unwrap_unchecked() }.next =
+        // SAFETY: `prev_index` is the node before `self`.
+        unsafe { arena.descriptor_at::<T, S>(prev_index).as_mut() }.next =
             self.next;
 
         // SAFETY: `next` is the node after `self`.
@@ -366,8 +375,8 @@ pub enum UsedSlab<'a, T: Slab> {
 
 impl<T: Slab> SlabDescriptor<T, Used> {
     /// Reads this slab's list from its partial bit, and whether it heads
-    /// that list from its head bit or, for a full slab, from it having no
-    /// previous node.
+    /// that list from its head bit or, for a full slab, from it coming
+    /// first.
     pub fn classify_mut(
         &mut self,
         arena: &impl SlabArena,
@@ -384,11 +393,23 @@ impl<T: Slab> SlabDescriptor<T, Used> {
             }
         } else {
             let full = self.cast_state_mut::<Full>();
-            if full.state.prev().is_none() {
+            if full.state.prev() == Some(Prev::First) {
                 UsedSlab::FullHead(full.cast_state_mut::<FullHead>())
             } else {
                 UsedSlab::Full(full)
             }
         }
+    }
+}
+
+/// List lookups the list code needs from any slab arena.
+#[ext]
+impl<A: SlabArena> A {
+    /// The descriptor at `index`, in state `S`, or `None` for no index.
+    unsafe fn node_mut<'a, T: Slab, S: SlabState>(
+        &self,
+        index: Option<PageIndex>,
+    ) -> Option<&'a mut SlabDescriptor<T, S>> {
+        index.map(|index| unsafe { self.descriptor_at(index).as_mut() })
     }
 }

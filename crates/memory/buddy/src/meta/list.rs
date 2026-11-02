@@ -1,10 +1,10 @@
 //! Linking blocks into and out of a free list.
 
-use common::page_index::PageIndex;
+use common::page_index::{PageIndex, Prev};
 use typestate_groups::{group_impl, group_trait};
 
 use super::state::*;
-use crate::meta::{BuddyArena, BuddyBlock, BuddyLinks, FreeList, Prev};
+use crate::meta::{BuddyArena, BuddyBlock, BuddyLinks, FreeList};
 
 /// A block outside every free list, which links itself into one.
 #[group_trait(by = BuddyState)]
@@ -46,10 +46,10 @@ impl Link for BuddyLinks<Detached> {
         if let Some(first) = list.first() {
             // SAFETY: `first` is in `list`, and it isn't `self`.
             unsafe { arena.links_at(first).as_mut() }.prev =
-                Prev::After(index);
+                Some(Prev::Page(index));
         }
         self.next = list.first();
-        self.prev = Prev::First;
+        self.prev = Some(Prev::First);
         list.set_first(Some(index));
 
         self.as_state_mut::<Attached>()
@@ -66,12 +66,12 @@ impl Unlink for BuddyLinks<Attached> {
         arena: &impl BuddyArena<Block>,
     ) -> &mut BuddyLinks<Detached> {
         match self.prev {
-            Prev::First => list.set_first(self.next),
-            Prev::After(prev) => {
+            Some(Prev::First) => list.set_first(self.next),
+            Some(Prev::Page(prev)) => {
                 // SAFETY: `prev` is the block before `self` in the list.
                 unsafe { arena.links_at(prev).as_mut() }.next = self.next
             }
-            Prev::Unlinked => {
+            None => {
                 unreachable!("an attached block is in a list")
             }
         }
@@ -81,7 +81,7 @@ impl Unlink for BuddyLinks<Attached> {
         }
 
         self.next = None;
-        self.prev = Prev::Unlinked;
+        self.prev = None;
         self.as_state_mut::<Detached>()
     }
 }
