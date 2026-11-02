@@ -16,9 +16,7 @@ use x86::memory_map::MemoryMap;
 
 use buddy::{
     OwnedBlock,
-    meta::{
-        BlockFlagBits, BlockFlags, BuddyArena, BuddyBlock, BuddyError,
-    },
+    meta::{BlockFlagBits, BuddyArena, BuddyBlock, BuddyError},
 };
 use slab::{
     SlabArena, SlabFlags,
@@ -182,19 +180,21 @@ impl SlabArena for PageMap {
         SlabObjects::new(self.address_of(page).translate().as_non_null())
     }
 
-    fn flags_of<T: Slab, S: SlabState>(
-        &self,
-        descriptor: &SlabDescriptor<T, S>,
-    ) -> &BlockFlags {
-        // SAFETY: `page_of` returns a live page of this arena.
-        unsafe { self.page_of(descriptor).as_ref() }.flags()
-    }
-
     fn index_of<T: Slab, S: SlabState>(
         &self,
         descriptor: &SlabDescriptor<T, S>,
     ) -> PageIndex {
         BuddyArena::index_of(self, self.page_of(descriptor))
+    }
+
+    /// The owner byte of the descriptor's page.
+    fn slab_flags_of<T: Slab, S: SlabState>(
+        &self,
+        descriptor: &SlabDescriptor<T, S>,
+    ) -> SlabFlags {
+        // SAFETY: `page_of` returns a live page of this arena.
+        let page = unsafe { self.page_of(descriptor).as_ref() };
+        SlabFlags::from(page.flags().owner())
     }
 
     fn set_slab_flags_of<T: Slab, S: SlabState>(

@@ -3,7 +3,7 @@ use core::ptr::NonNull;
 use common::address_types::VirtualAddress;
 
 use crate::{
-    preallocated::PreAllocated, slot_index::SlotIndex, traits::Slab,
+    object_index::ObjectIndex, preallocated::PreAllocated, traits::Slab,
 };
 
 /// The object slots of one slab, which
@@ -35,56 +35,24 @@ impl<T: Slab> SlabObjects<T> {
         VirtualAddress::from(self.0.addr().get())
     }
 
-    /// The slot at `idx`.
+    /// The object at `idx`.
     ///
     /// # Safety
     ///
-    /// `idx` must be less than `T::OBJECT_PER_SLAB`, which debug builds
-    /// check.
-    pub unsafe fn slot(&self, idx: usize) -> NonNull<PreAllocated<T>> {
+    /// `idx` must be less than `T::OBJECTS_PER_SLAB`.
+    pub unsafe fn object_at(
+        &self,
+        idx: ObjectIndex,
+    ) -> NonNull<PreAllocated<T>> {
         // SAFETY: the caller keeps `idx` inside the slab.
-        unsafe { self.objects().get_unchecked_mut(idx) }
+        unsafe { self.objects().get_unchecked_mut(idx.get() as usize) }
     }
 
-    /// The index of `object`, or `None` when it isn't a slot of this
+    /// The index of `object`, or `None` when it isn't an object of this
     /// slab.
-    ///
-    /// The slot size splits into an odd part and a power of two,
-    /// `size = d << SLOT_SHIFT`, and the offset of `object` from the slab
-    /// start goes through three steps.
-    ///
-    /// 1. Multiplying by `SLOT_INVERSE`, the inverse of `d` modulo 2^64,
-    ///    divides by `d`. Multiplying by an odd number permutes the 64-bit
-    ///    values, and it sends each multiple `k * d` to `k`. The multiples
-    ///    fill `0..=usize::MAX / d`, so every other offset lands above it.
-    /// 2. Rotating right by `SLOT_SHIFT` divides by the power of two. An
-    ///    odd multiplier keeps the offset's trailing zeros, so an offset
-    ///    that isn't a multiple of `1 << SLOT_SHIFT` rotates set bits into
-    ///    the top of the result.
-    /// 3. An offset before the slab wraps around to near `usize::MAX`, and
-    ///    the steps above keep it huge.
-    ///
-    /// Each bad offset ends far above `OBJECT_PER_SLAB`, so one comparison
-    /// rejects all of them. With 48-byte slots, `d = 3`, `SLOT_SHIFT = 4`
-    /// and `SLOT_INVERSE = 0xAAAA_AAAA_AAAA_AAAB`.
-    ///
-    /// | offset | after the rotate        | result              |
-    /// |--------|-------------------------|---------------------|
-    /// | 96     | `0x2`                   | slot 2              |
-    /// | 100    | `0xCAAA_AAAA_AAAA_AAAC` | not 16-aligned      |
-    /// | 112    | `0x0AAA_AAAA_AAAA_AAAD` | not a multiple of 3 |
-    /// | -48    | `0x0FFF_FFFF_FFFF_FFFF` | before the slab     |
-    pub fn index_of(&self, object: NonNull<T>) -> Option<SlotIndex> {
-        let idx = object
-            .addr()
-            .get()
-            .wrapping_sub(self.0.addr().get())
-            .wrapping_mul(T::SLOT_INVERSE)
-            .rotate_right(T::SLOT_SHIFT);
-
-        (idx < T::OBJECT_PER_SLAB)
-            .then(|| SlotIndex::new(idx as u16))
-            .flatten()
+    pub fn index_of(&self, object: NonNull<T>) -> Option<ObjectIndex> {
+        let offset = object.addr().get().wrapping_sub(self.0.addr().get());
+        T::object_index_at(offset)
     }
 
     /// Links every slot to the one after it, and the last to none.
@@ -97,7 +65,7 @@ impl<T: Slab> SlabObjects<T> {
         let slots = unsafe { self.objects().as_mut() };
 
         for (slot, next) in slots.iter_mut().zip(1..) {
-            slot.next_free_idx = SlotIndex::new(next);
+            slot.next_free_idx = ObjectIndex::new(next);
         }
         if let Some(last) = slots.last_mut() {
             last.next_free_idx = None;
