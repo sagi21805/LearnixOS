@@ -9,7 +9,7 @@ use crate::{
         meta::PartialMeta,
         partial::{Allocated, Deallocated},
     },
-    slot_index::SlotIndex,
+    object_index::ObjectIndex,
     traits::{Slab, Unknown},
 };
 use typestate_groups::Morphic;
@@ -141,7 +141,7 @@ impl<T: Slab> SlabCache<T> {
     pub(crate) unsafe fn deallocate_object(
         &mut self,
         arena: &impl SlabArena,
-        idx: SlotIndex,
+        idx: ObjectIndex,
         slab: &mut SlabDescriptor<T, Used>,
     ) {
         match slab.classify_mut(arena) {
@@ -168,7 +168,7 @@ impl<T: Slab> SlabCache<T> {
     unsafe fn deallocate_from_partial<S>(
         &mut self,
         arena: &impl SlabArena,
-        idx: SlotIndex,
+        idx: ObjectIndex,
         partial: &mut SlabDescriptor<T, S>,
     ) where
         S: SlabState<Meta = PartialMeta>,
@@ -193,7 +193,7 @@ impl<T: Slab> SlabCache<T> {
     unsafe fn deallocate_from_full<S>(
         &mut self,
         arena: &impl SlabArena,
-        idx: SlotIndex,
+        idx: ObjectIndex,
         full: &mut SlabDescriptor<T, S>,
     ) where
         S: SlabState,

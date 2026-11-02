@@ -1,6 +1,6 @@
 use core::{fmt::Debug, mem::ManuallyDrop};
 
-use crate::{Generic64, slot_index::SlotIndex};
+use crate::{Generic64, object_index::ObjectIndex};
 
 /// Preallocated object in the slab allocator.
 ///
@@ -8,11 +8,12 @@ use crate::{Generic64, slot_index::SlotIndex};
 #[repr(C)]
 pub union PreAllocated<T: Sized> {
     pub allocated: ManuallyDrop<T>,
-    pub next_free_idx: Option<SlotIndex>,
+    pub next_free_idx: Option<ObjectIndex>,
 }
 
 // A slot is exactly as large as the object it holds.
 const _: () = assert!(size_of::<PreAllocated<Generic64>>() == 64);
+const _: () = assert!(size_of::<PreAllocated<u8>>() == 2);
 
 /// Prints no fields, as nothing in the slot says which one is live.
 impl<T> Debug for PreAllocated<T> {
