@@ -24,7 +24,7 @@ use x86::{
 ///
 /// |Table|Table|...|Page|Page|Page|...
 ///
-/// *Note:* Extra tables may not be needed.
+/// **Note:** Extra tables may not be needed.
 pub struct ArenaPlacement {
     tables: Range<usize>,
     pages: Range<usize>,

@@ -17,7 +17,7 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, PartialDetached>>
     fn morph_from(src: SlabDescriptor<T, PartialDetached>) -> Self {
         debug_assert_eq!(
             src.state.get_total_allocated(),
-            T::OBJECT_PER_SLAB as u16
+            T::OBJECTS_PER_SLAB as u16
         );
 
         SlabDescriptor {

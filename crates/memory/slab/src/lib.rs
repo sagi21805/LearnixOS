@@ -15,7 +15,7 @@
 #![feature(pattern_types, pattern_type_macro)]
 #![expect(
     internal_features,
-    reason = "`SlotIndex` is a pattern type, which is an internal feature"
+    reason = "`ObjectIndex` is a pattern type, which is an internal feature"
 )]
 
 mod arena;
@@ -25,7 +25,7 @@ pub mod descriptor;
 pub mod local_macros;
 pub mod preallocated;
 pub mod slab_objects;
-pub mod slot_index;
+pub mod object_index;
 pub mod traits;
 
 pub use arena::{SlabArena, SlabFlags};
@@ -165,11 +165,6 @@ where
 
     /// A new free slab of `T`s on `T::PAGES_PER_SLAB` fresh pages from
     /// buddy, whose descriptor lives in the block of its first page.
-    ///
-    /// Buddy locks only to hand the pages out. No list reaches the new
-    /// slab, so its descriptor is written with no lock held. The slab
-    /// gives the block's token up, and its lists hold the block by index
-    /// from then on.
     #[expect(
         clippy::mut_from_ref,
         reason = "the descriptor is in pages buddy just handed out, \

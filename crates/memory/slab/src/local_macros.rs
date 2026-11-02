@@ -144,7 +144,7 @@ macro_rules! number_slab_types {
             impl $crate::traits::SlabGeometry for $t {
                 type PreAllocatedArray = [
                     $crate::preallocated::PreAllocated<$t>;
-                    <$t as $crate::traits::SlabGeometry>::OBJECT_PER_SLAB
+                    <$t as $crate::traits::SlabGeometry>::OBJECTS_PER_SLAB
                 ];
             }
 

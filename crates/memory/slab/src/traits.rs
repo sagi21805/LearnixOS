@@ -7,6 +7,7 @@ use x86::structures::paging::PageEntryFlags;
 use crate::{
     descriptor::{SlabDescriptor, Unused, Used},
     preallocated::PreAllocated,
+    object_index::ObjectIndex,
 };
 
 /// A type allocated from its own slab cache, the one at `SLAB_POSITION`
@@ -29,7 +30,7 @@ impl Slab for Unknown {
 
 impl SlabGeometry for Unknown {
     type PreAllocatedArray = [PreAllocated<Unknown>;
-        <Unknown as SlabGeometry>::OBJECT_PER_SLAB];
+        <Unknown as SlabGeometry>::OBJECTS_PER_SLAB];
 }
 
 impl sealed::Sealed for Unknown {}
@@ -60,7 +61,7 @@ pub trait SlabGeometry: SlabFamily + Sized {
 
     /// The objects in one slab. It fits a `u16`, which slot indices and
     /// allocation counts are.
-    const OBJECT_PER_SLAB: usize = {
+    const OBJECTS_PER_SLAB: usize = {
         let objects = Self::PAGES_PER_SLAB * Self::PSIZE.size()
             / size_of::<PreAllocated<Self>>();
         assert!(
@@ -93,6 +94,46 @@ pub trait SlabGeometry: SlabFamily + Sized {
     /// of the slot size divides by it with one multiply and one shift.
     const SLOT_INVERSE: usize =
         odd_inverse(size_of::<PreAllocated<Self>>() >> Self::SLOT_SHIFT);
+
+    /// The index of the slot that starts `offset` bytes into a slab, or
+    /// `None` when no slot starts there.
+    ///
+    /// It returns `offset / size` when
+    /// `offset % size == 0 && offset / size < OBJECT_PER_SLAB`, with one
+    /// multiply and one comparison. The slot size splits into an odd part
+    /// and a power of two, `size = d << SLOT_SHIFT`, and `offset` goes
+    /// through three steps.
+    ///
+    /// 1. Multiplying by `SLOT_INVERSE`, the inverse of `d` modulo 2^64,
+    ///    divides by `d`. Multiplying by an odd number permutes the 64-bit
+    ///    values, and it sends each multiple `k * d` to `k`. The multiples
+    ///    fill `0..=usize::MAX / d`, so every other offset lands above it.
+    /// 2. Rotating right by `SLOT_SHIFT` divides by the power of two. An
+    ///    odd multiplier keeps the offset's trailing zeros, so an offset
+    ///    that isn't a multiple of `1 << SLOT_SHIFT` rotates set bits into
+    ///    the top of the result.
+    /// 3. An offset taken from an address before the slab wraps around to
+    ///    near `usize::MAX`, and the steps above keep it huge.
+    ///
+    /// Each bad offset ends far above `OBJECT_PER_SLAB`, so one comparison
+    /// rejects all of them. With 48-byte slots, `d = 3`, `SLOT_SHIFT = 4`
+    /// and `SLOT_INVERSE = 0xAAAA_AAAA_AAAA_AAAB`.
+    ///
+    /// | offset | after the rotate        | result              |
+    /// |--------|-------------------------|---------------------|
+    /// | 96     | `0x2`                   | slot 2              |
+    /// | 100    | `0xCAAA_AAAA_AAAA_AAAC` | not 16-aligned      |
+    /// | 112    | `0x0AAA_AAAA_AAAA_AAAD` | not a multiple of 3 |
+    /// | -48    | `0x0FFF_FFFF_FFFF_FFFF` | before the slab     |
+    fn object_index_at(offset: usize) -> Option<ObjectIndex> {
+        let idx = offset
+            .wrapping_mul(Self::SLOT_INVERSE)
+            .rotate_right(Self::SLOT_SHIFT);
+
+        (idx < Self::OBJECTS_PER_SLAB)
+            .then(|| ObjectIndex::new(idx as u16))
+            .flatten()
+    }
 
     /// Whether an object of `Self` can hold `layout`.
     fn fits(layout: Layout) -> bool {
