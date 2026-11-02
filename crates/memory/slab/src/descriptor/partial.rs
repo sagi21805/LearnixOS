@@ -4,7 +4,7 @@ use crate::{
         FreeDetached, FullDetached, ListState, PartialDetached,
         SlabDescriptor, SlabState, meta::PartialMeta,
     },
-    slot_index::SlotIndex,
+    object_index::ObjectIndex,
     traits::Slab,
 };
 use core::{marker::PhantomData, ptr::NonNull};
@@ -32,8 +32,8 @@ impl<T: Slab> MorphFrom<SlabDescriptor<T, FullDetached>>
     fn morph_from(_src: SlabDescriptor<T, FullDetached>) -> Self {
         SlabDescriptor {
             state: PartialMeta::new()
-                .next_free_idx(u16::MAX)
-                .total_allocated(T::OBJECT_PER_SLAB as u16),
+                .total_allocated(T::OBJECTS_PER_SLAB as u16)
+                .next_free_idx(None),
             next: None,
             _object: PhantomData,
         }
@@ -63,21 +63,20 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
         &mut self,
         arena: &impl SlabArena,
     ) -> (NonNull<T>, Allocated) {
-        let slot = unsafe {
-            arena
-                .objects_of(self)
-                .slot(self.state.get_next_free_idx() as usize)
-        };
+        // SAFETY: a partial slab has a free slot.
+        let first =
+            unsafe { self.state.get_next_free().unwrap_unchecked() };
+        let slot = unsafe { arena.objects_of(self).object_at(first) };
         // SAFETY: the free-list head is free, and `repr(C)` puts
         // `next_free_idx` first.
-        let next = unsafe { slot.cast::<Option<SlotIndex>>().read() };
+        let next = unsafe { slot.cast::<Option<ObjectIndex>>().read() };
 
         self.state
             .set_total_allocated(self.state.get_total_allocated() + 1);
 
         let taken = match next {
             Some(idx) => {
-                self.state.set_next_free_idx(idx.get());
+                self.state.set_next_free_idx(Some(idx));
                 Allocated::Partial
             }
             None => Allocated::Full,
@@ -95,16 +94,15 @@ impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
     pub(crate) unsafe fn deallocate_slot(
         &mut self,
         arena: &impl SlabArena,
-        idx: SlotIndex,
+        idx: ObjectIndex,
     ) -> Deallocated {
-        let slot =
-            unsafe { arena.objects_of(self).slot(idx.get() as usize) };
-        let next = SlotIndex::new(self.state.get_next_free_idx());
+        let slot = unsafe { arena.objects_of(self).object_at(idx) };
+        let next = self.state.get_next_free();
         // SAFETY: the owner is done with slot `idx`, and `repr(C)` puts
         // `next_free_idx` first.
-        unsafe { slot.cast::<Option<SlotIndex>>().write(next) };
+        unsafe { slot.cast::<Option<ObjectIndex>>().write(next) };
 
-        self.state.set_next_free_idx(idx.get());
+        self.state.set_next_free_idx(Some(idx));
 
         self.state
             .set_total_allocated(self.state.get_total_allocated() - 1);
