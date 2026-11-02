@@ -18,3 +18,8 @@ pub const KERNEL_OFFSET: u64 = 0x10000;
 
 #[cfg(target_arch = "x86_64")]
 pub const PHYSICAL_MEMORY_OFFSET: usize = 0xffff800000000000;
+/// The size of the direct map at `PHYSICAL_MEMORY_OFFSET`, the 512 GiB
+/// one PML4 entry covers.
+#[cfg(target_arch = "x86_64")]
+pub const DIRECT_MAP_SIZE: usize = crate::constants::HUGE_PAGE_SIZE
+    * crate::constants::PAGE_DIRECTORY_ENTRIES;

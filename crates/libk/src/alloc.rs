@@ -26,10 +26,15 @@ pub struct GlobalAllocator<'a> {
 impl<'a> GlobalAllocator<'a> {
     /// Routes every allocation and free to `allocator`.
     ///
+    /// # Safety
+    ///
+    /// `allocator` must not allocate through the global allocator while it
+    /// allocates, frees or resizes.
+    ///
     /// # Panics
     ///
     /// When an allocator was already set.
-    pub fn set(&self, allocator: &'a DynAllocator) {
+    pub unsafe fn set(&self, allocator: &'a DynAllocator) {
         self.allocator.init(allocator);
     }
 
@@ -98,9 +103,8 @@ unsafe impl Allocator for GlobalAllocator<'_> {
 // changes under a live block.
 unsafe impl StaticAllocator for GlobalAllocator<'static> {}
 
-// SAFETY: the buddy allocator behind it never allocates while
-// allocating or freeing, so a call never recurses into the global
-// allocator.
+// SAFETY: `set` requires an allocator that never allocates through the
+// global allocator, so a call never recurses into it.
 unsafe impl core::alloc::GlobalAllocator for GlobalAllocator<'static> {}
 
 /// Allocates a zeroed table, and points `entry` at its physical address.
