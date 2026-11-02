@@ -74,10 +74,15 @@ pub trait SlabGeometry: SlabFamily + Sized {
     /// pointer to it covers every object. Only an array unsizes to a
     /// slice.
     type PreAllocatedArray: Unsize<[PreAllocated<Self>]>;
-    /// The alignment of every object, the slot's alignment capped at the
-    /// alignment of the page the slab starts on.
+    /// The alignment of every object. Slots sit at multiples of their
+    /// size from the slab's page-aligned start, so each one is aligned to
+    /// the largest power of two that divides the size, capped at the page
+    /// alignment.
     const OBJECT_ALIGNMENT: Alignment =
-        Alignment::of::<PreAllocated<Self>>().min(Self::PSIZE.alignment());
+        match Alignment::new(1 << Self::SLOT_SHIFT) {
+            Some(alignment) => alignment.min(Self::PSIZE.alignment()),
+            None => panic!("a power of two is an alignment"),
+        };
     /// The layout of one slab's pages. A slab too large for a `Layout`
     /// fails the build.
     const SLAB_LAYOUT: Layout = match Layout::from_size_align(

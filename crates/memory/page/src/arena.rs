@@ -56,7 +56,11 @@ impl BuddyArena<Page> for PageMap {
         // SAFETY: nothing uses the usable memory yet, and the boot map
         // maps nothing past the first GiB.
         let placement = unsafe {
-            ArenaPlacement::find(mmap, total_pages * size_of::<Page>())
+            ArenaPlacement::find(
+                mmap,
+                total_pages * size_of::<Page>(),
+                last_address,
+            )
         };
 
         // SAFETY: the placement holds `total_pages` pages, mapped and

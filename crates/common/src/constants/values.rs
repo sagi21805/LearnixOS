@@ -20,3 +20,13 @@ pub const MEMORY_MAP_MAGIC_NUMBER: u32 =
     u32::from_le_bytes([b'P', b'A', b'M', b'S']); // 'SMAP' in little endian
 pub const ENTRY_ADDRESS_MASK: u64 = 0x0000_ffff_ffff_f000;
 pub const INIT_AREA_SIZE_BYTES: u64 = 256 * KiB as u64;
+/// The 512-byte sectors the first stage loads the kernel from.
+pub const KERNEL_SECTORS: u16 = 128;
+
+// The buddy allocator reserves the init area, so the kernel must lie in
+// it.
+const _: () = assert!(
+    super::KERNEL_OFFSET + KERNEL_SECTORS as u64 * 512
+        <= INIT_AREA_SIZE_BYTES,
+    "the init area holds the whole kernel"
+);

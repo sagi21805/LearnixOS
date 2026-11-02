@@ -112,7 +112,8 @@ pub unsafe extern "C" fn _start() -> ! {
         .init_with(BuddyAllocator::<PageMap, Page>::new(mmap), |buddy| {
             buddy.get_mut().initialize(mmap)
         });
-    GLOBAL_ALLOCATOR.set(buddy);
+    // SAFETY: the buddy allocator takes pages only from its own arena.
+    unsafe { GLOBAL_ALLOCATOR.set(buddy) };
 
     okprintln!("Initialized Buddy Allocator");
     let slab = SLAB_ALLOCATOR.init(SlabAllocator::new(buddy));

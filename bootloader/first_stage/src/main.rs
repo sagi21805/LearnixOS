@@ -5,8 +5,8 @@ mod disk;
 
 use common::{
     constants::{
-        DISK_NUMBER_OFFSET, MEMORY_MAP_LENGTH, MEMORY_MAP_MAGIC_NUMBER,
-        MEMORY_MAP_OFFSET, SECOND_STAGE_OFFSET,
+        DISK_NUMBER_OFFSET, KERNEL_SECTORS, MEMORY_MAP_LENGTH,
+        MEMORY_MAP_MAGIC_NUMBER, MEMORY_MAP_OFFSET, SECOND_STAGE_OFFSET,
     },
     enums::{
         BiosInterrupts, MemoryInterrupt, MemoryRegionSize, Sections,
@@ -69,7 +69,7 @@ unsafe fn load_kernel_dap() {
 
     #[rustfmt::skip]
     let kernel_dap = DiskAddressPacket::new(
-        128,
+        KERNEL_SECTORS,
         0,
         0x1000,
         66

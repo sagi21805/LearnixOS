@@ -7,10 +7,9 @@ pub mod page_table_entry;
 use core::ptr::NonNull;
 
 #[cfg(target_arch = "x86_64")]
-use common::constants::PHYSICAL_MEMORY_OFFSET;
+use common::constants::{DIRECT_MAP_SIZE, PHYSICAL_MEMORY_OFFSET};
 use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
-    constants::{BOOT_MAPPED_GIBS, HUGE_PAGE_SIZE},
     enums::PageTableLevel,
 };
 pub use entry_flags::*;
@@ -51,14 +50,14 @@ pub impl VirtualAddress {
         self.direct_translate().or_else(|| self.walk_translate())
     }
 
-    /// The physical address of this address in the higher-half map of
-    /// physical memory, without walking the page tables.
+    /// The physical address of this address in the direct map, the
+    /// higher-half map of all physical memory, without walking the page
+    /// tables.
     ///
-    /// `PHYSICAL_MEMORY_OFFSET + p -> p`, for `p` in the boot-mapped GiBs
+    /// `PHYSICAL_MEMORY_OFFSET + p -> p`, for `p` below `DIRECT_MAP_SIZE`
     fn direct_translate(&self) -> Option<PhysicalAddress> {
-        Some(PhysicalAddress::from(
-            self.as_usize().checked_sub(PHYSICAL_MEMORY_OFFSET)?,
-        ))
+        let p = self.as_usize().checked_sub(PHYSICAL_MEMORY_OFFSET)?;
+        (p < DIRECT_MAP_SIZE).then(|| PhysicalAddress::from(p))
     }
 
     /// The physical address this address maps to, found by walking the

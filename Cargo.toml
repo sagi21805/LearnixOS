@@ -16,7 +16,6 @@ members = [
     "crates/sync",
     "crates/libk",
     "kernel",
-    # "tests",
     # "snippets",
 ]
 
