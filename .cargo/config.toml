@@ -1,2 +1,7 @@
+[build]
+target = "x86_64-unknown-none"
+
 [alias]
-xtask = "run --manifest-path xtask/Cargo.toml --"
+xtask = "run --target host-tuple --manifest-path xtask/Cargo.toml --"
+test-host = "test --target host-tuple"
+miri-host = "miri test --target x86_64-unknown-linux-gnu"

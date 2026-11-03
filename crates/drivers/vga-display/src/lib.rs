@@ -15,7 +15,6 @@ use color_code::ColorCode;
 use common::{
     constants::VGA_BUFFER_PTR,
     enums::{Port, VgaCommand},
-    late_init::LateInit,
 };
 use x86::instructions::port::PortExt;
 
@@ -26,9 +25,9 @@ use core::{
 
 use crate::{generic_writer::Writer, screen_char::ScreenChar};
 
-use sync::mutex::SpinMutex;
+use sync::{mutex::SpinMutex, once::Once};
 
-pub static SCREEN: LateInit<SpinMutex<Screen>> = LateInit::uninit();
+pub static SCREEN: Once<SpinMutex<Screen>> = Once::uninit();
 
 pub struct Screen {
     buffer: &'static mut [ScreenChar],

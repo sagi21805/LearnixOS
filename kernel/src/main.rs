@@ -6,11 +6,10 @@
 #![feature(const_trait_impl)]
 extern crate alloc;
 
-use core::panic::PanicInfo;
+use core::{cell::OnceCell, panic::PanicInfo};
 
 use alloc::boxed::Box;
 use buddy::BuddyAllocator;
-use bump::BumpAllocator;
 use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
     constants::{
@@ -18,10 +17,10 @@ use common::{
         PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_SIZE,
     },
     enums::{PS2ScanCode, PageSize},
-    late_init::LateInit,
 };
 use keyboard::ps2_keyboard::Keyboard;
 use page::{Page, arena::PageMap};
+use slab::SlabAllocator;
 use vga_display::{
     SCREEN,
     advanced_writer::AdvancedWriter,
@@ -42,45 +41,47 @@ use libk::{
     print, println,
 };
 
-use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
+use sync::{mutex::SpinMutex, once::Once, spsc::SpscRingBuffer};
 
 use crate::interrupt_handlers::InterruptDescriptorTableExt;
 
 mod interrupt_handlers;
 mod timer;
 
-static MMAP: LateInit<MemoryMap> = LateInit::uninit();
+static MMAP: Once<MemoryMap> = Once::uninit();
 
 #[unsafe(no_mangle)]
 static PIC: SpinMutex<CascadedPIC> =
     SpinMutex::new(CascadedPIC::default());
 
-static IDT: LateInit<SpinMutex<Box<InterruptDescriptorTable>>> =
-    LateInit::uninit();
+static IDT: Once<SpinMutex<Box<InterruptDescriptorTable>>> =
+    Once::uninit();
 
 #[unsafe(no_mangle)]
-static KEYBOARD: LateInit<Keyboard> = LateInit::uninit();
+static KEYBOARD: SpinMutex<OnceCell<Keyboard>> =
+    SpinMutex::new(OnceCell::new());
 
-static KEYBOARD_BUFFER: LateInit<SpscRingBuffer<u8>> = LateInit::uninit();
+static KEYBOARD_BUFFER: Once<SpscRingBuffer<u8>> = Once::uninit();
 
 #[unsafe(no_mangle)]
 static SIMPLE_WRITER: SpinMutex<SimpleWriter<80, 25>> =
     unsafe { SpinMutex::new_locked(SimpleWriter::default()) };
 
-static ADVANCED_WRITER: SpinMutex<LateInit<AdvancedWriter<80, 25>>> =
-    unsafe { SpinMutex::new_locked(LateInit::uninit()) };
+static ADVANCED_WRITER: SpinMutex<Option<AdvancedWriter<80, 25>>> =
+    unsafe { SpinMutex::new_locked(None) };
 
 #[unsafe(no_mangle)]
 static WRITER: SpinMutex<Writer<'static>> =
     SpinMutex::new(Writer::new(unsafe { SIMPLE_WRITER.leak() }));
 
-pub static BUMP_ALLOCATOR: LateInit<BumpAllocator> = LateInit::uninit();
-
 #[global_allocator]
-static mut GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
+static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
 
-pub static BUDDY_ALLOCATOR: LateInit<BuddyAllocator<PageMap, Page>> =
-    LateInit::uninit();
+pub static BUDDY_ALLOCATOR: Once<BuddyAllocator<PageMap, Page>> =
+    Once::uninit();
+
+pub static SLAB_ALLOCATOR: Once<SlabAllocator<Page, PageMap>> =
+    Once::uninit();
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
@@ -105,28 +106,18 @@ pub unsafe extern "C" fn _start() -> ! {
         )
     };
 
-    unsafe {
-        MMAP.init(MemoryMap::parse_map(raw, buf).unwrap());
+    let mmap = MMAP.init(MemoryMap::parse_map(raw, buf).unwrap());
 
-        BUMP_ALLOCATOR.init(BumpAllocator::new(MMAP.assume_init_ref()));
-
-        #[allow(static_mut_refs)]
-        GLOBAL_ALLOCATOR.set(BUMP_ALLOCATOR.assume_init_ref());
-    }
-
-    BUDDY_ALLOCATOR.init(BuddyAllocator::<PageMap, Page>::new(
-        MMAP.assume_init_ref(),
-    ));
-
-    BUDDY_ALLOCATOR.initialize(
-        &*BUMP_ALLOCATOR.allocations.lock(),
-        MMAP.assume_init_ref(),
-    );
-
-    #[allow(static_mut_refs)]
-    GLOBAL_ALLOCATOR.set(BUDDY_ALLOCATOR.assume_init_ref());
+    let buddy = BUDDY_ALLOCATOR
+        .init_with(BuddyAllocator::<PageMap, Page>::new(mmap), |buddy| {
+            buddy.get_mut().initialize(mmap)
+        });
+    // SAFETY: the buddy allocator takes pages only from its own arena.
+    unsafe { GLOBAL_ALLOCATOR.set(buddy) };
 
     okprintln!("Initialized Buddy Allocator");
+    let slab = SLAB_ALLOCATOR.init(SlabAllocator::new(buddy));
+    okprintln!("Initialized Slab Allocator");
     unsafe {
         interrupts::disable();
         InterruptDescriptorTable::init(&IDT);
@@ -135,26 +126,30 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized interrupts handlers");
         PIC.lock().init();
         okprintln!("Initialized Programmable Interrupt Controller");
-        let buffer = Box::new([0u8; 4096]);
-        KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
+        let buffer: Box<[u8], _> = Box::new_in([0u8; 4096], slab);
+        let buffer_address = buffer.as_ptr();
+        let keyboard_buffer =
+            KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
 
-        KEYBOARD.init(Keyboard::new(&KEYBOARD_BUFFER));
-        okprintln!("Initialized Keyboard");
+        let kb = KEYBOARD
+            .lock()
+            .get_or_init(|| Keyboard::new(keyboard_buffer));
+        okprintln!("Initialized Keyboard at {:p}", buffer_address);
         interrupts::enable();
     }
     let w = ADVANCED_WRITER.leak();
-    w.init(AdvancedWriter::default());
-    WRITER.lock().set_writer(w.assume_init_mut());
+    WRITER
+        .lock()
+        .set_writer(w.insert(AdvancedWriter::default()));
     okprintln!("Set advanced writer");
     // Wait for the next update.
     unsafe {
         hlt();
     }
 
-    println!("{}", MMAP.assume_init_ref());
-    BUDDY_ALLOCATOR.print_allocated_regions();
-    // unsafe { SLAB_ALLOCATOR.init() }
-    // okprintln!("Initialized slab allocator");
+    println!("{}", mmap);
+
+    // BUDDY_ALLOCATOR.print_allocated_regions();
     // panic!("")
     // let mut pci_devices = pci::scan_pci();
     // println!("Press ENTER to enumerate PCI devices!");
@@ -229,7 +224,15 @@ pub unsafe extern "C" fn _start() -> ! {
     //     }
     // }
     loop {
-        let input = KEYBOARD.read_char();
+        // SAFETY: the keyboard handler takes the same lock, so it must
+        // not run while this loop holds it.
+        unsafe { interrupts::disable() };
+        let input = KEYBOARD
+            .lock()
+            .get()
+            .expect("the keyboard is set before this loop")
+            .read_char();
+        unsafe { interrupts::enable() };
         match input {
             Ok(str) => print!("{}", str),
             Err(key) => match key {
@@ -256,7 +259,9 @@ pub unsafe extern "C" fn _start() -> ! {
 #[panic_handler]
 unsafe fn panic(_info: &PanicInfo) -> ! {
     unsafe {
-        SCREEN.force_unlock();
+        if let Some(screen) = SCREEN.get() {
+            screen.force_unlock();
+        }
         SIMPLE_WRITER.force_unlock();
         // ADVANCED_WRITER.force_unlock();
         // WRITER.force_unlock();

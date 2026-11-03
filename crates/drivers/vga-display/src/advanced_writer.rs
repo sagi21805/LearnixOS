@@ -5,7 +5,7 @@ use core::ascii::Char;
 use alloc::boxed::Box;
 
 use common::constants::REGULAR_PAGE_SIZE;
-use sync::mutex::SpinMutex;
+use sync::{mutex::SpinMutex, once::Once};
 
 use crate::{
     SCREEN, Screen, WriteInfo, color_code::ColorCode,
@@ -22,7 +22,7 @@ pub struct AdvancedWriter<const W: usize, const H: usize> {
     pub buffer: Box<[ScreenChar]>,
     pub display_line: usize,
     pub row_table: Box<[usize]>,
-    pub screen: &'static SpinMutex<Screen>,
+    pub screen: &'static Once<SpinMutex<Screen>>,
 }
 
 impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {

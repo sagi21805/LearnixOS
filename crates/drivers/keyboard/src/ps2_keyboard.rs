@@ -2,7 +2,7 @@ extern crate alloc;
 
 use common::enums::PS2ScanCode;
 
-use macros::bitfields;
+use bitfields::bitfields;
 use sync::spsc::{Consumer, Producer, SpscRingBuffer};
 
 #[bitfields]

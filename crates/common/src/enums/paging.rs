@@ -64,6 +64,15 @@ pub enum PageSize {
 }
 
 impl PageSize {
+    /// The size of one page in bytes.
+    pub const fn size(&self) -> usize {
+        match self {
+            PageSize::Regular => REGULAR_PAGE_SIZE,
+            PageSize::Big => BIG_PAGE_SIZE,
+            PageSize::Huge => HUGE_PAGE_SIZE,
+        }
+    }
+
     pub const fn alignment(&self) -> Alignment {
         match self {
             PageSize::Regular => REGULAR_PAGE_ALIGNMENT,
