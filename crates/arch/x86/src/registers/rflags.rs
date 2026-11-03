@@ -1,6 +1,6 @@
 use common::enums::ProtectionLevel;
 use core::arch::asm;
-use macros::bitfields;
+use bitfields::bitfields;
 
 #[bitfields]
 pub struct Rflags {

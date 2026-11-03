@@ -5,8 +5,8 @@ mod disk;
 
 use common::{
     constants::{
-        DISK_NUMBER_OFFSET, MEMORY_MAP_LENGTH, MEMORY_MAP_MAGIC_NUMBER,
-        MEMORY_MAP_OFFSET, SECOND_STAGE_OFFSET,
+        DISK_NUMBER_OFFSET, KERNEL_SECTORS, MEMORY_MAP_LENGTH,
+        MEMORY_MAP_MAGIC_NUMBER, MEMORY_MAP_OFFSET, SECOND_STAGE_OFFSET,
     },
     enums::{
         BiosInterrupts, MemoryInterrupt, MemoryRegionSize, Sections,
@@ -48,13 +48,14 @@ unsafe fn load_dap() {
     let disk_number =
         unsafe { core::ptr::read(DISK_NUMBER_OFFSET as *const u8) };
 
-    // Create a disk packet which will load 4 sectors (512 bytes each)
+    // Create a disk packet which will load 8 sectors (512 bytes each)
     // from the disk to memory address 0x7e00
     // The address 0x7e00 was chosen because it is exactly one sector
     //  after the initial address 0x7c00.
+    // 8 sectors end at 0x8dff, below the memory map at 0x9000.
     #[rustfmt::skip]
     let dap = DiskAddressPacket::new(
-        4,
+        8,
         0,
         0x7e0,
         1
@@ -68,7 +69,7 @@ unsafe fn load_kernel_dap() {
 
     #[rustfmt::skip]
     let kernel_dap = DiskAddressPacket::new(
-        128,
+        KERNEL_SECTORS,
         0,
         0x1000,
         66

@@ -1,0 +1,128 @@
+use crate::{
+    SlabArena,
+    descriptor::{
+        FreeDetached, FullDetached, ListState, PartialDetached,
+        SlabDescriptor, SlabState, meta::PartialMeta,
+    },
+    object_index::ObjectIndex,
+    traits::Slab,
+};
+use core::{marker::PhantomData, ptr::NonNull};
+use typestate_groups::MorphFrom;
+
+/// A free slab allocating its first object becomes partial, starting at
+/// index 0 with nothing allocated.
+impl<T: Slab> MorphFrom<SlabDescriptor<T, FreeDetached>>
+    for SlabDescriptor<T, PartialDetached>
+{
+    fn morph_from(_src: SlabDescriptor<T, FreeDetached>) -> Self {
+        SlabDescriptor {
+            state: PartialMeta::default(),
+            next: None,
+            _object: PhantomData,
+        }
+    }
+}
+
+/// A full slab freeing an object becomes partial, starting with every
+/// object allocated and an empty free list.
+impl<T: Slab> MorphFrom<SlabDescriptor<T, FullDetached>>
+    for SlabDescriptor<T, PartialDetached>
+{
+    fn morph_from(_src: SlabDescriptor<T, FullDetached>) -> Self {
+        SlabDescriptor {
+            state: PartialMeta::new()
+                .total_allocated(T::OBJECTS_PER_SLAB as u16)
+                .next_free_idx(None),
+            next: None,
+            _object: PhantomData,
+        }
+    }
+}
+
+/// A slab leaving the partial list keeps its free list and count,
+/// without its next node.
+impl<T: Slab, S> MorphFrom<SlabDescriptor<T, S>>
+    for SlabDescriptor<T, PartialDetached>
+where
+    S: ListState<Meta = PartialMeta, Detached = PartialDetached>,
+{
+    fn morph_from(src: SlabDescriptor<T, S>) -> Self {
+        SlabDescriptor {
+            state: src.state,
+            next: None,
+            _object: PhantomData,
+        }
+    }
+}
+
+impl<T: Slab, S: SlabState<Meta = PartialMeta>> SlabDescriptor<T, S> {
+    /// Allocates the first free slot, and returns its object with the
+    /// slab's state afterwards.
+    pub(crate) fn allocate_slot(
+        &mut self,
+        arena: &impl SlabArena,
+    ) -> (NonNull<T>, Allocated) {
+        // SAFETY: a partial slab has a free slot.
+        let first =
+            unsafe { self.state.get_next_free().unwrap_unchecked() };
+        let slot = unsafe { arena.objects_of(self).object_at(first) };
+        // SAFETY: the free-list head is free, and `repr(C)` puts
+        // `next_free_idx` first.
+        let next = unsafe { slot.cast::<Option<ObjectIndex>>().read() };
+
+        self.state
+            .set_total_allocated(self.state.get_total_allocated() + 1);
+
+        let taken = match next {
+            Some(idx) => {
+                self.state.set_next_free_idx(Some(idx));
+                Allocated::Partial
+            }
+            None => Allocated::Full,
+        };
+
+        (slot.cast::<T>(), taken)
+    }
+
+    /// Puts object `idx` back on the free list, and returns the slab's
+    /// state afterwards.
+    ///
+    /// # Safety
+    ///
+    /// `idx` must be an allocated object of this slab.
+    pub(crate) unsafe fn deallocate_slot(
+        &mut self,
+        arena: &impl SlabArena,
+        idx: ObjectIndex,
+    ) -> Deallocated {
+        let slot = unsafe { arena.objects_of(self).object_at(idx) };
+        let next = self.state.get_next_free();
+        // SAFETY: the owner is done with slot `idx`, and `repr(C)` puts
+        // `next_free_idx` first.
+        unsafe { slot.cast::<Option<ObjectIndex>>().write(next) };
+
+        self.state.set_next_free_idx(Some(idx));
+
+        self.state
+            .set_total_allocated(self.state.get_total_allocated() - 1);
+
+        if self.state.get_total_allocated() == 0 {
+            Deallocated::Free
+        } else {
+            Deallocated::Partial
+        }
+    }
+}
+
+/// What a slab became after allocating an object.
+pub(crate) enum Allocated {
+    Partial,
+    Full,
+}
+
+/// What a slab became after dellocating an object.
+pub(crate) enum Deallocated {
+    Partial,
+    Free,
+}

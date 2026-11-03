@@ -1,155 +1,216 @@
-use core::{num::NonZero, ptr::NonNull};
+use core::ptr::NonNull;
 
-use common::address_types::VirtualAddress;
+use crate::{
+    Generic64, SlabArena,
+    descriptor::{
+        FreeDetached, FreeHead, FullDetached, FullHead, InList, Link,
+        ListHead, PartialDetached, PartialHead, SlabDescriptor, SlabState,
+        Unlink, Used, UsedSlab,
+        meta::PartialMeta,
+        partial::{Allocated, Deallocated},
+    },
+    object_index::ObjectIndex,
+    traits::{Slab, Unknown},
+};
+use typestate_groups::Morphic;
 
-use crate::{traits::Slab, unassigned::UnassignSlab};
-
-use super::{descriptor::SlabDescriptor, traits::SlabCacheConstructor};
-
-#[derive(Clone, Debug)]
+#[repr(C)]
+#[derive(Debug)]
 pub struct SlabCache<T: Slab> {
-    pub buddy_order: usize,
-    pub free: Option<NonNull<SlabDescriptor<T>>>,
-    pub partial: Option<NonNull<SlabDescriptor<T>>>,
-    pub full: Option<NonNull<SlabDescriptor<T>>>,
+    pub(crate) free: ListHead<T, FreeHead>,
+    pub(crate) partial: ListHead<T, PartialHead>,
+    pub(crate) full: ListHead<T, FullHead>,
 }
 
-impl<T: Slab> UnassignSlab for NonNull<SlabCache<T>> {
-    type Target = NonNull<SlabCache<()>>;
+// SAFETY: the lists are reached only through `&mut self`, so they move
+// with the cache.
+unsafe impl<T: Slab> Send for SlabCache<T> {}
 
-    fn as_unassigned(&self) -> Self::Target {
-        unsafe {
-            NonNull::new_unchecked(self.as_ptr() as *mut SlabCache<()>)
-        }
+// The cache is three head indices, whatever `T` is.
+const _: () = assert!(size_of::<SlabCache<Generic64>>() == 12);
+
+/// The slab caches, each slab type `T`'s at `T::SLAB_POSITION`, stored as
+/// [`Unknown`] caches so they fit in one array.
+pub struct SlabCaches<const N: usize>([SlabCache<Unknown>; N]);
+
+impl<const N: usize> SlabCaches<N> {
+    /// Every cache, empty.
+    pub(crate) const fn new() -> Self {
+        Self([const { SlabCache::new() }; N])
+    }
+
+    /// The cache of `T`.
+    pub fn cache<T: Slab>(&mut self) -> &mut SlabCache<T> {
+        let cache = NonNull::from_mut(&mut self.0[T::SLAB_POSITION]);
+        // SAFETY: `Slab` is sealed and each type has its own position, so
+        // only `T` reaches this slot. `repr(C)` keeps the layouts equal.
+        unsafe { cache.cast::<SlabCache<T>>().as_mut() }
     }
 }
 
 impl<T: Slab> SlabCache<T> {
-    /// Allocate a new slab descriptor, attaches it to the free slab list,
-    /// and initialize it's page.
-    ///
-    /// TODO: THIS FUNCTION SHOULD MOVE TO THE SLAB ALLOCATOR AND GET A
-    /// TYPE OF A SPECIFIC SLAB
-    pub fn grow(&mut self) {
-        // Allocate a new slab descriptor for this slab
-        // let mut slab = unsafe {
-        //     SLAB_ALLOCATOR.kmalloc::<SlabDescriptor<()>>().assign::<T>()
-        // };
-
-        // unsafe {
-        //     *slab.as_mut() =
-        //         SlabDescriptor::<T>::new(self.buddy_order, self.free)
-        // }
-
-        // self.take_ownership(slab);
-
-        // self.free = Some(slab);
-    }
-
-    pub fn take_ownership(&self, slab: NonNull<SlabDescriptor<T>>) {
-        let slab_address: VirtualAddress =
-            unsafe { slab.as_ref().objects.as_ptr().addr().into() };
-
-        slab_address
-            .set_flags(T::PFLAGS, T::PSIZE, unsafe {
-                NonZero::<usize>::new_unchecked(1 << self.buddy_order)
-            })
-            .unwrap();
-
-        let slab_page =
-            unsafe { UnassignedPage::from_virt(slab_address).as_mut() };
-
-        // Set owner and freelist.
-        unsafe {
-            (*slab_page.meta.slab).freelist = slab.as_unassigned();
-            (*slab_page.meta.slab).owner =
-                NonNull::from_ref(self).as_unassigned();
-        };
-    }
-
-    pub fn alloc(&mut self) -> NonNull<T> {
-        if let Some(mut partial) = self.partial {
-            let partial = unsafe { partial.as_mut() };
-
-            let allocation = partial.alloc();
-
-            if partial.next_free_idx.is_none() {
-                self.partial = partial.next;
-                partial.next = self.full;
-                self.full = Some(NonNull::from_mut(partial));
-            }
-            return allocation;
-        }
-        if let Some(mut free) = self.free {
-            let free = unsafe { free.as_mut() };
-
-            let allocation = free.alloc();
-
-            self.free = free.next;
-            free.next = self.partial;
-            self.partial = Some(NonNull::from_mut(free));
-
-            return allocation;
-        }
-
-        todo!(
-            "Handle cases where partial and free are full, and \
-             allocation from the page allocator is needed."
-        )
-    }
-    pub fn dealloc(&self, _ptr: NonNull<T>) {
-        todo!()
-    }
-}
-
-impl SlabCache<()> {
-    pub fn assign<T: Slab>(&self) -> NonNull<SlabCache<T>> {
-        unsafe {
-            NonNull::new_unchecked(self as *const _ as *mut SlabCache<T>)
-        }
-    }
-}
-
-impl<T: Slab> SlabCacheConstructor for SlabCache<T> {
-    default fn new(buddy_order: usize) -> SlabCache<T> {
+    /// An empty cache.
+    pub(crate) const fn new() -> SlabCache<T> {
         SlabCache {
-            buddy_order,
-            free: None,
-            partial: None,
-            full: None,
+            free: ListHead::empty(),
+            partial: ListHead::empty(),
+            full: ListHead::empty(),
         }
     }
-}
 
-impl SlabCacheConstructor for SlabCache<SlabDescriptor<()>> {
-    fn new(buddy_order: usize) -> SlabCache<SlabDescriptor<()>> {
-        let partial =
-            SlabDescriptor::<SlabDescriptor<()>>::initial_descriptor(
-                buddy_order,
-            );
+    /// Allocates an object from a partial slab, or from a free one when
+    /// no slab is partial, and moves its slab to the list of its new
+    /// state.
+    ///
+    /// Returns `None` when both lists are empty, so the cache needs a new
+    /// slab.
+    pub(crate) fn try_allocate(
+        &mut self,
+        arena: &impl SlabArena,
+    ) -> Option<NonNull<T>> {
+        self.allocate_from_partial(arena)
+            .or_else(|| self.allocate_from_free(arena))
+    }
 
-        // This assumption can be made, because the created cache in
-        // this function will go to the constant position on the slab
-        // array defined with the `SlabPosition` array
-        let mut future_owner =
-            unsafe { SLAB_ALLOCATOR.slab_of::<SlabDescriptor<()>>() };
-
-        let cache = SlabCache {
-            buddy_order,
-            free: None,
-            partial: Some(partial),
-            full: None,
-        };
-
-        // Only in this function, we initialiuze the global array in the
-        // new function.
-        //
-        // Because then we can use the `take_ownership` function
-        unsafe {
-            *future_owner.as_mut() = cache.clone();
-            future_owner.as_mut().take_ownership(partial);
+    /// Allocates an object from the head of the partial list, and moves
+    /// the slab to the full list when it was its last free one.
+    ///
+    /// Returns `None` when the partial list is empty.
+    fn allocate_from_partial(
+        &mut self,
+        arena: &impl SlabArena,
+    ) -> Option<NonNull<T>> {
+        // SAFETY: `&mut self` is the only path to the cache's lists, so
+        // nothing else references the head or frees its page meanwhile.
+        let head = unsafe { self.partial.first(arena) }?;
+        let (object, allocated) = head.allocate_slot(arena);
+        match allocated {
+            Allocated::Partial => {}
+            Allocated::Full => {
+                head.unlink(arena, &mut self.partial)
+                    .morph_mut::<FullDetached>()
+                    .link(arena, &mut self.full);
+            }
         }
+        Some(object)
+    }
 
-        cache
+    /// Allocates an object from the head of the free list and attaches it
+    /// to the partial list.
+    ///
+    /// Returns `None` when the free list is empty.
+    fn allocate_from_free(
+        &mut self,
+        arena: &impl SlabArena,
+    ) -> Option<NonNull<T>> {
+        // SAFETY: `&mut self` is the only path to the cache's lists, so
+        // nothing else references the head or frees its page meanwhile.
+        let head = unsafe { self.free.first(arena) }?;
+        let free = head.unlink(arena, &mut self.free);
+        Some(self.allocate_and_link(arena, free))
+    }
+
+    /// Links the slots of `free`, a free slab in no list such as a new
+    /// one, allocates an object from it, and links it into the partial
+    /// list, or into the full list when it holds one object.
+    pub(crate) fn allocate_and_link(
+        &mut self,
+        arena: &impl SlabArena,
+        free: &mut SlabDescriptor<T, FreeDetached>,
+    ) -> NonNull<T> {
+        // SAFETY: a free slab has no allocated slot.
+        unsafe { arena.objects_of(free).link_all() };
+        let partial = free.morph_mut::<PartialDetached>();
+        let (object, allocated) = partial.allocate_slot(arena);
+        match allocated {
+            Allocated::Partial => partial.link(arena, &mut self.partial),
+            Allocated::Full => partial
+                .morph_mut::<FullDetached>()
+                .link(arena, &mut self.full),
+        }
+        object
+    }
+
+    /// Deallocates object `idx` of `slab`, and moves `slab` to the list of
+    /// its new state.
+    ///
+    /// # Safety
+    ///
+    /// `idx` must be an allocated object of `slab`, and `slab` must be in
+    /// one of this cache's lists.
+    pub(crate) unsafe fn deallocate_object(
+        &mut self,
+        arena: &impl SlabArena,
+        idx: ObjectIndex,
+        slab: &mut SlabDescriptor<T, Used>,
+    ) {
+        match slab.classify_mut(arena) {
+            UsedSlab::PartialHead(partial) => unsafe {
+                self.deallocate_from_partial(arena, idx, partial)
+            },
+            UsedSlab::Partial(partial) => unsafe {
+                self.deallocate_from_partial(arena, idx, partial)
+            },
+            UsedSlab::FullHead(full) => unsafe {
+                self.deallocate_from_full(arena, idx, full)
+            },
+            UsedSlab::Full(full) => unsafe {
+                self.deallocate_from_full(arena, idx, full)
+            },
+        }
+    }
+
+    /// Deallocates object `idx` of a slab in the partial list.
+    ///
+    /// # Safety
+    ///
+    /// `idx` must be an allocated object of `partial`.
+    unsafe fn deallocate_from_partial<S>(
+        &mut self,
+        arena: &impl SlabArena,
+        idx: ObjectIndex,
+        partial: &mut SlabDescriptor<T, S>,
+    ) where
+        S: SlabState<Meta = PartialMeta>,
+        SlabDescriptor<T, S>: InList<T, PartialHead>,
+    {
+        match unsafe { partial.deallocate_slot(arena, idx) } {
+            Deallocated::Partial => {}
+            Deallocated::Free => {
+                partial
+                    .unlink(arena, &mut self.partial)
+                    .morph_mut::<FreeDetached>()
+                    .link(arena, &mut self.free);
+            }
+        }
+    }
+
+    /// Deallocates object `idx` of a slab in the full list.
+    ///
+    /// # Safety
+    ///
+    /// `idx` must be an allocated object of `full`.
+    unsafe fn deallocate_from_full<S>(
+        &mut self,
+        arena: &impl SlabArena,
+        idx: ObjectIndex,
+        full: &mut SlabDescriptor<T, S>,
+    ) where
+        S: SlabState,
+        SlabDescriptor<T, S>: InList<T, FullHead>,
+    {
+        let partial = full
+            .unlink(arena, &mut self.full)
+            .morph_mut::<PartialDetached>();
+        match unsafe { partial.deallocate_slot(arena, idx) } {
+            Deallocated::Partial => {
+                partial.link(arena, &mut self.partial);
+            }
+            Deallocated::Free => {
+                partial
+                    .morph_mut::<FreeDetached>()
+                    .link(arena, &mut self.free);
+            }
+        }
     }
 }

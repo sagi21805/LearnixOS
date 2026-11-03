@@ -1,157 +1,142 @@
-use core::{fmt::Debug, ptr::NonNull};
+mod arena;
+mod list;
+mod state;
 
-use common::{
-    address_types::PhysicalAddress, enums::BuddyOrder, volatile::Volatile,
+pub use arena::*;
+pub use list::*;
+pub use state::*;
+
+use core::{
+    fmt::Debug,
+    marker::PhantomData,
+    ptr::NonNull,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
-use macros::bitfields;
-use thiserror::Error;
-use x86::memory_map::MemoryMap;
-
-#[derive(Debug, Error)]
-pub enum BuddyError {
-    #[error("Cannot find a buddy for a block that is BuddyOrder::MAX")]
-    MaxOrder,
-    #[error("Page is part of a larger order")]
-    PageInLargerOrder,
-    #[error("Cannot split a block that is BuddyOrder::MIN")]
-    Unsplitable,
-    #[error("The buddy of this block is outside of memory range")]
-    BuddyOutOfRange,
-    #[error("Page is not part of the arena")]
-    PageNotInArena,
-}
-
-mod private {
-    pub trait Seald {}
-}
-
-/// The first node on the list.
-#[derive(Copy, Clone)]
-pub struct Head;
-#[derive(Copy, Clone)]
-/// A node on the list, that is not the first.
-pub struct Regular;
-
-pub trait MetaState: private::Seald {
-    type Next: Sized;
-    type Prev: Sized;
-    type Flags: Sized;
-}
-impl private::Seald for Head {}
-impl MetaState for Head {
-    type Next = Option<NonNull<BuddyMeta<Regular>>>;
-    type Prev = ();
-    type Flags = ();
-}
-impl private::Seald for Regular {}
-impl MetaState for Regular {
-    type Next = Option<NonNull<BuddyMeta<Regular>>>;
-    type Prev = NonNull<BuddyMeta<Head>>;
-    type Flags = BuddyFlags;
-}
-
-pub const trait BuddyBlock: Sized {
-    fn meta(&self) -> &BuddyMeta<Regular>;
-
-    fn meta_mut(&mut self) -> &mut BuddyMeta<Regular>;
-
-    fn from_meta(meta: NonNull<BuddyMeta<Regular>>) -> NonNull<Self>;
-}
+use bitfields::bitfields;
+use common::{
+    enums::BuddyOrder,
+    page_index::{PageIndex, Prev},
+};
+use typestate_groups::typestate;
 
 #[bitfields]
-pub struct BuddyFlags {
+pub struct BlockFlagBits {
     #[flag(flag_type = BuddyOrder)]
-    pub order: B7,
+    pub order: B4,
     pub allocated: B1,
+    #[flag(r)]
+    pub reserved: B51,
+    /// Bits the block's owner gives its own meaning. Buddy zeroes them
+    /// when the block comes back.
+    pub owner: B8,
 }
 
+/// A block's flags, which anyone holding the arena may read and only the
+/// block's owner may write. Buddy owns a free block, and whoever holds a
+/// block's [`OwnedBlock`](crate::OwnedBlock) owns an allocated one, so
+/// outside buddy only that token writes the flags.
+///
+/// Each block has one writer at a time, so a write is a load, a change
+/// and a store, with no read-modify-write instruction. The word is atomic
+/// so a read that overlaps the owner's write is a race on a value, not
+/// undefined behaviour.
+#[repr(transparent)]
+pub struct BlockFlags(AtomicU64);
+
+impl BlockFlags {
+    /// A word holding `bits`.
+    pub const fn new(bits: BlockFlagBits) -> BlockFlags {
+        BlockFlags(AtomicU64::new(u64::from(bits)))
+    }
+
+    /// The flags as they are now.
+    pub fn load(&self) -> BlockFlagBits {
+        BlockFlagBits::from(self.0.load(Ordering::Relaxed))
+    }
+
+    /// Replaces every flag with `bits`.
+    pub(crate) fn store(&self, bits: BlockFlagBits) {
+        self.0.store(u64::from(bits), Ordering::Relaxed);
+    }
+
+    /// Changes the flags with `f`.
+    pub(crate) fn modify(&self, f: impl FnOnce(&mut BlockFlagBits)) {
+        let mut bits = self.load();
+        f(&mut bits);
+        self.store(bits);
+    }
+
+    /// The order of the range this block heads, or [`BuddyOrder::None`]
+    /// when it lies inside a larger block.
+    pub fn order(&self) -> BuddyOrder { self.load().get_order() }
+
+    /// Whether this block is handed out.
+    pub fn is_allocated(&self) -> bool { self.load().is_allocated() }
+
+    /// The bits the block's owner keeps here.
+    pub fn owner(&self) -> u8 { self.load().get_owner() }
+}
+
+impl Debug for BlockFlags {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.load().fmt(f)
+    }
+}
+
+/// The free-list links of a block, in a free list or not.
+///
+/// The state lives only in a `PhantomData` and the struct is `repr(C)`,
+/// so every state has the same layout.
 #[repr(C)]
+#[typestate]
 #[derive(Clone, Copy)]
-pub struct BuddyMeta<State: MetaState> {
-    pub next: Volatile<State::Next>,
-    pub prev: Volatile<State::Prev>,
-    pub flags: State::Flags,
+pub struct BuddyLinks<S: BuddyState> {
+    /// The block after this one in its free list.
+    pub next: Option<PageIndex>,
+    /// Where this block sits in its free list, or `None` in no list.
+    pub prev: Option<Prev>,
+    _state: PhantomData<S>,
 }
 
-#[derive(Copy, Clone)]
-pub union BuddyMetaType {
-    pub regular: BuddyMeta<Regular>,
-    pub head: BuddyMeta<Head>,
-}
+const _: () = assert!(size_of::<BuddyLinks<Regular>>() == 8);
 
-impl<S> BuddyMeta<S>
-where
-    S: MetaState<Next = Option<NonNull<BuddyMeta<Regular>>>>,
-{
-    #[inline]
-    pub fn attach(&mut self, mut p: NonNull<BuddyMeta<Regular>>) {
-        unsafe { p.as_mut().next = self.next };
-        if let Some(mut next) = self.next.read() {
-            unsafe { next.as_mut().prev = Volatile::new(p.cast()) };
+impl BuddyLinks<Regular> {
+    /// The links of a block in no free list.
+    pub const fn new() -> BuddyLinks<Regular> {
+        BuddyLinks {
+            next: None,
+            prev: None,
+            _state: PhantomData,
         }
-        self.next.write(Some(p.cast()));
-        unsafe { p.as_mut().prev.write(NonNull::from_mut(self).cast()) };
     }
+}
 
-    #[inline]
-    pub fn attach_block<Block: const BuddyBlock>(
+impl Default for BuddyLinks<Regular> {
+    fn default() -> Self { Self::new() }
+}
+
+impl<S: BuddyState> BuddyLinks<S> {
+    /// Whether this block is in a free list.
+    pub fn is_linked(&self) -> bool { self.prev.is_some() }
+
+    /// These links, as links in state `To`.
+    ///
+    /// `BuddyLinks<S> -> BuddyLinks<To>`
+    pub(crate) fn as_state_mut<To: BuddyState>(
         &mut self,
-        mut p: NonNull<Block>,
-    ) {
-        self.attach(NonNull::from_mut(unsafe { p.as_mut().meta_mut() }));
+    ) -> &mut BuddyLinks<To> {
+        // SAFETY: every state has the same layout, and `&mut self` makes
+        // the new reference the only one.
+        unsafe { NonNull::from_mut(self).cast().as_mut() }
     }
 }
 
-impl Default for BuddyMeta<Head> {
-    fn default() -> Self {
-        Self {
-            next: Volatile::new(None),
-            prev: Volatile::new(()),
-            flags: (),
-        }
-    }
-}
+impl<S: BuddyStateGroupMember<Nodes>> Debug for BuddyLinks<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut ds = f.debug_struct("BuddyLinks");
 
-impl BuddyMeta<Regular> {
-    pub fn new<
-        S: MetaState<Next = Option<NonNull<BuddyMeta<Regular>>>>,
-    >(
-        prev: NonNull<BuddyMeta<S>>,
-        flags: BuddyFlags,
-    ) -> BuddyMeta<Regular> {
-        BuddyMeta {
-            next: Volatile::new(None),
-            prev: Volatile::new(prev.cast()),
-            flags,
-        }
-    }
-
-    /// Detaches self from the list.
-    pub fn detach(&mut self) -> NonNull<BuddyMeta<Regular>> {
-        unsafe { self.prev.read().as_mut().next.write(self.next.read()) }
-
-        if let Some(mut next) = self.next.read() {
-            unsafe { next.as_mut().prev.write(self.prev.read()) };
-        }
-
-        NonNull::from_mut(self)
-    }
-}
-
-impl<S> ::core::fmt::Debug for BuddyMeta<S>
-where
-    S: MetaState<Next: Debug, Prev: Debug, Flags: Debug>,
-{
-    default fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter<'_>,
-    ) -> core::fmt::Result {
-        let mut ds = f.debug_struct("BuddyMeta");
-
-        ds.field("next", &self.next)
-            .field("prev", &self.prev)
-            .field("flags", &self.flags);
+        ds.field("next", &self.next).field("prev", &self.prev);
 
         #[cfg(debug_assertions)]
         ds.field("self_ptr", &NonNull::from_ref(self));
@@ -160,84 +145,23 @@ where
     }
 }
 
-impl ::core::fmt::Debug for BuddyMeta<Head> {
+/// A free list, as the index of its first block.
+#[repr(transparent)]
+pub struct FreeList(Option<PageIndex>);
+
+impl FreeList {
+    /// A list with no blocks.
+    pub const fn empty() -> FreeList { FreeList(None) }
+
+    /// The first block of the list.
+    pub fn first(&self) -> Option<PageIndex> { self.0 }
+
+    /// Makes `first` the first block of the list.
+    fn set_first(&mut self, first: Option<PageIndex>) { self.0 = first; }
+}
+
+impl Debug for FreeList {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut list_fmt = f.debug_list();
-
-        let mut next = self.next;
-        let mut i = 0;
-        while let Some(n) = next.read() {
-            list_fmt.entry(unsafe { n.as_ref() });
-            next = unsafe { n.as_ref().next };
-            if i == 32 {
-                return list_fmt.finish();
-            }
-            i += 1;
-        }
-
-        list_fmt.finish()
+        f.debug_tuple("FreeList").field(&self.0).finish()
     }
 }
-
-pub trait BuddyArena<Block: BuddyBlock>: Sized {
-    fn new(mmap: &MemoryMap, head: &mut BuddyMeta<Head>) -> Self;
-
-    /// Returns an iterator over all blocks in this arena.
-    fn iter(&self) -> impl ExactSizeIterator<Item = NonNull<Block>>;
-
-    /// Returns the buddy of a block.
-    fn buddy_of(
-        &self,
-        block: NonNull<Block>,
-    ) -> Result<NonNull<Block>, BuddyError>;
-
-    /// Returns the physical allocated address by this block.
-    ///
-    /// The first block of Order1 for example allocates 0..4096
-    fn address_of(&self, block: NonNull<Block>) -> PhysicalAddress;
-
-    /// Return the corresponding block in the arena for a given physical
-    /// address, if one exists.
-    fn page_with_address(
-        &self,
-        address: PhysicalAddress,
-    ) -> Result<NonNull<Block>, BuddyError>;
-
-    /// Split a block into two smaller blocks of previous order.
-    fn split(
-        &self,
-        block: NonNull<Block>,
-    ) -> Result<(NonNull<Block>, NonNull<Block>), BuddyError>;
-
-    /// Merge two blocks with the same order to a next order block.
-    ///
-    /// The two blocks must be buddies, have the same order, and be free.
-    fn merge(
-        &self,
-        block: NonNull<Block>,
-        buddy: NonNull<Block>,
-    ) -> Result<NonNull<Block>, BuddyError>;
-
-    // /// Detach a block from the middle of the arena, returning the
-    // detached /// block.
-    // fn detach_mid(&self, block: NonNull<Block>) -> NonNull<Block>;
-
-    /// Returns the block nth block of the arena, if one exists.
-    fn at(&self, n: usize) -> Option<NonNull<Block>>;
-
-    /// Returns the (section index, section offset) of the given page.
-    ///
-    /// A section is a contiguous range of pages aligned to
-    /// [`BuddyOrder::MAX`].
-    ///
-    /// # Safety
-    ///
-    /// The page must be contained within the arena's memory range.
-    unsafe fn section_index_of(
-        &self,
-        block: NonNull<Block>,
-    ) -> (usize, usize);
-}
-
-unsafe impl Send for BuddyMeta<Regular> {}
-unsafe impl Send for BuddyMeta<Head> {}
