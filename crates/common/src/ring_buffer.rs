@@ -20,13 +20,9 @@ impl<T: 'static + Clone + Copy> RingBuffer<T> {
         }
     }
 
-    pub fn read_idx(&self) -> usize {
-        self.read_idx.get()
-    }
+    pub fn read_idx(&self) -> usize { self.read_idx.get() }
 
-    pub fn write_idx(&self) -> usize {
-        self.write_idx.get()
-    }
+    pub fn write_idx(&self) -> usize { self.write_idx.get() }
 
     pub unsafe fn advance_read(&mut self, steps: isize) {
         let new = self.read_idx.get() as isize + steps;

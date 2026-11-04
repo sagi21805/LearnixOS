@@ -2,12 +2,12 @@
 use core::ptr::NonNull;
 
 use crate::structures::paging::{PageEntryFlags, PageTable};
+use bitfields::bitfields;
 use common::{
     address_types::{Address, PhysicalAddress},
     constants::REGULAR_PAGE_ALIGNMENT,
     error::EntryError,
 };
-use bitfields::bitfields;
 
 #[bitfields]
 pub struct PageTableEntry {

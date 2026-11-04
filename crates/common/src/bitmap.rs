@@ -146,9 +146,7 @@ impl Clone for BitMap {
 impl core::ops::Index<usize> for BitMap {
     type Output = u64;
 
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.map[index]
-    }
+    fn index(&self, index: usize) -> &Self::Output { &self.map[index] }
 }
 
 impl core::ops::IndexMut<usize> for BitMap {
@@ -190,9 +188,7 @@ impl BitMap {
     }
 
     /// Initialize the bitmap by filling all of it in zeros
-    pub fn init(&mut self) {
-        self.map.fill(0);
-    }
+    pub fn init(&mut self) { self.map.fill(0); }
 
     /// Set all of bit of the u64 into 1
     pub fn set_index(&mut self, p: &Position) {

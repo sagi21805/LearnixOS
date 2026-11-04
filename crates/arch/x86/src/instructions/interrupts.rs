@@ -27,6 +27,4 @@ pub unsafe fn disable() {
 /// entirely if interrupts are disabled
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[inline(always)]
-pub unsafe fn hlt() {
-    unsafe { asm!("hlt", options(nostack, nomem)) };
-}
+pub unsafe fn hlt() { unsafe { asm!("hlt", options(nostack, nomem)) }; }

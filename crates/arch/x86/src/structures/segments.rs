@@ -32,9 +32,7 @@ pub struct TaskStateSegment {
 
 impl TaskStateSegment {
     /// Return the I/O map base address
-    pub const fn iomb(&self) -> u16 {
-        self.io_map_offset
-    }
+    pub const fn iomb(&self) -> u16 { self.io_map_offset }
 
     /// Construct a default TSS
     pub const fn default() -> Self {

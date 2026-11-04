@@ -15,7 +15,8 @@
 #![feature(pattern_types, pattern_type_macro)]
 #![expect(
     internal_features,
-    reason = "`ObjectIndex` is a pattern type, which is an internal feature"
+    reason = "`ObjectIndex` is a pattern type, which is an internal \
+              feature"
 )]
 
 mod arena;
@@ -23,9 +24,9 @@ pub mod cache;
 pub mod cache_allocator;
 pub mod descriptor;
 pub mod local_macros;
+pub mod object_index;
 pub mod preallocated;
 pub mod slab_objects;
-pub mod object_index;
 pub mod traits;
 
 pub use arena::{SlabArena, SlabFlags};
