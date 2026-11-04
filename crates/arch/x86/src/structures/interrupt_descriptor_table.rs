@@ -1,11 +1,9 @@
 extern crate alloc;
 
-use core::{arch::asm, mem::MaybeUninit};
-
 use common::{
     address_types::{Address, VirtualAddress},
     enums::{
-        ProtectionLevel, Sections, SystemSegmentType,
+        ProtectionLevel, Sections,
         interrupts::{Interrupt, InterruptStackTable, InterruptType},
     },
 };
@@ -15,19 +13,10 @@ use bitfields::bitfields;
 use alloc::boxed::Box;
 use sync::{mutex::SpinMutex, once::Once};
 
-/// Global TSS segment
-pub static TSS: TaskStateSegment = TaskStateSegment::default();
-
 use crate::{
     instructions::{self, interrupts::hlt},
     registers::rflags::Rflags,
-    structures::{
-        global_descriptor_table::{
-            GlobalDescriptorTableLong, GlobalDescriptorTableRegister,
-            SystemSegmentDescriptor64,
-        },
-        segments::{SegmentSelector, TaskStateSegment},
-    },
+    structures::segments::SegmentSelector,
 };
 
 /// Attributes of an interrupts entry, includes type and
@@ -50,42 +39,14 @@ pub struct InterruptDescriptorTable {
 }
 
 impl InterruptDescriptorTable {
-    /// Initialize the IDT by loading the TSS into the gdt
-    /// and writing default values to all the entries
+    /// Initialize the IDT by writing default values to all the entries
     ///
     /// # Parameters
     ///
     /// - `uninit`: An uninitialized IDT.
-    /// - `base_address`: A virtual address that the IDT will be placed on.
     pub fn init(uninit: &Once<SpinMutex<Box<Self>>>) {
-        let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
-            MaybeUninit::uninit();
-        let gdt = unsafe {
-            asm!(
-                "sgdt [{}]",
-                in(reg) gdt_register.as_mut_ptr(),
-                options(nostack, preserves_flags)
-            );
-
-            // Get gdt from it's register.
-            &mut *(gdt_register.assume_init().base
-                as *mut GlobalDescriptorTableLong)
-        };
-
-        if TSS.iomb() < size_of::<TaskStateSegment>() as u16 {
-            panic!(
-                "I/O maps are not supported, change TSS IOMB into number \
-                 larger then 0x68"
-            )
-        }
-        let tss = SystemSegmentDescriptor64::new(
-            &TSS as *const _ as u64,
-            (size_of::<TaskStateSegment>() - 1) as u32,
-            SystemSegmentType::TaskStateSegmentAvailable,
-        );
         let mut boxed = Box::<InterruptDescriptorTable>::new_uninit();
 
-        gdt.load_tss(tss);
         unsafe {
             ::core::ptr::write_volatile(
                 boxed.as_mut_ptr(),
