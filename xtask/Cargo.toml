@@ -8,5 +8,10 @@ clap = { version = "4.5.60", features = ["derive"] }
 xshell = "0.2.7"
 anyhow = "1.0.102"
 extend = "1.2.0"
+object = { version = "0.37.3", default-features = false, features = [
+    "read_core",
+    "elf",
+    "std",
+] }
 
 [workspace]
