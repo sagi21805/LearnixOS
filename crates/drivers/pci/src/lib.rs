@@ -8,9 +8,8 @@ extern crate alloc;
 
 use bitfields::bitfields;
 use common::enums::{
-    CascadedPicInterruptLine, ClassCode, DeviceID, HeaderType,
-    PciDeviceType, Port, ProgrammingInterface, SubClass, VendorDevice,
-    VendorID,
+    CascadedPicInterruptLine, ClassCode, HeaderType, PciDeviceType, Port,
+    VendorDevice, VendorID,
 };
 use x86::instructions::port::PortExt;
 
@@ -192,20 +191,20 @@ impl PciCommonHeader {
     pub fn empty() -> Self {
         PciCommonHeader {
             vendor_device: VendorDevice {
-                vendor: VendorID::NonExistent,
-                device: DeviceID { none: () },
+                vendor: VendorID::NonExistent as u16,
+                device: 0,
             },
             command: CommandRegister(0),
             status: StatusRegister(0),
             revision: 0,
             device_type: PciDeviceType {
-                prog_if: ProgrammingInterface { none: () },
-                subclass: SubClass { none: () },
-                class: ClassCode::Unassigned,
+                prog_if: 0,
+                subclass: 0,
+                class: ClassCode::Unassigned as u8,
             },
             cache_size: 0,
             latency_timer: 0,
-            header_type: HeaderType::GeneralDevice,
+            header_type: HeaderType::new(),
             bist: BISTRegister(0),
             // bus: 0xff,
             // device: 0xff,

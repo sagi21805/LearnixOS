@@ -1,5 +1,6 @@
 #![no_std]
 #![feature(const_convert)]
+#![feature(const_result_trait_fn)]
 #![feature(const_trait_impl)]
 #![feature(ptr_alignment_type)]
 #![feature(pattern_types, pattern_type_macro)]
