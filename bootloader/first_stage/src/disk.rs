@@ -83,16 +83,18 @@ impl DiskAddressPacket {
                 "mov si, {0:x}",
                 // Put function code in `ah`
                 "mov ah, {1}",
-                // Put disk number in `dl`
-                "mov dl, {2}",
                 // Call the `disk interrupt`
-                "int {3}",
+                "int {2}",
                 // Restore si for llvm internal use.
                 "pop si",
                 in(reg) self as *const Self as u16,
                 const DiskInterrupt::ExtendedRead as u8,
-                in(reg_byte) disk_number,
                 const BiosInterrupts::Disk as u8,
+                // The function code and the BIOS's status overwrite `ax`.
+                out("ax") _,
+                // The BIOS takes the disk number in `dl`, and doesn't
+                // promise to keep it there.
+                inlateout("dl") disk_number => _,
             )
         }
     }
