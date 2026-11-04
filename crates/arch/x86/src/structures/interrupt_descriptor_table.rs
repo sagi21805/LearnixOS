@@ -1,5 +1,3 @@
-extern crate alloc;
-
 use common::{
     address_types::{Address, VirtualAddress},
     enums::{
@@ -10,12 +8,8 @@ use common::{
 
 use bitfields::bitfields;
 
-use alloc::boxed::Box;
-use sync::{mutex::SpinMutex, once::Once};
-
 use crate::{
-    instructions::{self, interrupts::hlt},
-    registers::rflags::Rflags,
+    instructions, registers::rflags::Rflags,
     structures::segments::SegmentSelector,
 };
 
@@ -39,38 +33,23 @@ pub struct InterruptDescriptorTable {
 }
 
 impl InterruptDescriptorTable {
-    /// Initialize the IDT by writing default values to all the entries
-    ///
-    /// # Parameters
-    ///
-    /// - `uninit`: An uninitialized IDT.
-    pub fn init(uninit: &Once<SpinMutex<Box<Self>>>) {
-        let mut boxed = Box::<InterruptDescriptorTable>::new_uninit();
-
-        unsafe {
-            ::core::ptr::write_volatile(
-                boxed.as_mut_ptr(),
-                InterruptDescriptorTable {
-                    interrupts: [const {
-                        InterruptDescriptorTableEntry::missing()
-                    }; 256],
-                },
-            );
+    /// Creates a table where every entry is missing
+    pub const fn default() -> Self {
+        Self {
+            interrupts: [const { InterruptDescriptorTableEntry::missing() };
+                256],
         }
-
-        // SAFETY: the write above initialized the table.
-        let init =
-            uninit.init(SpinMutex::new(unsafe { boxed.assume_init() }));
-        init.lock().as_ref().load();
     }
 
     /// Load the IDT with the `lidt` instruction
-    fn load(&self) {
-        let idtr = {
-            InterruptDescriptorTableRegister {
-                limit: (size_of::<Self>() - 1) as u16,
-                base: self as *const _ as u64,
-            }
+    ///
+    /// # Safety
+    /// This function overrides the current IDT, and the loaded GDT must
+    /// hold the kernel code segment at `Sections::KernelCode`.
+    pub unsafe fn load(&'static self) {
+        let idtr = InterruptDescriptorTableRegister {
+            limit: (size_of::<Self>() - 1) as u16,
+            base: self as *const _ as u64,
         };
         unsafe {
             instructions::lidt(&idtr);
@@ -93,24 +72,18 @@ impl InterruptDescriptorTable {
         dpl: ProtectionLevel,
         handler_type: InterruptType,
     ) {
-        let entry = InterruptDescriptorTableEntry::new(
-            handler_address,
-            InterruptStackTable::None,
-            InterruptAttributes::new()
-                .present(true)
-                .dpl(dpl)
-                .int_type(handler_type),
-            SegmentSelector::new()
-                .rpl(ProtectionLevel::Ring0)
-                .section(Sections::KernelCode),
-        );
-        let position = &mut self.interrupts[routine as usize];
-        unsafe {
-            ::core::ptr::write_volatile(
-                position as *mut InterruptDescriptorTableEntry,
-                entry,
+        self.interrupts[routine as usize] =
+            InterruptDescriptorTableEntry::new(
+                handler_address,
+                InterruptStackTable::None,
+                InterruptAttributes::new()
+                    .present(true)
+                    .dpl(dpl)
+                    .int_type(handler_type),
+                SegmentSelector::new()
+                    .rpl(ProtectionLevel::Ring0)
+                    .section(Sections::KernelCode),
             );
-        }
     }
 }
 
