@@ -6,8 +6,8 @@ use x86::structures::paging::PageEntryFlags;
 
 use crate::{
     descriptor::{SlabDescriptor, Unused, Used},
-    preallocated::PreAllocated,
     object_index::ObjectIndex,
+    preallocated::PreAllocated,
 };
 
 /// A type allocated from its own slab cache, the one at `SLAB_POSITION`

@@ -1,5 +1,5 @@
-use common::enums::Color;
 use bitfields::bitfields;
+use common::enums::Color;
 
 #[bitfields]
 pub struct ColorCode {

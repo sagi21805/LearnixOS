@@ -754,7 +754,5 @@ pub enum HeaderType {
 }
 
 impl HeaderType {
-    pub fn is_multifunction(self) -> bool {
-        (self as u8) & 0x80 != 0
-    }
+    pub fn is_multifunction(self) -> bool { (self as u8) & 0x80 != 0 }
 }

@@ -8,7 +8,7 @@ use bitfields::bitfields;
 use common::page_index::Prev;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use crate::object_index::{ObjectIndexBits, ObjectIndex};
+use crate::object_index::{ObjectIndex, ObjectIndexBits};
 
 /// The metadata of a partial slab, its free list and how many objects it
 /// allocates.

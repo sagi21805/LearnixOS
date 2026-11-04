@@ -1,7 +1,7 @@
+use bitfields::bitfields;
 use common::enums::{
     ProtectionLevel, Sections, SegmentDescriptorType, SystemSegmentType,
 };
-use bitfields::bitfields;
 
 use crate::{instructions, structures::segments::SegmentSelector};
 
