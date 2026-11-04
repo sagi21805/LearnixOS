@@ -274,11 +274,24 @@ pub struct PciCommonHeader {
     pub bist: BISTRegister,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct MemoryBaseAddressRegister(u32);
+/// A BAR that points at device registers in memory space.
+#[bitfields]
+pub struct MemoryBaseAddressRegister {
+    pub io_space: B1,
+    pub size: B2,
+    pub prefetchable: B1,
+    #[flag(rw, dont_shift)]
+    pub address: B28,
+}
 
-#[derive(Debug, Clone, Copy)]
-pub struct IOBaseAddressRegister(u32);
+/// A BAR that points at device registers in I/O space.
+#[bitfields]
+pub struct IOBaseAddressRegister {
+    pub io_space: B1,
+    reserved: B1,
+    #[flag(rw, dont_shift)]
+    pub address: B30,
+}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -301,29 +314,76 @@ pub enum BaseAddressRegisterSize {
 
 impl BaseAddressRegister {
     pub fn identify(&self) -> BaseAddressRegisterType {
-        // Doesn't matter which variant we take, they are
-        // both u32.
-        unsafe {
-            if self.memory.0 & 1 == 0 {
-                BaseAddressRegisterType::Memory
-            } else {
-                BaseAddressRegisterType::IO
-            }
+        // SAFETY: both variants are a `u32` with this flag in bit 0.
+        if unsafe { self.memory }.is_io_space() {
+            BaseAddressRegisterType::IO
+        } else {
+            BaseAddressRegisterType::Memory
         }
     }
 
+    /// Whether this BAR is a memory BAR whose address continues in the
+    /// next BAR.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pci::{BaseAddressRegister, MemoryBaseAddressRegister};
+    ///
+    /// let bar = |bits: u32| BaseAddressRegister {
+    ///     memory: MemoryBaseAddressRegister::from(bits),
+    /// };
+    ///
+    /// assert!(bar(0xFEBC_0004).is_64bit());
+    /// assert!(!bar(0xFEBC_0000).is_64bit());
+    /// // The obsolete type for a memory BAR below 1 MiB.
+    /// assert!(!bar(0x000C_0002).is_64bit());
+    /// // An I/O BAR has no type field, and bit 2 is part of its address.
+    /// assert!(!bar(0x0000_C005).is_64bit());
+    /// ```
     pub fn is_64bit(&self) -> bool {
         self.identify() == BaseAddressRegisterType::Memory
-            && unsafe {
-                self.memory.0 & BaseAddressRegisterSize::Bit64 as u32 != 0
-            }
+            // SAFETY: `identify` just found a memory BAR.
+            && unsafe { self.memory }.get_size()
+                == BaseAddressRegisterSize::Bit64 as u8
     }
 
+    /// The address this BAR points at, without its flag bits.
+    ///
+    /// # Panics
+    ///
+    /// When this is a 64-bit BAR, as reading its upper half from the next
+    /// BAR isn't implemented.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pci::{BaseAddressRegister, IOBaseAddressRegister};
+    /// use pci::MemoryBaseAddressRegister;
+    ///
+    /// let memory = BaseAddressRegister {
+    ///     memory: MemoryBaseAddressRegister::from(0xFEBC_0008),
+    /// };
+    /// assert_eq!(memory.address(), 0xFEBC_0000);
+    ///
+    /// let io = BaseAddressRegister {
+    ///     io: IOBaseAddressRegister::from(0xC049),
+    /// };
+    /// assert_eq!(io.address(), 0xC048);
+    /// ```
     pub fn address(&self) -> usize {
-        if !self.is_64bit() {
-            (unsafe { self.io.0 } & 0xfffffff0) as usize
-        } else {
-            unimplemented!("Still didn't implemented 64bit addresses")
+        match self.identify() {
+            BaseAddressRegisterType::Memory if self.is_64bit() => {
+                unimplemented!("Still didn't implemented 64bit addresses")
+            }
+            BaseAddressRegisterType::Memory => {
+                // SAFETY: `identify` just found a memory BAR.
+                unsafe { self.memory }.get_address() as usize
+            }
+            BaseAddressRegisterType::IO => {
+                // SAFETY: `identify` just found an I/O BAR.
+                unsafe { self.io }.get_address() as usize
+            }
         }
     }
 }
