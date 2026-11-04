@@ -2,7 +2,7 @@ use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
     enums::{
         PageSize, ProtectionLevel,
-        interrupts::{Interrupt, InterruptType},
+        interrupts::{GateType, Interrupt},
     },
 };
 use keyboard::keyboard_handler;
@@ -211,7 +211,7 @@ pub impl InterruptDescriptorTable {
                     division_error_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -220,7 +220,7 @@ pub impl InterruptDescriptorTable {
                     debug_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -229,7 +229,7 @@ pub impl InterruptDescriptorTable {
                     non_maskable_interrupt_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -238,7 +238,7 @@ pub impl InterruptDescriptorTable {
                     breakpoint_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Trap,
+                GateType::Trap,
             );
 
             self.set_interrupt_handler(
@@ -247,7 +247,7 @@ pub impl InterruptDescriptorTable {
                     overflow_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Trap,
+                GateType::Trap,
             );
 
             self.set_interrupt_handler(
@@ -256,7 +256,7 @@ pub impl InterruptDescriptorTable {
                     bound_range_exceeded_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -265,7 +265,7 @@ pub impl InterruptDescriptorTable {
                     invalid_opcode_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -274,7 +274,7 @@ pub impl InterruptDescriptorTable {
                     device_not_found_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -283,7 +283,7 @@ pub impl InterruptDescriptorTable {
                     double_fault_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -293,7 +293,7 @@ pub impl InterruptDescriptorTable {
                         as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -302,7 +302,7 @@ pub impl InterruptDescriptorTable {
                     invalid_tss_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -311,7 +311,7 @@ pub impl InterruptDescriptorTable {
                     segment_not_present_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -320,7 +320,7 @@ pub impl InterruptDescriptorTable {
                     stack_segment_fault_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -329,7 +329,7 @@ pub impl InterruptDescriptorTable {
                     general_protection_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -338,7 +338,7 @@ pub impl InterruptDescriptorTable {
                     page_fault_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -347,7 +347,7 @@ pub impl InterruptDescriptorTable {
                     floating_point_error_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -356,7 +356,7 @@ pub impl InterruptDescriptorTable {
                     alignment_check_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -365,7 +365,7 @@ pub impl InterruptDescriptorTable {
                     machine_check_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -374,7 +374,7 @@ pub impl InterruptDescriptorTable {
                     simd_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -383,7 +383,7 @@ pub impl InterruptDescriptorTable {
                     virtualization_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             self.set_interrupt_handler(
@@ -392,7 +392,7 @@ pub impl InterruptDescriptorTable {
                     control_protection_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Fault,
+                GateType::Interrupt,
             );
 
             // TODO: ADD THESE INTERRUPT ON A DIFFERENT OCCASION
@@ -402,7 +402,7 @@ pub impl InterruptDescriptorTable {
                     timer_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Trap,
+                GateType::Trap,
             );
             self.set_interrupt_handler(
                 Interrupt::Keyboard,
@@ -410,7 +410,7 @@ pub impl InterruptDescriptorTable {
                     keyboard_handler as *const () as usize,
                 ),
                 ProtectionLevel::Ring0,
-                InterruptType::Trap,
+                GateType::Trap,
             );
             // self.set_interrupt_handler(
             //     Interrupt::Ahci,
@@ -418,7 +418,7 @@ pub impl InterruptDescriptorTable {
             //         ahci_interrupt as *const () as usize,
             //     ),
             //     ProtectionLevel::Ring0,
-            //     InterruptType::Trap,
+            //     GateType::Trap,
             // );
         }
     }

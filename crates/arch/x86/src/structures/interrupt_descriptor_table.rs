@@ -2,7 +2,7 @@ use common::{
     address_types::{Address, VirtualAddress},
     enums::{
         ProtectionLevel, Sections,
-        interrupts::{Interrupt, InterruptStackTable, InterruptType},
+        interrupts::{GateType, Interrupt, InterruptStackTable},
     },
 };
 
@@ -17,8 +17,8 @@ use crate::{
 /// privilege level
 #[bitfields]
 pub struct InterruptAttributes {
-    #[flag(flag_type = InterruptType)]
-    int_type: B4,
+    #[flag(flag_type = GateType)]
+    gate_type: B4,
     #[flag(rc(0))]
     zero: B1,
     #[flag(flag_type = ProtectionLevel)]
@@ -64,13 +64,13 @@ impl InterruptDescriptorTable {
     /// - `routine`: The interrupt handler to set
     /// - `handler_address`: The virtual address to the handler function
     /// - `dpl`: The protection level on the handler entry
-    /// - `handler_type`: The type of the handler (Fault / Trap)
+    /// - `gate_type`: The type of the gate (Interrupt / Trap)
     pub fn set_interrupt_handler(
         &mut self,
         routine: Interrupt,
         handler_address: VirtualAddress,
         dpl: ProtectionLevel,
-        handler_type: InterruptType,
+        gate_type: GateType,
     ) {
         self.interrupts[routine as usize] =
             InterruptDescriptorTableEntry::new(
@@ -79,7 +79,7 @@ impl InterruptDescriptorTable {
                 InterruptAttributes::new()
                     .present(true)
                     .dpl(dpl)
-                    .int_type(handler_type),
+                    .gate_type(gate_type),
                 SegmentSelector::new()
                     .rpl(ProtectionLevel::Ring0)
                     .section(Sections::KernelCode),
@@ -109,7 +109,7 @@ impl InterruptDescriptorTableEntry {
             segment_selector: SegmentSelector::new(),
             ist: InterruptStackTable::None,
             attributes: InterruptAttributes::new()
-                .int_type(InterruptType::Fault),
+                .gate_type(GateType::Interrupt),
             handler_offset_mid: 0,
             handler_offset_high: 0,
             zero: 0,
