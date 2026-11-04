@@ -1,7 +1,9 @@
 #[cfg(target_arch = "x86_64")]
 use core::ptr::NonNull;
 
-use crate::structures::paging::{PageEntryFlags, PageTable};
+use crate::structures::paging::PageEntryFlags;
+#[cfg(target_arch = "x86_64")]
+use crate::structures::paging::PageTable;
 use bitfields::bitfields;
 use common::{
     address_types::{Address, PhysicalAddress},

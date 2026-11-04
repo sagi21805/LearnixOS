@@ -152,7 +152,6 @@ fn toggle_paging() {
         asm!("mov eax, cr0", "or eax, 1 << 31", "mov cr0, eax");
     }
 }
-#[cfg(target_arch = "x86")]
 pub fn enable() -> Option<()> {
     let pml4 = init_identity_tables()?;
 

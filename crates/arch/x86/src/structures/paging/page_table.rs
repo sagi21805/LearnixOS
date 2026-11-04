@@ -1,17 +1,15 @@
 use core::ptr::{self, NonNull};
 
-use crate::{
-    registers::cr3,
-    structures::paging::{PageEntryFlags, PageTableEntry},
-};
+use crate::{registers::cr3, structures::paging::PageTableEntry};
 use common::{
-    address_types::{Address, PhysicalAddress, VirtualAddress},
+    address_types::{Address, VirtualAddress},
     constants::{PAGE_DIRECTORY_ENTRIES, REGULAR_PAGE_ALIGNMENT},
-    enums::{PageSize, PageTableLevel},
-    error::{EntryError, MappingError},
 };
-
-use extend;
+#[cfg(target_arch = "x86_64")]
+use common::{
+    enums::{PageSize, PageTableLevel},
+    error::EntryError,
+};
 
 #[repr(C)]
 #[repr(align(4096))]
