@@ -109,8 +109,8 @@ pub extern "x86-interrupt" fn double_fault_handler(
     error_code: u64,
 ) {
     panic!(
-        "Interrupt: DoubleFault\nStack frame: {stack_frame:#?}\nError \
-         code: {error_code:#x}"
+        "Interrupt: DoubleFault\nError code: {error_code:#x}\nStack \
+         frame: {stack_frame:#?}"
     );
 }
 
@@ -119,8 +119,8 @@ pub extern "x86-interrupt" fn invalid_tss_handler(
     error_code: u64,
 ) {
     panic!(
-        "Interrupt: InvalidTSS\nStack frame: {stack_frame:#?}\nError \
-         code: {error_code:#x}"
+        "Interrupt: InvalidTSS\nError code: {error_code:#x}\nStack \
+         frame: {stack_frame:#?}"
     );
 }
 
@@ -129,8 +129,8 @@ pub extern "x86-interrupt" fn segment_not_present_handler(
     error_code: u64,
 ) {
     panic!(
-        "Interrupt: SegmentNotPresent\nStack frame: \
-         {stack_frame:#?}\nError code: {error_code:#x}"
+        "Interrupt: SegmentNotPresent\nError code: \
+         {error_code:#x}\nStack frame: {stack_frame:#?}"
     );
 }
 
@@ -139,8 +139,8 @@ pub extern "x86-interrupt" fn stack_segment_fault_handler(
     error_code: u64,
 ) {
     panic!(
-        "Interrupt: StackSegmentFault\nStack frame: \
-         {stack_frame:#?}\nError code: {error_code:#x}"
+        "Interrupt: StackSegmentFault\nError code: \
+         {error_code:#x}\nStack frame: {stack_frame:#?}"
     );
 }
 
@@ -149,8 +149,8 @@ pub extern "x86-interrupt" fn general_protection_handler(
     error_code: u64,
 ) {
     panic!(
-        "Interrupt: GeneralProtection\nStack frame: \
-         {stack_frame:#?}\nError code: {error_code:#x}"
+        "Interrupt: GeneralProtection\nError code: \
+         {error_code:#x}\nStack frame: {stack_frame:#?}"
     );
 }
 
@@ -178,8 +178,8 @@ pub extern "x86-interrupt" fn alignment_check_handler(
     error_code: u64,
 ) {
     panic!(
-        "Interrupt: AlignmentCheck\nStack frame: {stack_frame:#?}\nError \
-         code: {error_code:#x}"
+        "Interrupt: AlignmentCheck\nError code: {error_code:#x}\nStack \
+         frame: {stack_frame:#?}"
     );
 }
 
@@ -188,8 +188,8 @@ pub extern "x86-interrupt" fn control_protection_handler(
     error_code: u64,
 ) {
     panic!(
-        "Interrupt: ControlProtection\nStack frame: \
-         {stack_frame:#?}\nError code: {error_code:#x}"
+        "Interrupt: ControlProtection\nError code: \
+         {error_code:#x}\nStack frame: {stack_frame:#?}"
     );
 }
 
