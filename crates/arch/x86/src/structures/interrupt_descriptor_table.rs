@@ -15,19 +15,6 @@ use crate::{
     structures::segments::SegmentSelector,
 };
 
-/// Attributes of an interrupts entry, includes type and
-/// privilege level
-#[bitfields]
-pub struct InterruptAttributes {
-    #[flag(flag_type = GateType)]
-    gate_type: B4,
-    #[flag(rc(0))]
-    zero: B1,
-    #[flag(flag_type = ProtectionLevel)]
-    dpl: B2,
-    present: B1,
-}
-
 /// Interrupt Descriptor Table structure, with one field per vector in
 /// vector order.
 ///
@@ -141,7 +128,7 @@ impl InterruptDescriptorTable {
     pub unsafe fn load(&'static self) {
         let idtr = InterruptDescriptorTableRegister {
             limit: (size_of::<Self>() - 1) as u16,
-            base: self as *const _ as u64,
+            base: self as *const _ as usize,
         };
         unsafe {
             instructions::lidt(&idtr);
@@ -239,11 +226,24 @@ impl InterruptEntryWithErrorCode {
     }
 }
 
+/// Attributes of an interrupts entry, includes type and
+/// privilege level
+#[bitfields]
+struct InterruptAttributes {
+    #[flag(flag_type = GateType)]
+    gate_type: B4,
+    #[flag(rc(0))]
+    zero: B1,
+    #[flag(flag_type = ProtectionLevel)]
+    dpl: B2,
+    present: B1,
+}
+
 /// IDT register structure
 #[repr(C, packed)]
 pub struct InterruptDescriptorTableRegister {
     pub limit: u16,
-    pub base: u64,
+    pub base: usize,
 }
 
 /// The interrupt stack frame structure that will be given
