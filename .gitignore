@@ -4,6 +4,7 @@
 backup/
 build/bin
 **/image.bin
+image-symbols/
 .vscode/
 .zed/
 graphify-out/
