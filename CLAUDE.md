@@ -53,8 +53,7 @@ The project uses nightly Rust (see `rust-toolchain.toml`) and runs under QEMU.
 ```bash
 cargo xtask build              # build all stages into image.bin
 cargo xtask run                # build and boot in QEMU
-cargo xtask run --release
-cargo xtask run --release --debug-package <crate>   # keep debug assertions for one crate
+cargo xtask run --debug-package <crate>   # keep debug assertions for one crate
 ```
 
 Each stage is built against its own JSON target spec with `-Z build-std`, so a plain `cargo build` at the workspace root won't produce a bootable image. Use `xtask`.
