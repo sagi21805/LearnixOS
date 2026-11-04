@@ -17,4 +17,4 @@ object = { version = "0.37.3", default-features = false, features = [
 [workspace]
 
 [lints.clippy]
-all = "warn"
+all = "deny"
