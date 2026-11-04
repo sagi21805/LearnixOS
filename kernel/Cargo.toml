@@ -28,3 +28,6 @@ slab = { path = "../crates/memory/slab" }
 
 [features]
 host = ["vga_display/host", "buddy/host", "page/host"]
+
+[lints]
+workspace = true

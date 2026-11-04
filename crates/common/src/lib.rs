@@ -1,5 +1,4 @@
 #![no_std]
-#![deny(clippy::all)]
 #![feature(const_convert)]
 #![feature(const_trait_impl)]
 #![feature(ptr_alignment_type)]

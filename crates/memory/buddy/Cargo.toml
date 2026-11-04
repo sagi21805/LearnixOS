@@ -19,3 +19,6 @@ typestate-groups = { path = "../../macros/typestate-groups/typestate-groups", de
 
 [features]
 host = []
+
+[lints]
+workspace = true

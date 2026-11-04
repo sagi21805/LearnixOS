@@ -16,3 +16,6 @@ sync = { path = "../../sync" }
 
 [features]
 host = []
+
+[lints]
+workspace = true
