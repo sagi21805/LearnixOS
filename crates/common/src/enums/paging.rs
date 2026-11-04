@@ -7,7 +7,7 @@ use crate::{
         BIG_PAGE_ALIGNMENT, BIG_PAGE_SIZE, HUGE_PAGE_ALIGNMENT,
         HUGE_PAGE_SIZE, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
-    error::{ConversionError, TableError},
+    error::ConversionError,
 };
 
 #[repr(u8)]

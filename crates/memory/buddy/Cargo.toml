@@ -13,7 +13,6 @@ bitfields = { path = "../../macros/bitfields" }
 strum_macros = { version = "0.27", default-features = false }
 strum = { version = "0.27", default-features = false }
 thiserror = { version = "2.0.12", default-features = false }
-libk = { path = "../../libk" }
 sync = { path = "../../sync" }
 typestate-groups = { path = "../../macros/typestate-groups/typestate-groups", default-features = false }
 
