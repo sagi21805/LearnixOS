@@ -16,7 +16,7 @@ extend = "1.2.0"
 bitfields = { path = "../crates/macros/bitfields" }
 # ahci = { path = "../crates/drivers/ahci" }
 keyboard = { path = "../crates/drivers/keyboard" }
-# pci = { path = "../crates/drivers/pci" }
+pci = { path = "../crates/drivers/pci" }
 vga_display = { path = "../crates/drivers/vga-display" }
 libk = { path = "../crates/libk" }
 buddy = { path = "../crates/memory/buddy" }

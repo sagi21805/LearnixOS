@@ -148,10 +148,10 @@ pub unsafe extern "C" fn _start() -> ! {
 
     // BUDDY_ALLOCATOR.print_allocated_regions();
     // panic!("")
-    // let mut pci_devices = pci::scan_pci();
-    // println!("Press ENTER to enumerate PCI devices!");
-    // let a = pci_devices.as_ptr() as usize;
-    // println!("pci_devices address: {:x}", a);
+    let pci_devices = pci::scan_pci(slab);
+    for device in &pci_devices {
+        println!("{}", device);
+    }
 
     // loop {
     //     let c = unsafe {
