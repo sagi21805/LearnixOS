@@ -83,9 +83,14 @@ pub static BUDDY_ALLOCATOR: Once<BuddyAllocator<PageMap, Page>> =
 pub static SLAB_ALLOCATOR: Once<SlabAllocator<Page, PageMap>> =
     Once::uninit();
 
+/// The kernel's entry point.
+///
+/// # Safety
+///
+/// Only the second stage may jump here, in long mode with the boot page
+/// tables and the kernel stack set up.
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
-#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _start() -> ! {
     vga_init();
 
@@ -131,13 +136,14 @@ pub unsafe extern "C" fn _start() -> ! {
         let keyboard_buffer =
             KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
 
-        let kb = KEYBOARD
+        KEYBOARD
             .lock()
             .get_or_init(|| Keyboard::new(keyboard_buffer));
         okprintln!("Initialized Keyboard at {:p}", buffer_address);
         interrupts::enable();
     }
-    let w = ADVANCED_WRITER.leak();
+    // SAFETY: this is the only `leak` of the writer, and it stays locked.
+    let w = unsafe { ADVANCED_WRITER.leak() };
     WRITER
         .lock()
         .set_writer(w.insert(AdvancedWriter::default()));
@@ -257,7 +263,7 @@ pub unsafe extern "C" fn _start() -> ! {
 
 /// This function is called on panic.
 #[panic_handler]
-unsafe fn panic(_info: &PanicInfo) -> ! {
+fn panic(_info: &PanicInfo) -> ! {
     unsafe {
         if let Some(screen) = SCREEN.get() {
             screen.force_unlock();
