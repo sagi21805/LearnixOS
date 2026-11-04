@@ -8,7 +8,7 @@ members = [
     "crates/macros/bitfields",
     # "crates/drivers/ahci",
     "crates/drivers/keyboard",
-    # "crates/drivers/pci",
+    "crates/drivers/pci",
     "crates/drivers/vga-display",
     "crates/memory/buddy",
     "crates/memory/slab",

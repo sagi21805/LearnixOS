@@ -6,12 +6,12 @@
 
 extern crate alloc;
 
+use bitfields::bitfields;
 use common::enums::{
     CascadedPicInterruptLine, ClassCode, DeviceID, HeaderType,
     PciDeviceType, Port, ProgrammingInterface, SubClass, VendorDevice,
     VendorID,
 };
-use bitfields::bitfields;
 use x86::instructions::port::PortExt;
 
 #[bitfields]
@@ -33,12 +33,12 @@ impl PciConfigurationCycle {
         function: u8,
         offset: u8,
     ) -> PciConfigurationCycle {
-        PciConfigurationCycle::default()
+        PciConfigurationCycle::new()
             .bus(bus)
             .device(device)
             .function(function)
             .offset(offset)
-            .enable()
+            .enable(true)
     }
 
     pub unsafe fn read(self) -> u32 {
@@ -377,9 +377,7 @@ impl PciDeviceHeader {
         unsafe { self.common.header_type }
     }
 
-    pub fn common(&self) -> &PciCommonHeader {
-        unsafe { &self.common }
-    }
+    pub fn common(&self) -> &PciCommonHeader { unsafe { &self.common } }
 }
 
 pub struct PciDevice {
