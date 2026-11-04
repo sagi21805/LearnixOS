@@ -33,7 +33,10 @@ use x86::{
     instructions::interrupts::{self, hlt},
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
     pic8259::CascadedPIC,
-    structures::interrupt_descriptor_table::InterruptDescriptorTable,
+    structures::{
+        interrupt_descriptor_table::InterruptDescriptorTable,
+        segments::TSS,
+    },
 };
 
 use libk::{
@@ -120,6 +123,8 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Initialized Slab Allocator");
     unsafe {
         interrupts::disable();
+        TSS.load();
+        okprintln!("Loaded task state segment");
         InterruptDescriptorTable::init(&IDT);
         okprintln!("Initialized interrupt descriptor table");
         IDT.lock().init_handlers();
