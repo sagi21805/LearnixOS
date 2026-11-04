@@ -2,7 +2,6 @@
 #![feature(const_convert)]
 #![feature(const_trait_impl)]
 #![feature(ptr_alignment_type)]
-#![feature(const_default)]
 #![feature(pattern_types, pattern_type_macro)]
 #![expect(
     internal_features,

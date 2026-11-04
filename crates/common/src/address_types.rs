@@ -2,7 +2,7 @@ use core::ptr::NonNull;
 
 #[cfg(target_arch = "x86_64")]
 use crate::constants::PHYSICAL_MEMORY_OFFSET;
-use crate::{constants::KERNEL_OFFSET, enums::PageTableLevel};
+use crate::enums::PageTableLevel;
 
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Div, DivAssign, Mul, MulAssign, Sub,

@@ -1,9 +1,5 @@
 #![no_std] // don't link the Rust standard library
 #![no_main] // disable all Rust-level entry points
-#![feature(optimize_attribute)]
-#![feature(ptr_as_ref_unchecked)]
-#![feature(unsafe_cell_access)]
-#![feature(ptr_alignment_type)]
 use common::{
     constants::{KERNEL_STACK_TOP, addresses::KERNEL_OFFSET},
     enums::Sections,

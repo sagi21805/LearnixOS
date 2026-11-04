@@ -1,9 +1,6 @@
 use crate::error::ConversionError;
 use derive_more::Display;
-use num_enum::{
-    ConstFromPrimitive, ConstIntoPrimitive, ConstTryFromPrimitive,
-    FromPrimitive, TryFromPrimitive, UnsafeFromPrimitive,
-};
+use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
 
 #[repr(u8)]
 #[derive(

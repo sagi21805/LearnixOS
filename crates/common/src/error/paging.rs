@@ -1,9 +1,5 @@
 use thiserror::Error;
 
-use crate::constants::{
-    BIG_PAGE_ALIGNMENT, HUGE_PAGE_ALIGNMENT, REGULAR_PAGE_ALIGNMENT,
-};
-
 #[derive(Error, Debug)]
 pub enum TableError {
     #[error("The table is not a root table")]

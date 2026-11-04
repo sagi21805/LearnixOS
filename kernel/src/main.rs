@@ -1,6 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(ptr_alignment_type)]
 #![feature(abi_x86_interrupt)]
 #![feature(const_default)]
 #![feature(const_trait_impl)]
@@ -11,23 +10,18 @@ use core::{cell::OnceCell, panic::PanicInfo};
 use alloc::boxed::Box;
 use buddy::BuddyAllocator;
 use common::{
-    address_types::{Address, PhysicalAddress, VirtualAddress},
     constants::{
-        MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, MiB, PARSED_MEMORY_MAP,
-        PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_SIZE,
+        MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, PARSED_MEMORY_MAP,
+        REGULAR_PAGE_SIZE,
     },
-    enums::{PS2ScanCode, PageSize},
+    enums::PS2ScanCode,
 };
 use keyboard::ps2_keyboard::Keyboard;
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use vga_display::{
-    SCREEN,
-    advanced_writer::AdvancedWriter,
-    eprintln,
-    generic_writer::{GenericWriter, Writer},
-    okprintln, vga_init,
-    writer::SimpleWriter,
+    SCREEN, advanced_writer::AdvancedWriter, generic_writer::Writer,
+    okprintln, vga_init, writer::SimpleWriter,
 };
 use x86::{
     instructions::interrupts::{self, hlt},
@@ -36,10 +30,7 @@ use x86::{
     structures::interrupt_descriptor_table::InterruptDescriptorTable,
 };
 
-use libk::{
-    alloc::{GlobalAllocator, VirtualAddressMapping},
-    print, println,
-};
+use libk::{alloc::GlobalAllocator, print, println};
 
 use sync::{mutex::SpinMutex, once::Once, spsc::SpscRingBuffer};
 

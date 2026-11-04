@@ -19,7 +19,7 @@ use sync::{mutex::SpinMutex, once::Once};
 pub static TSS: TaskStateSegment = TaskStateSegment::default();
 
 use crate::{
-    instructions::{self, interrupts::hlt},
+    instructions,
     registers::rflags::Rflags,
     structures::{
         global_descriptor_table::{
