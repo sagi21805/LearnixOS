@@ -38,7 +38,7 @@ impl BuddyOrder {
         match self {
             BuddyOrder::None => unreachable!(),
             BuddyOrder::MAX => None,
-            _ => BuddyOrder::try_from(self as u8 + 1).ok(),
+            _ => Some(BuddyOrder::from(self as u8 + 1)),
         }
     }
 
@@ -46,7 +46,7 @@ impl BuddyOrder {
         match self {
             BuddyOrder::None => unreachable!(),
             BuddyOrder::MIN => None,
-            _ => BuddyOrder::try_from(self as u8 - 1).ok(),
+            _ => Some(BuddyOrder::from(self as u8 - 1)),
         }
     }
 }
