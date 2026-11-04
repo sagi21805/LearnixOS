@@ -49,8 +49,10 @@ pub enum InterruptStackTable {
     Debug, Clone, Copy, ConstTryFromPrimitive, ConstIntoPrimitive,
 )]
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
-pub enum InterruptType {
-    Fault = 0xe,
+pub enum GateType {
+    /// Clears `IF` on entry, so the handler runs with interrupts off.
+    Interrupt = 0xe,
+    /// Leaves `IF` as it was.
     Trap = 0xf,
 }
 
