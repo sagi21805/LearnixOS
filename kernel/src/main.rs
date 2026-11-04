@@ -57,8 +57,7 @@ static MMAP: Once<MemoryMap> = Once::uninit();
 static PIC: SpinMutex<CascadedPIC> =
     SpinMutex::new(CascadedPIC::default());
 
-static IDT: Once<SpinMutex<Box<InterruptDescriptorTable>>> =
-    Once::uninit();
+static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
 
 #[unsafe(no_mangle)]
 static KEYBOARD: SpinMutex<OnceCell<Keyboard>> =
@@ -125,10 +124,10 @@ pub unsafe extern "C" fn _start() -> ! {
         interrupts::disable();
         TSS.load();
         okprintln!("Loaded task state segment");
-        InterruptDescriptorTable::init(&IDT);
+        let mut table = Box::new(InterruptDescriptorTable::default());
+        table.init_handlers();
+        IDT.init(table).load();
         okprintln!("Initialized interrupt descriptor table");
-        IDT.lock().init_handlers();
-        okprintln!("Initialized interrupts handlers");
         PIC.lock().init();
         okprintln!("Initialized Programmable Interrupt Controller");
         let buffer: Box<[u8], _> = Box::new_in([0u8; 4096], slab);
