@@ -12,3 +12,6 @@ num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features
 bitfields = { path = "../../macros/bitfields" }
 strum_macros = { version = "0.27", default-features = false }
 strum = { version = "0.27", default-features = false }
+
+[lints]
+workspace = true

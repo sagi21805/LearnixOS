@@ -26,6 +26,9 @@ exclude = ["xtask", "crates/macros/typestate-groups"]
 
 resolver = "2"
 
+[workspace.lints.clippy]
+all = "warn"
+
 [profile.release]
 opt-level = 3
 # overflow-checks = true

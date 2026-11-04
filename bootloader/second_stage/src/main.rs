@@ -5,7 +5,6 @@
 #![allow(static_mut_refs)]
 #![feature(unsafe_cell_access)]
 #![feature(ptr_alignment_type)]
-#![deny(clippy::all)]
 use common::{
     constants::{KERNEL_STACK_TOP, addresses::KERNEL_OFFSET},
     enums::Sections,

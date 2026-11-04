@@ -19,3 +19,6 @@ typestate-groups = { path = "../../macros/typestate-groups/typestate-groups", de
 zerocopy = { version = "0.8.59", default-features = false, features = [
     "derive",
 ] }
+
+[lints]
+workspace = true

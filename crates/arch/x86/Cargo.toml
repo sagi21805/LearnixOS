@@ -11,3 +11,6 @@ derive_more = { version = "2.0.1", default-features = false, features = [
 ] }
 bitfields = { path = "../../macros/bitfields" }
 sync = { path = "../../sync" }
+
+[lints]
+workspace = true

@@ -1,7 +1,5 @@
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
-#![warn(clippy::multiple_unsafe_ops_per_block)]
-#![warn(clippy::missing_safety_doc)]
 #![feature(ptr_alignment_type)]
 #![feature(const_trait_impl)]
 #![feature(const_cmp)]

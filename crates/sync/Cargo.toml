@@ -6,3 +6,6 @@ edition = "2024"
 [dependencies]
 
 [features]
+
+[lints]
+workspace = true
