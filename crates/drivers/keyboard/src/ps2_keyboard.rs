@@ -53,8 +53,4 @@ impl Keyboard {
         };
         if str.is_empty() { Err(key) } else { Ok(str) }
     }
-
-    pub unsafe fn consumer(&self) -> &Consumer<'static, u8> {
-        &self.consumer
-    }
 }

@@ -16,6 +16,4 @@ pub mod enums;
 pub mod error;
 pub mod iter;
 pub mod page_index;
-#[cfg(target_arch = "x86_64")]
-pub mod ring_buffer;
 pub mod volatile;
