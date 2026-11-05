@@ -33,7 +33,7 @@ impl Keyboard {
     }
 
     pub fn read_raw_scancode(&self) -> Option<PS2ScanCode> {
-        PS2ScanCode::try_from(self.consumer.pop()?).ok()
+        self.consumer.pop().map(PS2ScanCode::from)
     }
 
     /// TODO change in the future to just return the
@@ -52,9 +52,5 @@ impl Keyboard {
             key.to_str()
         };
         if str.is_empty() { Err(key) } else { Ok(str) }
-    }
-
-    pub unsafe fn consumer(&self) -> &Consumer<'static, u8> {
-        &self.consumer
     }
 }

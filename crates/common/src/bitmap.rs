@@ -1,6 +1,5 @@
 use crate::address_types::{Address, VirtualAddress};
 use core::{panic, slice};
-use derive_more::Constructor;
 
 #[derive(Debug, Clone, Default, Copy)]
 pub struct Position {
@@ -48,7 +47,7 @@ impl Position {
     }
 }
 
-#[derive(Debug, Clone, Default, Constructor, Copy)]
+#[derive(Debug, Clone, Default, Copy)]
 pub struct ContiguousBlockLayout {
     pub low_mask: u64,
     pub index_count: usize,
@@ -63,11 +62,13 @@ impl ContiguousBlockLayout {
         let index_count = remain_after_low / u64::BITS as usize;
         let high_bit_count = remain_after_low % u64::BITS as usize;
         (
-            Self::new(
-                u64::MAX.unbounded_shr(u64::BITS - low_bit_count as u32),
+            Self {
+                low_mask: u64::MAX
+                    .unbounded_shr(u64::BITS - low_bit_count as u32),
                 index_count,
-                u64::MAX.unbounded_shr(u64::BITS - high_bit_count as u32),
-            ),
+                high_mask: u64::MAX
+                    .unbounded_shr(u64::BITS - high_bit_count as u32),
+            },
             unsafe {
                 Position::new_unchecked(
                     index_count + (low_bit_count / u64::BITS as usize) + 2,
@@ -90,12 +91,14 @@ impl ContiguousBlockLayout {
         let low_bit_count = size_bits - remain_after_low;
         let index_count = remain_after_low / u64::BITS as usize;
         let high_bit_count = remain_after_low & (u64::BITS as usize - 1);
-        Self::new(
-            (u64::MAX.unbounded_shr(u64::BITS - low_bit_count as u32))
+        Self {
+            low_mask: (u64::MAX
+                .unbounded_shr(u64::BITS - low_bit_count as u32))
                 << p.bit_index,
             index_count,
-            u64::MAX.unbounded_shr(u64::BITS - high_bit_count as u32),
-        )
+            high_mask: u64::MAX
+                .unbounded_shr(u64::BITS - high_bit_count as u32),
+        }
     }
 
     /// Resets the block to it's initial value without

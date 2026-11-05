@@ -1,3 +1,4 @@
+#[cfg(target_arch = "x86_64")]
 macro_rules! impl_reg_read_write_u64 {
     ($name:ident) => {
         pub mod $name {
@@ -135,4 +136,5 @@ macro_rules! impl_reg_read_write_u8 {
 pub(crate) use impl_reg_read_write_u8;
 pub(crate) use impl_reg_read_write_u16;
 pub(crate) use impl_reg_read_write_u32;
+#[cfg(target_arch = "x86_64")]
 pub(crate) use impl_reg_read_write_u64;

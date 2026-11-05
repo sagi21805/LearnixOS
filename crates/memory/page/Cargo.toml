@@ -1,22 +1,17 @@
 [package]
 name = "page"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-common = { path = "../../common" }
-x86 = { path = "../../arch/x86" }
-buddy = { path = "../buddy" }
-slab = { path = "../slab" }
-num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = [
-    "complex-expressions",
-] }
-bitfields = { path = "../../macros/bitfields" }
-libk = { path = "../../libk" }
-strum_macros = { version = "0.27", default-features = false }
-strum = { version = "0.27", default-features = false }
-extend = "1.2.0"
-sync = { path = "../../sync" }
+common.workspace = true
+x86.workspace = true
+buddy.workspace = true
+slab.workspace = true
+libk.workspace = true
 
 [features]
 host = []
+
+[lints]
+workspace = true

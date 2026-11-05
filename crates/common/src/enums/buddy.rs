@@ -1,9 +1,7 @@
 use num_enum::{ConstFromPrimitive, ConstIntoPrimitive};
-use strum_macros::VariantArray;
 
 #[repr(u8)]
 #[derive(
-    VariantArray,
     Clone,
     Copy,
     PartialEq,
@@ -38,7 +36,7 @@ impl BuddyOrder {
         match self {
             BuddyOrder::None => unreachable!(),
             BuddyOrder::MAX => None,
-            _ => BuddyOrder::try_from(self as u8 + 1).ok(),
+            _ => Some(BuddyOrder::from(self as u8 + 1)),
         }
     }
 
@@ -46,7 +44,7 @@ impl BuddyOrder {
         match self {
             BuddyOrder::None => unreachable!(),
             BuddyOrder::MIN => None,
-            _ => BuddyOrder::try_from(self as u8 - 1).ok(),
+            _ => Some(BuddyOrder::from(self as u8 - 1)),
         }
     }
 }
