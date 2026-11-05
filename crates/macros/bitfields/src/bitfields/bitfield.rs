@@ -33,7 +33,7 @@ fn extract_attributes(
         ));
     }
 
-    Ok((flag_attrs.get(0).copied(), doc_attrs))
+    Ok((flag_attrs.first().copied(), doc_attrs))
 }
 
 impl<'a> BitField<'a> {

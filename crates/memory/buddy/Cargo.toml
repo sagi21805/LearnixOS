@@ -1,21 +1,18 @@
 [package]
 name = "buddy"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-common = { path = "../../common" }
-x86 = { path = "../../arch/x86" }
-num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = [
-    "complex-expressions",
-] }
-bitfields = { path = "../../macros/bitfields" }
-strum_macros = { version = "0.27", default-features = false }
-strum = { version = "0.27", default-features = false }
-thiserror = { version = "2.0.12", default-features = false }
-libk = { path = "../../libk" }
-sync = { path = "../../sync" }
-typestate-groups = { path = "../../macros/typestate-groups/typestate-groups", default-features = false }
+common.workspace = true
+x86.workspace = true
+bitfields.workspace = true
+thiserror.workspace = true
+sync.workspace = true
+typestate-groups.workspace = true
 
 [features]
 host = []
+
+[lints]
+workspace = true

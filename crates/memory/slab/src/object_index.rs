@@ -18,7 +18,11 @@ impl ObjectIndex {
             u16::MAX => None,
             // SAFETY: `idx` isn't `u16::MAX`, so it is in the pattern's
             // range.
-            idx => Some(Self(unsafe { core::mem::transmute(idx) })),
+            idx => Some(Self(unsafe {
+                core::mem::transmute::<u16, pattern_type!(u16 is 0..=65534)>(
+                    idx,
+                )
+            })),
         }
     }
 

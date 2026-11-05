@@ -27,6 +27,13 @@ impl<T, R: RelaxStrategy> Mutex<T, R> {
         }
     }
 
+    /// A mutex that starts locked, with no guard to release it.
+    ///
+    /// # Safety
+    ///
+    /// The caller must reach the data only through [`Self::leak`] until it
+    /// calls [`Self::force_unlock`], because [`Self::lock`] spins until
+    /// then.
     // TODO: Make safe with compile time state of locked.
     pub const unsafe fn new_locked(data: T) -> Self {
         Self {
@@ -58,12 +65,28 @@ impl<T, R: RelaxStrategy> Mutex<T, R> {
         Some(MutexGuard { mutex: self })
     }
 
+    /// The data behind this mutex, without taking the lock.
+    ///
+    /// # Safety
+    ///
+    /// The caller must be the only user of the data for as long as the
+    /// returned reference lives.
     // TODO: Make safe with so can only be called when in locked state.
+    #[expect(
+        clippy::mut_from_ref,
+        reason = "the data sits in an `UnsafeCell`, and the caller \
+                  proves that nothing else reaches it"
+    )]
     pub const unsafe fn leak(&self) -> &mut T {
         unsafe { &mut *self.data.get() }
     }
 
-    // Release the lock
+    /// Releases the lock, whether or not a guard holds it.
+    ///
+    /// # Safety
+    ///
+    /// Any guard or [`Self::leak`] reference that is still alive must not
+    /// use the data again, because the next locker assumes it is alone.
     pub unsafe fn force_unlock(&self) {
         self.locked.store(false, Ordering::Release);
     }

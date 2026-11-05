@@ -1,26 +1,16 @@
 use core::{alloc::Layout, mem::Alignment};
 use num_enum::TryFromPrimitive;
-use strum_macros::{EnumIter, VariantArray};
 
 use crate::{
     constants::{
         BIG_PAGE_ALIGNMENT, BIG_PAGE_SIZE, HUGE_PAGE_ALIGNMENT,
         HUGE_PAGE_SIZE, REGULAR_PAGE_ALIGNMENT, REGULAR_PAGE_SIZE,
     },
-    error::{ConversionError, TableError},
+    error::ConversionError,
 };
 
 #[repr(u8)]
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Eq,
-    EnumIter,
-    TryFromPrimitive,
-    VariantArray,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, TryFromPrimitive)]
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum PageTableLevel {
     PML4 = 0,
@@ -50,9 +40,7 @@ impl PageTableLevel {
     }
 }
 #[repr(u8)]
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, EnumIter, TryFromPrimitive,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, TryFromPrimitive)]
 #[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
 pub enum PageSize {
     /// 4Kib pages
