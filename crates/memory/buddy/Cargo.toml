@@ -1,15 +1,15 @@
 [package]
 name = "buddy"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-common = { path = "../../common" }
-x86 = { path = "../../arch/x86" }
-bitfields = { path = "../../macros/bitfields" }
-thiserror = { version = "2.0.12", default-features = false }
-sync = { path = "../../sync" }
-typestate-groups = { path = "../../macros/typestate-groups/typestate-groups", default-features = false }
+common.workspace = true
+x86.workspace = true
+bitfields.workspace = true
+thiserror.workspace = true
+sync.workspace = true
+typestate-groups.workspace = true
 
 [features]
 host = []
