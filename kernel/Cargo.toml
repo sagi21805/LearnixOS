@@ -1,21 +1,21 @@
 [package]
 name = "kernel"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-common = { path = "../crates/common" }
-x86 = { path = "../crates/arch/x86" }
-extend = "1.2.0"
-# ahci = { path = "../crates/drivers/ahci" }
-keyboard = { path = "../crates/drivers/keyboard" }
-# pci = { path = "../crates/drivers/pci" }
-vga_display = { path = "../crates/drivers/vga-display" }
-libk = { path = "../crates/libk" }
-buddy = { path = "../crates/memory/buddy" }
-sync = { path = "../crates/sync" }
-page = { path = "../crates/memory/page" }
-slab = { path = "../crates/memory/slab" }
+common.workspace = true
+x86.workspace = true
+extend.workspace = true
+# ahci.workspace = true
+keyboard.workspace = true
+# pci.workspace = true
+vga_display.workspace = true
+libk.workspace = true
+buddy.workspace = true
+sync.workspace = true
+page.workspace = true
+slab.workspace = true
 
 [features]
 host = ["vga_display/host", "buddy/host", "page/host"]

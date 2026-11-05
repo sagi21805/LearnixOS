@@ -1,14 +1,14 @@
 [package]
 name = "page"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-common = { path = "../../common" }
-x86 = { path = "../../arch/x86" }
-buddy = { path = "../buddy" }
-slab = { path = "../slab" }
-libk = { path = "../../libk" }
+common.workspace = true
+x86.workspace = true
+buddy.workspace = true
+slab.workspace = true
+libk.workspace = true
 
 [features]
 host = []
