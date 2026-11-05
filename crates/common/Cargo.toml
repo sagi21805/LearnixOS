@@ -7,8 +7,13 @@ edition = "2024"
 num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = [
     "complex-expressions",
 ] }
-derive_more = { version = "2.0.1", default-features = false, features = [
-    "full",
+derive_more = { version = "2.1.1", default-features = false, features = [
+    "add",
+    "add_assign",
+    "mul",
+    "mul_assign",
+    "as_ref",
+    "display",
 ] }
 thiserror = { version = "2.0.12", default-features = false }
 bitfields = { path = "../macros/bitfields" }
