@@ -1,9 +1,7 @@
 use num_enum::{ConstFromPrimitive, ConstIntoPrimitive};
-use strum_macros::VariantArray;
 
 #[repr(u8)]
 #[derive(
-    VariantArray,
     Clone,
     Copy,
     PartialEq,

@@ -4,16 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = [
-    "complex-expressions",
-] }
 common = { path = "../crates/common" }
 x86 = { path = "../crates/arch/x86" }
-derive_more = { version = "2.1.1", default-features = false, features = [
-    "full",
-] }
 extend = "1.2.0"
-bitfields = { path = "../crates/macros/bitfields" }
 # ahci = { path = "../crates/drivers/ahci" }
 keyboard = { path = "../crates/drivers/keyboard" }
 # pci = { path = "../crates/drivers/pci" }
