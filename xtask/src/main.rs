@@ -62,7 +62,8 @@ enum Commands {
     Build(BuildArgs),
     /// Build and launch the OS in QEMU
     Run(RunArgs),
-    /// Lint all stages, the host-side tests and xtask with clippy
+    /// Lint all stages, the library crates with their tests and xtask
+    /// with clippy
     Clippy(ClippyArgs),
 }
 
@@ -183,8 +184,8 @@ impl Shell {
         Ok(())
     }
 
-    /// Lints each stage on its own target, then the tests on the host and
-    /// xtask itself.
+    /// Lints each stage on its own target, then the library crates with
+    /// their tests on x86-64 Linux, then xtask on the host.
     ///
     /// Every lint runs even after one fails, because an editor shows only
     /// the diagnostics this command prints.
@@ -209,8 +210,10 @@ impl Shell {
                 "
             )
         });
-        // The stages have panic handlers, so they can't link on the host.
-        let host = cmd!(
+        // The stages have panic handlers, so they can't link with `std`.
+        // The `x86` crate is empty off x86, so this target is fixed rather
+        // than the host's.
+        let library_crates = cmd!(
             self,
             "
             cargo clippy
@@ -219,7 +222,7 @@ impl Shell {
                 --exclude=second_stage
                 --exclude=kernel
                 --all-targets
-                --target=host-tuple
+                --target=x86_64-unknown-linux-gnu
                 {CLIPPY_FLAGS...}
                 {format}
             "
@@ -238,7 +241,7 @@ impl Shell {
 
         let statuses = stages
             .into_iter()
-            .chain([host, xtask])
+            .chain([library_crates, xtask])
             .map(|lint| Command::from(lint).status())
             .collect::<Result<Vec<_>, _>>()
             .context("Failed to execute cargo clippy")?;
