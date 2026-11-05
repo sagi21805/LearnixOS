@@ -1,7 +1,10 @@
 use anyhow::{ensure, Context, Result};
 use clap::{Args, Parser, Subcommand};
 use object::{elf::SHF_ALLOC, Object, ObjectSection, SectionFlags};
-use std::{path::Path, process::Command};
+use std::{
+    path::Path,
+    process::{Command, ExitStatus},
+};
 use xshell::{cmd, Shell};
 
 /// Flags that build `core` and `alloc` for the JSON target specs.
@@ -13,6 +16,11 @@ const BUILD_STD_FLAGS: [&str; 6] = [
     "-Z",
     "json-target-spec",
 ];
+
+/// Flags for every clippy run. The separate target directory keeps a lint
+/// from blocking a build on cargo's lock.
+const CLIPPY_FLAGS: [&str; 2] =
+    ["--keep-going", "--target-dir=target/clippy"];
 
 /// The smallest `image.bin`, which is 512KB plus header and offset.
 const MIN_IMAGE_SIZE: usize = 515_585;
@@ -54,6 +62,9 @@ enum Commands {
     Build(BuildArgs),
     /// Build and launch the OS in QEMU
     Run(RunArgs),
+    /// Lint all stages, the library crates with their tests and xtask
+    /// with clippy
+    Clippy(ClippyArgs),
 }
 
 #[derive(Args)]
@@ -75,6 +86,13 @@ struct RunArgs {
     qemu_args: Vec<String>,
 }
 
+#[derive(Args)]
+struct ClippyArgs {
+    /// Passed to cargo. rust-analyzer needs `json`.
+    #[arg(long, default_value = "human")]
+    message_format: String,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let sh = Shell::new()?;
@@ -90,6 +108,7 @@ fn main() -> Result<()> {
             sh.build_image(&args.build)?;
             sh.run_qemu(&args.qemu_args)
         }
+        Commands::Clippy(args) => sh.clippy(&args),
     }
 }
 
@@ -162,6 +181,74 @@ impl Shell {
             "
         )
         .run()?;
+        Ok(())
+    }
+
+    /// Lints each stage on its own target, then the library crates with
+    /// their tests on x86-64 Linux, then xtask on the host.
+    ///
+    /// Every lint runs even after one fails, because an editor shows only
+    /// the diagnostics this command prints.
+    fn clippy(&self, args: &ClippyArgs) -> Result<()> {
+        let format = format!("--message-format={}", args.message_format);
+
+        let stages = [&FIRST_STAGE, &SECOND_STAGE, &KERNEL].map(|stage| {
+            let manifest = stage.manifest();
+            let target_spec = stage.target_spec();
+            let profile = stage.profile;
+
+            cmd!(
+                self,
+                "
+                cargo clippy
+                    --manifest-path={manifest}
+                    --profile={profile}
+                    --target={target_spec}
+                    {BUILD_STD_FLAGS...}
+                    {CLIPPY_FLAGS...}
+                    {format}
+                "
+            )
+        });
+        // The stages have panic handlers, so they can't link with `std`.
+        // The `x86` crate is empty off x86, so this target is fixed rather
+        // than the host's.
+        let library_crates = cmd!(
+            self,
+            "
+            cargo clippy
+                --workspace
+                --exclude=first_stage
+                --exclude=second_stage
+                --exclude=kernel
+                --all-targets
+                --target=x86_64-unknown-linux-gnu
+                {CLIPPY_FLAGS...}
+                {format}
+            "
+        );
+        let xtask = cmd!(
+            self,
+            "
+            cargo clippy
+                --manifest-path=xtask/Cargo.toml
+                --all-targets
+                --target=host-tuple
+                {CLIPPY_FLAGS...}
+                {format}
+            "
+        );
+
+        let statuses = stages
+            .into_iter()
+            .chain([library_crates, xtask])
+            .map(|lint| Command::from(lint).status())
+            .collect::<Result<Vec<_>, _>>()
+            .context("Failed to execute cargo clippy")?;
+        ensure!(
+            statuses.iter().all(ExitStatus::success),
+            "clippy reported errors"
+        );
         Ok(())
     }
 

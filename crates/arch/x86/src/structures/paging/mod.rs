@@ -1,13 +1,16 @@
 #[macro_use]
 pub mod entry_flags;
+#[cfg(target_arch = "x86")]
 pub mod init;
 pub mod page_table;
 pub mod page_table_entry;
 
+#[cfg(target_arch = "x86_64")]
 use core::ptr::NonNull;
 
 #[cfg(target_arch = "x86_64")]
 use common::constants::{DIRECT_MAP_SIZE, PHYSICAL_MEMORY_OFFSET};
+#[cfg(target_arch = "x86_64")]
 use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
     enums::PageTableLevel,

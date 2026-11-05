@@ -89,7 +89,7 @@ impl<const W: usize, const H: usize> GenericWriter
             self.screen.lock().scroll_up(lines);
             self.screen.lock().reset_cursor();
             self.display_line = new_line;
-            self.screen_start = self.row_table[new_line] as usize;
+            self.screen_start = self.row_table[new_line];
         }
     }
 
@@ -102,7 +102,7 @@ impl<const W: usize, const H: usize> GenericWriter
             self.screen.lock().scroll_down(lines);
             self.screen.lock().reset_cursor();
             self.display_line = new_line;
-            self.screen_start = self.row_table[new_line] as usize;
+            self.screen_start = self.row_table[new_line];
         }
     }
 
@@ -125,8 +125,8 @@ impl<const W: usize, const H: usize> GenericWriter
     fn set_cursor_position(&mut self, position: usize) {
         let mut screen = self.screen.lock();
         if self.screen_start == 0 {
-            for i in 0..position {
-                self.write_vga_char(screen.buffer[i]);
+            for char in screen.buffer.iter().take(position) {
+                self.write_vga_char(*char);
             }
             screen.reset_cursor();
             // self.screen_start = self.cursor;
