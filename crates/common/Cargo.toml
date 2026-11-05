@@ -10,8 +10,6 @@ num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features
 derive_more = { version = "2.0.1", default-features = false, features = [
     "full",
 ] }
-strum_macros = { version = "0.27", default-features = false }
-strum = { version = "0.27", default-features = false }
 thiserror = { version = "2.0.12", default-features = false }
 bitfields = { path = "../macros/bitfields" }
 
