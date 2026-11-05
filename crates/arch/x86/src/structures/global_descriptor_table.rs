@@ -1,9 +1,13 @@
 use bitfields::bitfields;
+#[cfg(target_arch = "x86_64")]
+use common::enums::Sections;
 use common::enums::{
-    ProtectionLevel, Sections, SegmentDescriptorType, SystemSegmentType,
+    ProtectionLevel, SegmentDescriptorType, SystemSegmentType,
 };
 
-use crate::{instructions, structures::segments::SegmentSelector};
+use crate::instructions;
+#[cfg(target_arch = "x86_64")]
+use crate::structures::segments::SegmentSelector;
 
 #[bitfields]
 pub struct AccessByte {

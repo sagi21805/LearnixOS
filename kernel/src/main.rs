@@ -1,6 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(ptr_alignment_type)]
 #![feature(abi_x86_interrupt)]
 #![feature(const_default)]
 #![feature(const_trait_impl)]
@@ -11,23 +10,18 @@ use core::{cell::OnceCell, panic::PanicInfo};
 use alloc::boxed::Box;
 use buddy::BuddyAllocator;
 use common::{
-    address_types::{Address, PhysicalAddress, VirtualAddress},
     constants::{
-        MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, MiB, PARSED_MEMORY_MAP,
-        PHYSICAL_MEMORY_OFFSET, REGULAR_PAGE_SIZE,
+        MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, PARSED_MEMORY_MAP,
+        REGULAR_PAGE_SIZE,
     },
-    enums::{PS2ScanCode, PageSize},
+    enums::PS2ScanCode,
 };
 use keyboard::ps2_keyboard::Keyboard;
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use vga_display::{
-    SCREEN,
-    advanced_writer::AdvancedWriter,
-    eprintln,
-    generic_writer::{GenericWriter, Writer},
-    okprintln, vga_init,
-    writer::SimpleWriter,
+    SCREEN, advanced_writer::AdvancedWriter, generic_writer::Writer,
+    okprintln, vga_init, writer::SimpleWriter,
 };
 use x86::{
     instructions::interrupts::{self, hlt},
@@ -36,10 +30,7 @@ use x86::{
     structures::interrupt_descriptor_table::InterruptDescriptorTable,
 };
 
-use libk::{
-    alloc::{GlobalAllocator, VirtualAddressMapping},
-    print, println,
-};
+use libk::{alloc::GlobalAllocator, print, println};
 
 use sync::{mutex::SpinMutex, once::Once, spsc::SpscRingBuffer};
 
@@ -83,9 +74,14 @@ pub static BUDDY_ALLOCATOR: Once<BuddyAllocator<PageMap, Page>> =
 pub static SLAB_ALLOCATOR: Once<SlabAllocator<Page, PageMap>> =
     Once::uninit();
 
+/// The kernel's entry point.
+///
+/// # Safety
+///
+/// Only the second stage may jump here, in long mode with the boot page
+/// tables and the kernel stack set up.
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
-#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _start() -> ! {
     vga_init();
 
@@ -131,13 +127,14 @@ pub unsafe extern "C" fn _start() -> ! {
         let keyboard_buffer =
             KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
 
-        let kb = KEYBOARD
+        KEYBOARD
             .lock()
             .get_or_init(|| Keyboard::new(keyboard_buffer));
         okprintln!("Initialized Keyboard at {:p}", buffer_address);
         interrupts::enable();
     }
-    let w = ADVANCED_WRITER.leak();
+    // SAFETY: this is the only `leak` of the writer, and it stays locked.
+    let w = unsafe { ADVANCED_WRITER.leak() };
     WRITER
         .lock()
         .set_writer(w.insert(AdvancedWriter::default()));
@@ -257,7 +254,7 @@ pub unsafe extern "C" fn _start() -> ! {
 
 /// This function is called on panic.
 #[panic_handler]
-unsafe fn panic(_info: &PanicInfo) -> ! {
+fn panic(_info: &PanicInfo) -> ! {
     unsafe {
         if let Some(screen) = SCREEN.get() {
             screen.force_unlock();

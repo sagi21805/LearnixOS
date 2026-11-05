@@ -6,7 +6,7 @@ pub struct Writer<'a> {
 
 impl<'a> Writer<'a> {
     pub const fn new(inner: &'a mut dyn GenericWriter) -> Self {
-        Self { inner: inner }
+        Self { inner }
     }
 
     pub fn set_writer(&mut self, inner: &'a mut dyn GenericWriter) {

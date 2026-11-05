@@ -1,5 +1,4 @@
 unsafe extern "Rust" {
-    #[allow(unused)]
     pub unsafe fn kprint(args: ::core::fmt::Arguments<'_>);
 }
 

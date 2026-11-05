@@ -59,7 +59,7 @@ impl Screen {
                         ::core::ptr::write_volatile(position as *mut _, c);
                     }
                     self.screen_position += 1;
-                    if self.screen_position % self.width == 0 {
+                    if self.screen_position.is_multiple_of(self.width) {
                         WriteInfo::LineUp
                     } else {
                         WriteInfo::SameLine
@@ -71,7 +71,7 @@ impl Screen {
         };
         self.change_cursor_position_on_screen();
 
-        return info;
+        info
     }
 
     pub fn new_line(&mut self) -> WriteInfo {

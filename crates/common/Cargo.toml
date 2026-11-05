@@ -1,16 +1,20 @@
 [package]
 name = "common"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = [
-    "complex-expressions",
+num_enum.workspace = true
+derive_more = { version = "2.1.1", default-features = false, features = [
+    "add",
+    "add_assign",
+    "mul",
+    "mul_assign",
+    "as_ref",
+    "display",
 ] }
-derive_more = { version = "2.0.1", default-features = false, features = [
-    "full",
-] }
-strum_macros = { version = "0.27", default-features = false }
-strum = { version = "0.27", default-features = false }
-thiserror = { version = "2.0.12", default-features = false }
-bitfields = { path = "../macros/bitfields" }
+thiserror.workspace = true
+bitfields.workspace = true
+
+[lints]
+workspace = true

@@ -38,8 +38,7 @@ impl BuddyArena<Page> for PageMap {
 
         let last = regions
             .iter()
-            .filter(|r| r.region_type == MemoryRegionType::Usable)
-            .last()
+            .rfind(|r| r.region_type == MemoryRegionType::Usable)
             .expect("Memory map is empty, no useble region found");
 
         let last_address = (last.base_address + last.length) as usize;
@@ -130,7 +129,7 @@ impl BuddyArena<Page> for PageMap {
             }
         };
 
-        Ok(self.at(buddy_idx).ok_or(BuddyError::BuddyOutOfRange)?)
+        self.at(buddy_idx).ok_or(BuddyError::BuddyOutOfRange)
     }
 
     #[inline]

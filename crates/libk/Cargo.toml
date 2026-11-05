@@ -1,10 +1,13 @@
 [package]
 name = "libk"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-common = { path = "../common" }
-x86 = { path = "../arch/x86" }
-sync = { path = "../sync" }
-extend = "1.2.0"
+common.workspace = true
+x86.workspace = true
+sync.workspace = true
+extend.workspace = true
+
+[lints]
+workspace = true

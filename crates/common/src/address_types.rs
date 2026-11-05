@@ -2,7 +2,7 @@ use core::ptr::NonNull;
 
 #[cfg(target_arch = "x86_64")]
 use crate::constants::PHYSICAL_MEMORY_OFFSET;
-use crate::{constants::KERNEL_OFFSET, enums::PageTableLevel};
+use crate::enums::PageTableLevel;
 
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Div, DivAssign, Mul, MulAssign, Sub,
@@ -187,20 +187,6 @@ impl VirtualAddress {
     /// `address` unchanged, as 32-bit addresses have no canonical form.
     #[cfg(target_arch = "x86")]
     const fn canonical(address: usize) -> usize { address }
-
-    #[allow(arithmetic_overflow)]
-    pub const fn from_indexes(
-        i4: usize,
-        i3: usize,
-        i2: usize,
-        i1: usize,
-    ) -> Self {
-        Self((i4 << 39) | (i3 << 30) | (i2 << 21) | (i1 << 12))
-    }
-
-    pub const fn from_indices(indices: [usize; 4]) -> Self {
-        Self::from_indexes(indices[0], indices[1], indices[2], indices[3])
-    }
 
     pub const fn index_of(&self, level: PageTableLevel) -> usize {
         (self.0 >> (39 - 9 * (level as usize))) & 0o777

@@ -1,5 +1,4 @@
 use crate::error::ConversionError;
-use bitfields::bitfields;
 use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
 
 #[repr(u8)]
@@ -58,7 +57,7 @@ mod page_fault {
 
     use crate::error::ConversionError;
     use bitfields::bitfields;
-    use num_enum::{ConstIntoPrimitive, ConstTryFromPrimitive};
+    use num_enum::ConstTryFromPrimitive;
 
     #[repr(u8)]
     #[derive(Debug, Clone, Copy, ConstTryFromPrimitive)]

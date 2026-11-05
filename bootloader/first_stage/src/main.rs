@@ -1,6 +1,5 @@
 #![no_std] // don't link the Rust standard library
 #![no_main] // disable all Rust-level entry points
-#![deny(clippy::all)]
 mod disk;
 
 use common::{
@@ -39,7 +38,11 @@ pub fn first_stage() -> ! {
         enter_protected_mode();
     }
 
-    #[allow(clippy::empty_loop)]
+    #[expect(
+        clippy::empty_loop,
+        reason = "`enter_protected_mode` never returns, and a `hlt` loop \
+                  would take space in the 512-byte boot sector"
+    )]
     loop {}
 }
 
@@ -96,12 +99,14 @@ unsafe fn enter_protected_mode() {
     unsafe { GLOBAL_DESCRIPTOR_TABLE.load() };
 
     // Set the Protected Mode bit and enter Protected Mode
-    asm!(
-        "mov eax, cr0",
-        "or eax, 1",
-        "mov cr0, eax",
-        options(readonly, nostack, preserves_flags)
-    );
+    unsafe {
+        asm!(
+            "mov eax, cr0",
+            "or eax, 1",
+            "mov cr0, eax",
+            options(readonly, nostack, preserves_flags)
+        );
+    }
 
     // Jump to the next stage
     // The 'ljmp' instruction is required to because it updates the cpu
@@ -109,12 +114,14 @@ unsafe fn enter_protected_mode() {
     //
     // The segment is the offset in the GDT.
     // (KernelCode = 0x8 which is the code segment)
-    asm!(
-        "ljmp ${segment}, ${next_stage_address}",
-        segment = const Sections::KernelCode as u8,
-        next_stage_address = const SECOND_STAGE_OFFSET,
-        options(att_syntax)
-    );
+    unsafe {
+        asm!(
+            "ljmp ${segment}, ${next_stage_address}",
+            segment = const Sections::KernelCode as u8,
+            next_stage_address = const SECOND_STAGE_OFFSET,
+            options(att_syntax)
+        );
+    }
 }
 
 #[unsafe(naked)]
