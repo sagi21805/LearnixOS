@@ -10,8 +10,7 @@ use vga_display::{
 };
 use x86::instructions::interrupts;
 
-/// Publishes the keyboard and its scan code buffer, so the keyboard
-/// handler stops dropping keys.
+/// Publishes the keyboard and its scan code buffer.
 pub fn init_keyboard(slab: &'static SlabAllocator<Page, PageMap>) {
     let buffer: Box<[u8], _> = Box::new_in([0u8; 4096], slab);
     let buffer_address = buffer.as_ptr();
@@ -21,11 +20,7 @@ pub fn init_keyboard(slab: &'static SlabAllocator<Page, PageMap>) {
     okprintln!("Initialized Keyboard at {:p}", buffer_address);
 }
 
-/// Switches printing to the advanced writer, then waits for its first
-/// redraw.
-///
-/// Interrupts must be enabled, because the timer handler does the redraw
-/// and wakes the CPU.
+/// Switches printing to the advanced writer.
 pub fn use_advanced_writer() {
     // SAFETY: this is the only `leak` of the writer, and it stays locked.
     let writer = unsafe {
@@ -35,8 +30,6 @@ pub fn use_advanced_writer() {
     };
     WRITER.lock().set_writer(writer);
     okprintln!("Set advanced writer");
-
-    unsafe { interrupts::hlt() };
 }
 
 /// Prints what the user types and scrolls on the arrow keys, forever.

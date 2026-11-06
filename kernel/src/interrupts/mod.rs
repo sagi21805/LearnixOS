@@ -4,15 +4,13 @@ use keyboard::keyboard_handler;
 use sync::once::Once;
 use vga_display::okprintln;
 use x86::{
-    instructions::interrupts::disable,
+    instructions::interrupts,
     pic8259::PIC,
     structures::{
         interrupt_descriptor_table::InterruptDescriptorTable,
         segments::TSS,
     },
 };
-
-pub use x86::instructions::interrupts::enable;
 
 use crate::{
     interrupts::exceptions::ExceptionHandlers, timer::timer_handler,
@@ -22,16 +20,16 @@ mod exceptions;
 
 static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
 
-/// Loads the TSS and the IDT and sets up the PIC, leaving interrupts
-/// disabled so the caller chooses when the first one fires.
+/// Loads the TSS and the IDT, sets up the PIC and enables interrupts.
 ///
 /// # Safety
 ///
-/// Only `_start` may call this, after the global allocator is set because
-/// the table lives in a `Box`. The second stage's GDT must still be
-/// loaded, because the TSS installs itself there.
+/// The loaded GDT must be a `GlobalDescriptorTableLong` in writable
+/// memory, because the TSS installs itself there.
 pub unsafe fn init() {
-    unsafe { disable() };
+    // SAFETY: the kernel is still initializing, so nothing relies on
+    // interrupts being on.
+    unsafe { interrupts::disable() };
 
     unsafe { TSS.load() };
     okprintln!("Loaded task state segment");
@@ -45,6 +43,9 @@ pub unsafe fn init() {
 
     PIC.lock().init();
     okprintln!("Initialized Programmable Interrupt Controller");
+
+    // SAFETY: the CPU has its exception and IRQ handlers now.
+    unsafe { interrupts::enable() };
 }
 
 #[extend::ext]
