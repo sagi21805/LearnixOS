@@ -3,7 +3,7 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
-use vga_display::{okprintln, println};
+use libk::{okprintln, println};
 use x86::instructions::cpuid;
 
 mod console;
@@ -31,8 +31,6 @@ pub unsafe extern "C" fn _start() -> ! {
     unsafe { interrupts::init() };
 
     console::init_keyboard(memory.slab);
-
-    console::use_advanced_writer();
 
     let pci_devices = pci::scan_pci(memory.slab);
     println!("{}", memory.mmap);

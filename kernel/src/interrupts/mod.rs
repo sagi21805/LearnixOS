@@ -1,8 +1,8 @@
 use alloc::boxed::Box;
 use common::enums::interrupts::GateType;
 use keyboard::keyboard_handler;
+use libk::okprintln;
 use sync::once::Once;
-use vga_display::okprintln;
 use x86::{
     instructions::interrupts,
     pic8259::PIC,

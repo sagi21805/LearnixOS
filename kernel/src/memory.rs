@@ -3,11 +3,10 @@ use common::constants::{
     MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, PARSED_MEMORY_MAP,
     REGULAR_PAGE_SIZE,
 };
-use libk::alloc::GlobalAllocator;
+use libk::{alloc::GlobalAllocator, okprintln};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use sync::once::Once;
-use vga_display::okprintln;
 use x86::memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended};
 
 static MMAP: Once<MemoryMap> = Once::uninit();

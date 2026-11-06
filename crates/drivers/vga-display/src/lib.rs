@@ -14,8 +14,7 @@ pub mod generic_writer;
 pub mod screen_char;
 pub mod writer;
 
-use color_code::ColorCode;
-use core::fmt::{self, Write};
+use core::{fmt, io::Write};
 
 use crate::{
     advanced_writer::AdvancedWriter, generic_writer::Writer,
@@ -43,100 +42,13 @@ pub static WRITER: SpinMutex<Writer<'static>> =
 pub static ADVANCED_WRITER: Once<SpinMutex<AdvancedWriter<80, 25>>> =
     Once::uninit();
 
-pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
-    let writer = &mut WRITER.lock().inner;
-
-    writer.set_color(color.unwrap_or_default());
-
-    writer.write_fmt(args).unwrap();
-
-    writer.set_color(ColorCode::default());
-}
+/// Prints through [`CONSOLE`], which is what `libk`'s print macros reach
+/// at link time.
 #[unsafe(no_mangle)]
-pub fn kprint(args: fmt::Arguments<'_>) { vga_print(args, None); }
-
-/// Prints formatted text to the VGA display without a
-/// newline.
-///
-/// # Parameters
-/// - `$fmt`: The format string.
-/// - `$arg`: Optional arguments to interpolate into the format string.
-/// - `color = $color`: Optional named parameter to change the VGA text
-///   color for this print.
-#[macro_export]
-macro_rules! print {
-    // Case 1: Standard print with optional arguments.
-    ($fmt:expr $(, $arg:expr)* $(;)?) => {{
-        vga_display::vga_print(format_args!($fmt, $($arg,)*), None)
-    }};
-
-    // Case 2: Print with custom color.
-    ($fmt:expr $(, $arg:expr)* ; color = $color:expr) => {{
-        vga_display::vga_print(format_args!($fmt, $($arg,)*), Some($color))
-    }};
-}
-
-/// Prints formatted text followed by a newline to the VGA
-/// display. Same as the [`print!`] macro just with a `\n`
-/// attached to the end
-#[macro_export]
-macro_rules! println {
-    // Case 1: Standard println with optional arguments.
-    ($fmt:expr $(, $arg:expr)* $(;)?) => {
-        $crate::print!(concat!($fmt, "\n") $(, $arg)*)
-    };
-    // Case 2: println with custom color.
-    ($fmt:expr $(, $arg:expr)* ; color = $color:expr) => {
-        $crate::print!(concat!($fmt, "\n") $(, $arg)* ; color = $color)
-    };
-}
-
-/// Prints a standardized failure message in red color with
-/// optional formatting and message color.
-#[macro_export]
-macro_rules! eprintln {
-    // Case 1: Print "FAIL" with formatted message.
-    ($fmt:expr $(, $arg:tt)*) => {{
-        use $crate::drivers::vga_display::color_code::ColorCode;
-        use common::enums::Color;
-        $crate::print!("[");
-        $crate::print!("FAIL" ; color = ColorCode::new().foreground(Color::Red).background(Color::Black));
-        $crate::print!("]: ");
-        $crate::println!($fmt $(, $arg)*);
-    }};
-
-    // Case 2: Print "FAIL" with custom message color.
-    ($fmt:expr $(, $arg:tt)* ; color = $color:expr) => {{
-        use vga_display::color_code::ColorCode;
-        use common::enums::Color;
-        $crate::print!("[");
-        $crate::print!("FAIL" ; color = ColorCode::new().foreground(Color::Red).background(Color::Black));
-        $crate::print!("]: ");
-        $crate::println!($fmt $(, $arg)* ; color = $color);
-    }};
-}
-
-/// Prints a standardized success message in green color
-/// with optional formatting and message color.
-#[macro_export]
-macro_rules! okprintln {
-    // Case 1: Print "OK" with formatted message.
-    ($fmt:expr $(, $arg:tt)*) => {{
-        use vga_display::color_code::ColorCode;
-        use common::enums::Color;
-        $crate::print!("[");
-        $crate::print!(" OK " ; color = ColorCode::new().foreground(Color::Green).background(Color::Black));
-        $crate::print!("]: ");
-        $crate::println!($fmt $(, $arg)*);
-    }};
-
-    // Case 2: Print "OK" with custom message color.
-    ($fmt:expr $(, $arg:tt)* ; color = $color:expr) => {{
-        use $crate::drivers::vga_display::color_code::ColorCode;
-        use common::enums::Color;
-        $crate::print!("[");
-        $crate::print!(" OK " ; color = ColorCode::new().foreground(Color::Green).background(Color::Black));
-        $crate::print!("]: ");
-        $crate::println!($fmt $(, $arg)* ; color = $color);
-    }};
+pub fn kprint(args: fmt::Arguments<'_>) {
+    let mut console = CONSOLE.lock();
+    console
+        .write_fmt(args)
+        .expect("only a failing Display implementation fails a print");
+    console.flush().expect("flushing the console can't fail");
 }
