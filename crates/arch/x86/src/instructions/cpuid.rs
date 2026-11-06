@@ -121,9 +121,9 @@ impl BrandString {
             .iter()
             .position(|byte| *byte == 0)
             .unwrap_or(self.0.len());
-        str::from_utf8(&self.0[..end])
-            .expect("CPUID brand strings are ASCII")
-            .trim()
+
+        // Safety: CPUID returns ASCII characters which are valid UTF-8
+        unsafe { str::from_utf8_unchecked(&self.0[..end]).trim() }
     }
 }
 

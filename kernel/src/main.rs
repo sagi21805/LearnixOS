@@ -3,7 +3,7 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
-use core::panic::PanicInfo;
+use core::{arch::asm, panic::PanicInfo};
 
 use alloc::boxed::Box;
 use buddy::BuddyAllocator;
@@ -136,12 +136,10 @@ pub unsafe extern "C" fn _start() -> ! {
     for device in &pci_devices {
         println!("{}", device);
     }
+    println!("");
 
     let vendor = cpuid::get_vendor_string();
-    println!(
-        "CPU vendor: {}",
-        str::from_utf8(&vendor).expect("CPUID vendor strings are ASCII")
-    );
+    println!("CPU vendor: {}", str::from_utf8_unchecked(&vendor));
     if let Some(brand) = cpuid::get_brand_string() {
         println!("CPU brand: {}", brand.as_str());
     }
