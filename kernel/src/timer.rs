@@ -4,7 +4,7 @@ use x86::{
     structures::interrupt_descriptor_table::InterruptStackFrame,
 };
 
-use crate::WRITER;
+use vga_display::WRITER;
 
 pub extern "x86-interrupt" fn timer_handler(
     _stack_frame: InterruptStackFrame,
