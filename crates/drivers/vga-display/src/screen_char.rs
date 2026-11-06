@@ -20,6 +20,14 @@ impl ScreenChar {
             color_code: color,
         }
     }
+
+    /// Whether this cell looks like an empty one. A space on another
+    /// color isn't blank, because its color shows.
+    pub fn is_blank(&self) -> bool {
+        let empty = Self::default();
+        self.glyph == empty.glyph
+            && u8::from(self.color_code) == u8::from(empty.color_code)
+    }
 }
 
 const impl Default for ScreenChar {
