@@ -1,11 +1,9 @@
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
-#![feature(const_default)]
-#![feature(const_trait_impl)]
 extern crate alloc;
 
-use core::{cell::OnceCell, panic::PanicInfo};
+use core::panic::PanicInfo;
 
 use alloc::boxed::Box;
 use buddy::BuddyAllocator;
@@ -16,17 +14,17 @@ use common::{
     },
     enums::PS2ScanCode,
 };
-use keyboard::ps2_keyboard::Keyboard;
+use keyboard::{KEYBOARD, KEYBOARD_BUFFER, ps2_keyboard::Keyboard};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use vga_display::{
-    SCREEN, advanced_writer::AdvancedWriter, generic_writer::Writer,
-    okprintln, vga_init, writer::SimpleWriter,
+    ADVANCED_WRITER, SCREEN, SIMPLE_WRITER, WRITER,
+    advanced_writer::AdvancedWriter, okprintln, vga_init,
 };
 use x86::{
     instructions::interrupts::{self, hlt},
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
-    pic8259::CascadedPIC,
+    pic8259::PIC,
     structures::{
         interrupt_descriptor_table::InterruptDescriptorTable,
         segments::TSS,
@@ -44,28 +42,7 @@ mod timer;
 
 static MMAP: Once<MemoryMap> = Once::uninit();
 
-#[unsafe(no_mangle)]
-static PIC: SpinMutex<CascadedPIC> =
-    SpinMutex::new(CascadedPIC::default());
-
 static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
-
-#[unsafe(no_mangle)]
-static KEYBOARD: SpinMutex<OnceCell<Keyboard>> =
-    SpinMutex::new(OnceCell::new());
-
-static KEYBOARD_BUFFER: Once<SpscRingBuffer<u8>> = Once::uninit();
-
-#[unsafe(no_mangle)]
-static SIMPLE_WRITER: SpinMutex<SimpleWriter<80, 25>> =
-    unsafe { SpinMutex::new_locked(SimpleWriter::default()) };
-
-static ADVANCED_WRITER: SpinMutex<Option<AdvancedWriter<80, 25>>> =
-    unsafe { SpinMutex::new_locked(None) };
-
-#[unsafe(no_mangle)]
-static WRITER: SpinMutex<Writer<'static>> =
-    SpinMutex::new(Writer::new(unsafe { SIMPLE_WRITER.leak() }));
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
@@ -131,17 +108,17 @@ pub unsafe extern "C" fn _start() -> ! {
         let keyboard_buffer =
             KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
 
-        KEYBOARD
-            .lock()
-            .get_or_init(|| Keyboard::new(keyboard_buffer));
+        KEYBOARD.init(SpinMutex::new(Keyboard::new(keyboard_buffer)));
         okprintln!("Initialized Keyboard at {:p}", buffer_address);
         interrupts::enable();
     }
     // SAFETY: this is the only `leak` of the writer, and it stays locked.
-    let w = unsafe { ADVANCED_WRITER.leak() };
-    WRITER
-        .lock()
-        .set_writer(w.insert(AdvancedWriter::default()));
+    let w = unsafe {
+        ADVANCED_WRITER
+            .init(SpinMutex::new_locked(AdvancedWriter::default()))
+            .leak()
+    };
+    WRITER.lock().set_writer(w);
     okprintln!("Set advanced writer");
     // Wait for the next update.
     unsafe {
@@ -228,11 +205,7 @@ pub unsafe extern "C" fn _start() -> ! {
         // SAFETY: the keyboard handler takes the same lock, so it must
         // not run while this loop holds it.
         unsafe { interrupts::disable() };
-        let input = KEYBOARD
-            .lock()
-            .get()
-            .expect("the keyboard is set before this loop")
-            .read_char();
+        let input = KEYBOARD.lock().read_char();
         unsafe { interrupts::enable() };
         match input {
             Ok(str) => print!("{}", str),
@@ -264,7 +237,9 @@ fn panic(_info: &PanicInfo) -> ! {
             screen.force_unlock();
         }
         SIMPLE_WRITER.force_unlock();
-        // ADVANCED_WRITER.force_unlock();
+        // if let Some(writer) = ADVANCED_WRITER.get() {
+        //     writer.force_unlock();
+        // }
         // WRITER.force_unlock();
     };
     // eprintln!("{}", _info ; color =
