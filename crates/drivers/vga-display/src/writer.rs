@@ -8,7 +8,7 @@ use core::{
 use common::enums::Color;
 
 use crate::{
-    SCREEN, color_code::ColorCode, generic_writer::GenericWriter,
+    CONSOLE, color_code::ColorCode, generic_writer::GenericWriter,
     screen_char::ScreenChar,
 };
 
@@ -50,15 +50,13 @@ impl<const W: usize, const H: usize> GenericWriter for SimpleWriter<W, H> {
 
     fn set_cursor_position(&mut self, _p: usize) {}
 
-    fn write_cursor_position(&self) -> usize {
-        SCREEN.lock().screen_position
-    }
+    fn write_cursor_position(&self) -> usize { CONSOLE.lock().cursor() }
 
     fn scroll_up(&mut self, _lines: usize) { unimplemented!() }
 
-    fn new_line(&mut self) { SCREEN.lock().new_line(); }
+    fn new_line(&mut self) { CONSOLE.lock().legacy_new_line(); }
 
-    fn backspace(&mut self) { SCREEN.lock().backspace(); }
+    fn backspace(&mut self) { CONSOLE.lock().legacy_backspace(); }
 
     fn color(&self) -> ColorCode { self.color }
 
@@ -71,7 +69,7 @@ impl<const W: usize, const H: usize> GenericWriter for SimpleWriter<W, H> {
     fn update(&mut self) {}
 
     fn write_vga_char(&mut self, char: ScreenChar) {
-        SCREEN.lock().write_char(char);
+        CONSOLE.lock().write_char(char);
     }
 
     fn write_char(&mut self, char: char) {

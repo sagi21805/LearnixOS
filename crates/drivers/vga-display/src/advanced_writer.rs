@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 use common::constants::REGULAR_PAGE_SIZE;
 
 use crate::{
-    SCREEN, WriteInfo, color_code::ColorCode,
+    CONSOLE, color_code::ColorCode, console::WriteInfo,
     generic_writer::GenericWriter, screen_char::ScreenChar,
 };
 
@@ -89,8 +89,8 @@ impl<const W: usize, const H: usize> GenericWriter
             return;
         }
         if self.row_table[new_line + self.screen_height()] != 0 {
-            SCREEN.lock().scroll_up(lines);
-            SCREEN.lock().reset_cursor();
+            CONSOLE.lock().scroll_up(lines);
+            CONSOLE.lock().reset_cursor();
             self.display_line = new_line;
             self.screen_start = self.row_table[new_line];
         }
@@ -102,8 +102,8 @@ impl<const W: usize, const H: usize> GenericWriter
             return;
         }
         if self.row_table[new_line] != 0 || new_line == 0 {
-            SCREEN.lock().scroll_down(lines);
-            SCREEN.lock().reset_cursor();
+            CONSOLE.lock().scroll_down(lines);
+            CONSOLE.lock().reset_cursor();
             self.display_line = new_line;
             self.screen_start = self.row_table[new_line];
         }
@@ -111,7 +111,7 @@ impl<const W: usize, const H: usize> GenericWriter
 
     fn update(&mut self) {
         for i in self.screen_start..self.cursor {
-            let mut screen = SCREEN.lock();
+            let mut screen = CONSOLE.lock();
             let char = self.buffer.get(i).cloned().unwrap_or_default();
             match screen.write_char(char) {
                 WriteInfo::LineDown
@@ -126,7 +126,7 @@ impl<const W: usize, const H: usize> GenericWriter
     fn write_cursor_position(&self) -> usize { todo!() }
 
     fn set_cursor_position(&mut self, position: usize) {
-        let mut screen = SCREEN.lock();
+        let mut screen = CONSOLE.lock();
         if self.screen_start == 0 {
             for cell in screen.vga_cells().iter().take(position) {
                 self.write_vga_char(cell.read());
