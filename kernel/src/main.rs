@@ -59,8 +59,8 @@ static KEYBOARD_BUFFER: Once<SpscRingBuffer<u8>> = Once::uninit();
 static SIMPLE_WRITER: SpinMutex<SimpleWriter<80, 25>> =
     unsafe { SpinMutex::new_locked(SimpleWriter::default()) };
 
-static ADVANCED_WRITER: SpinMutex<Option<AdvancedWriter<80, 25>>> =
-    unsafe { SpinMutex::new_locked(None) };
+static ADVANCED_WRITER: Once<SpinMutex<AdvancedWriter<80, 25>>> =
+    Once::uninit();
 
 #[unsafe(no_mangle)]
 static WRITER: SpinMutex<Writer<'static>> =
@@ -135,10 +135,12 @@ pub unsafe extern "C" fn _start() -> ! {
         interrupts::enable();
     }
     // SAFETY: this is the only `leak` of the writer, and it stays locked.
-    let w = unsafe { ADVANCED_WRITER.leak() };
-    WRITER
-        .lock()
-        .set_writer(w.insert(AdvancedWriter::default()));
+    let w = unsafe {
+        ADVANCED_WRITER
+            .init(SpinMutex::new_locked(AdvancedWriter::default()))
+            .leak()
+    };
+    WRITER.lock().set_writer(w);
     okprintln!("Set advanced writer");
     // Wait for the next update.
     unsafe {
@@ -257,7 +259,9 @@ fn panic(_info: &PanicInfo) -> ! {
             screen.force_unlock();
         }
         SIMPLE_WRITER.force_unlock();
-        // ADVANCED_WRITER.force_unlock();
+        // if let Some(writer) = ADVANCED_WRITER.get() {
+        //     writer.force_unlock();
+        // }
         // WRITER.force_unlock();
     };
     // eprintln!("{}", _info ; color =
