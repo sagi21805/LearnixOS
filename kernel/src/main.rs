@@ -3,7 +3,7 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
-use core::{arch::asm, panic::PanicInfo};
+use core::panic::PanicInfo;
 
 use alloc::boxed::Box;
 use buddy::BuddyAllocator;
@@ -130,8 +130,6 @@ pub unsafe extern "C" fn _start() -> ! {
 
     println!("{}", mmap);
 
-    // BUDDY_ALLOCATOR.print_allocated_regions();
-    // panic!("")
     let pci_devices = pci::scan_pci(slab);
     for device in &pci_devices {
         println!("{}", device);
@@ -144,73 +142,6 @@ pub unsafe extern "C" fn _start() -> ! {
         println!("CPU brand: {}", brand.as_str());
     }
 
-    // loop {
-    //     let c = unsafe {
-    // KEYBOARD.assume_init_mut().read_raw_scancode() };     if
-    // let Some(e) = c         && PS2ScanCode::from_scancode(e)
-    // == PS2ScanCode::Enter     {
-    //         break;
-    //     }
-    // }
-
-    // unsafe { PIC.enable_irq(CascadedPicInterruptLine::Ahci) };
-    // for device in pci_devices.iter_mut() {
-    //     // println!("{:#?}", unsafe { device.common.vendor_device
-    // });     // println!("{:#?}", unsafe {
-    // device.common.header_type });     // println!("{:#?}\n",
-    // unsafe { device.common.device_type });
-
-    //     if device.header.common().device_type.is_ahci() {
-    //         let a = unsafe {
-    //             PhysicalAddress::new_unchecked(
-    //                 device.header.general_device.bar5.address(),
-    //             )
-    //         };
-
-    //         println!(
-    //             "Bus Master: {}, Interrupts Disable {}, I/O Space:
-    // {}, \              Memory Space: {}",
-    //             device.header.common().command.is_bus_master(),
-    //
-    // device.header.common().command.is_interrupt_disable(),
-    //             device.header.common().command.is_io_space(),
-    //             device.header.common().command.is_memory_space()
-    //         );
-
-    //         println!(
-    //             "Interrupt Line: {}, Interrupt Pin: {}",
-    //             unsafe { device.header.general_device.interrupt_line
-    // },             unsafe {
-    // device.header.general_device.interrupt_pin }         );
-
-    //         let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
-    //         let hba = HBAMemoryRegisters::new(aligned).unwrap();
-    //         let _ = hba.probe_init();
-    //         let p = &mut hba.ports[0];
-
-    //         let buf =
-    //             unsafe { alloc_pages!(1) as *mut IdentityPacketData
-    // };
-
-    //         p.identity_packet(buf);
-    //         let id = unsafe {
-    //             core::ptr::read_volatile(
-    //                 (buf as usize + PHYSICAL_MEMORY_OFFSET)
-    //                     as *mut IdentityPacketData,
-    //             )
-    //         };
-
-    //         println!("{:?}", id);
-
-    //         println!("Cylinders: {}", id.cylinders);
-    //         println!("Heads: {}", id.heads);
-    //         println!("Sectors: {}", id.sectors);
-
-    //         println!("Serial: {:?}", &id.serial_number);
-    //         println!("Model: {:?}", &id.model_num);
-    //         println!("Firmware: {:?}", &id.firmware_rev);
-    //     }
-    // }
     loop {
         // SAFETY: the keyboard handler takes the same lock, so it must
         // not run while this loop holds it.
@@ -230,14 +161,73 @@ pub unsafe extern "C" fn _start() -> ! {
                 PS2ScanCode::RightArrow => {
                     WRITER.lock().inner.scroll_down(24)
                 }
-
-                _ => {
-                    // println!("")
-                }
+                _ => {}
             },
         }
     }
 }
+
+// The AHCI bring-up I experimented with, which ran after the hardware
+// report and before the input loop.
+//
+// unsafe { PIC.enable_irq(CascadedPicInterruptLine::Ahci) };
+// for device in pci_devices.iter_mut() {
+//     // println!("{:#?}", unsafe { device.common.vendor_device
+// });     // println!("{:#?}", unsafe {
+// device.common.header_type });     // println!("{:#?}\n",
+// unsafe { device.common.device_type });
+
+//     if device.header.common().device_type.is_ahci() {
+//         let a = unsafe {
+//             PhysicalAddress::new_unchecked(
+//                 device.header.general_device.bar5.address(),
+//             )
+//         };
+
+//         println!(
+//             "Bus Master: {}, Interrupts Disable {}, I/O Space:
+// {}, \              Memory Space: {}",
+//             device.header.common().command.is_bus_master(),
+//
+// device.header.common().command.is_interrupt_disable(),
+//             device.header.common().command.is_io_space(),
+//             device.header.common().command.is_memory_space()
+//         );
+
+//         println!(
+//             "Interrupt Line: {}, Interrupt Pin: {}",
+//             unsafe { device.header.general_device.interrupt_line
+// },             unsafe {
+// device.header.general_device.interrupt_pin }         );
+
+//         let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
+//         let hba = HBAMemoryRegisters::new(aligned).unwrap();
+//         let _ = hba.probe_init();
+//         let p = &mut hba.ports[0];
+
+//         let buf =
+//             unsafe { alloc_pages!(1) as *mut IdentityPacketData
+// };
+
+//         p.identity_packet(buf);
+//         let id = unsafe {
+//             core::ptr::read_volatile(
+//                 (buf as usize + PHYSICAL_MEMORY_OFFSET)
+//                     as *mut IdentityPacketData,
+//             )
+//         };
+
+//         println!("{:?}", id);
+
+//         println!("Cylinders: {}", id.cylinders);
+//         println!("Heads: {}", id.heads);
+//         println!("Sectors: {}", id.sectors);
+
+//         println!("Serial: {:?}", &id.serial_number);
+//         println!("Model: {:?}", &id.model_num);
+//         println!("Firmware: {:?}", &id.firmware_rev);
+//     }
+// }
 
 /// This function is called on panic.
 #[panic_handler]
@@ -247,29 +237,9 @@ fn panic(_info: &PanicInfo) -> ! {
             screen.force_unlock();
         }
         SIMPLE_WRITER.force_unlock();
-        // if let Some(writer) = ADVANCED_WRITER.get() {
-        //     writer.force_unlock();
-        // }
-        // WRITER.force_unlock();
     };
-    // eprintln!("{}", _info ; color =
-    // ColorCode::new().foreground(Color::Yellow).
-    // background(Color::Black));
     SIMPLE_WRITER
         .lock()
         .panic_message(format_args!("{}", _info));
-    loop {
-        // let input = KEYBOARD.read_char();
-        // match input {
-        //     Err(key) => match key {
-        //         PS2ScanCode::UpArrow =>
-        // WRITER.lock().inner.scroll_up(1),
-        //         PS2ScanCode::DownArrow => {
-        //             WRITER.lock().inner.scroll_down(1)
-        //         }
-        //         _ => {}
-        //     },
-        //     Ok(_) => {}
-        // }
-    }
+    loop {}
 }
