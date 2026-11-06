@@ -16,7 +16,7 @@ use common::{
     },
     enums::PS2ScanCode,
 };
-use keyboard::ps2_keyboard::Keyboard;
+use keyboard::{KEYBOARD, ps2_keyboard::Keyboard};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use vga_display::{
@@ -49,9 +49,6 @@ static PIC: SpinMutex<CascadedPIC> =
     SpinMutex::new(CascadedPIC::default());
 
 static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
-
-#[unsafe(no_mangle)]
-static KEYBOARD: Once<SpinMutex<Keyboard>> = Once::uninit();
 
 static KEYBOARD_BUFFER: Once<SpscRingBuffer<u8>> = Once::uninit();
 
