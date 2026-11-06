@@ -3,65 +3,21 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
-use core::{arch::asm, panic::PanicInfo};
+use vga_display::{okprintln, println, vga_init};
+use x86::instructions::cpuid;
 
-use alloc::boxed::Box;
-use buddy::BuddyAllocator;
-use common::{
-    constants::{
-        MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, PARSED_MEMORY_MAP,
-        REGULAR_PAGE_SIZE,
-    },
-    enums::PS2ScanCode,
-};
-use keyboard::{KEYBOARD, KEYBOARD_BUFFER, ps2_keyboard::Keyboard};
-use page::{Page, arena::PageMap};
-use slab::SlabAllocator;
-use vga_display::{
-    ADVANCED_WRITER, SCREEN, SIMPLE_WRITER, WRITER,
-    advanced_writer::AdvancedWriter, okprintln, vga_init,
-};
-use x86::{
-    instructions::{
-        cpuid,
-        interrupts::{self, hlt},
-    },
-    memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
-    pic8259::PIC,
-    structures::{
-        interrupt_descriptor_table::InterruptDescriptorTable,
-        segments::TSS,
-    },
-};
-
-use libk::{alloc::GlobalAllocator, print, println};
-
-use sync::{mutex::SpinMutex, once::Once, spsc::SpscRingBuffer};
-
-use crate::interrupt_handlers::InterruptDescriptorTableExt;
-
-mod interrupt_handlers;
+mod console;
+mod interrupts;
+mod memory;
+mod panic;
 mod timer;
-
-static MMAP: Once<MemoryMap> = Once::uninit();
-
-static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
-
-#[global_allocator]
-static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
-
-pub static BUDDY_ALLOCATOR: Once<BuddyAllocator<PageMap, Page>> =
-    Once::uninit();
-
-pub static SLAB_ALLOCATOR: Once<SlabAllocator<Page, PageMap>> =
-    Once::uninit();
 
 /// The kernel's entry point.
 ///
 /// # Safety
 ///
-/// Only the second stage may jump here, in long mode with the boot page
-/// tables and the kernel stack set up.
+/// Only the second stage may jump here, in long mode with interrupts
+/// disabled and the boot page tables and the kernel stack set up.
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 pub unsafe extern "C" fn _start() -> ! {
@@ -70,206 +26,93 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Entered Protected Mode");
     okprintln!("Enabled Paging");
     okprintln!("Entered Long Mode");
-    let len = unsafe { *(MEMORY_MAP_LENGTH as *const u32) as usize };
-    let raw = unsafe {
-        core::slice::from_raw_parts_mut(
-            MEMORY_MAP_OFFSET as *mut MemoryRegionExtended,
-            len,
-        )
-    };
-    let buf = unsafe {
-        core::slice::from_raw_parts_mut(
-            PARSED_MEMORY_MAP as *mut MemoryRegion,
-            REGULAR_PAGE_SIZE / size_of::<MemoryRegion>(),
-        )
-    };
+    // SAFETY: the second stage stored the memory map before jumping here.
+    let memory = unsafe { memory::init() };
 
-    let mmap = MMAP.init(MemoryMap::parse_map(raw, buf).unwrap());
+    // SAFETY: the second stage's GDT is still loaded.
+    unsafe { interrupts::init() };
 
-    let buddy = BUDDY_ALLOCATOR
-        .init_with(BuddyAllocator::<PageMap, Page>::new(mmap), |buddy| {
-            buddy.get_mut().initialize(mmap)
-        });
-    // SAFETY: the buddy allocator takes pages only from its own arena.
-    unsafe { GLOBAL_ALLOCATOR.set(buddy) };
+    console::init_keyboard(memory.slab);
 
-    okprintln!("Initialized Buddy Allocator");
-    let slab = SLAB_ALLOCATOR.init(SlabAllocator::new(buddy));
-    okprintln!("Initialized Slab Allocator");
-    unsafe {
-        interrupts::disable();
-        TSS.load();
-        okprintln!("Loaded task state segment");
-        let mut table = Box::new(InterruptDescriptorTable::default());
-        table.init_handlers();
-        IDT.init(table).load();
-        okprintln!("Initialized interrupt descriptor table");
-        PIC.lock().init();
-        okprintln!("Initialized Programmable Interrupt Controller");
-        let buffer: Box<[u8], _> = Box::new_in([0u8; 4096], slab);
-        let buffer_address = buffer.as_ptr();
-        let keyboard_buffer =
-            KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
+    console::use_advanced_writer();
 
-        KEYBOARD.init(SpinMutex::new(Keyboard::new(keyboard_buffer)));
-        okprintln!("Initialized Keyboard at {:p}", buffer_address);
-        interrupts::enable();
-    }
-    // SAFETY: this is the only `leak` of the writer, and it stays locked.
-    let w = unsafe {
-        ADVANCED_WRITER
-            .init(SpinMutex::new_locked(AdvancedWriter::default()))
-            .leak()
-    };
-    WRITER.lock().set_writer(w);
-    okprintln!("Set advanced writer");
-    // Wait for the next update.
-    unsafe {
-        hlt();
-    }
+    let pci_devices = pci::scan_pci(memory.slab);
+    println!("{}", memory.mmap);
 
-    println!("{}", mmap);
-
-    // BUDDY_ALLOCATOR.print_allocated_regions();
-    // panic!("")
-    let pci_devices = pci::scan_pci(slab);
-    for device in &pci_devices {
+    for device in pci_devices {
         println!("{}", device);
     }
     println!("");
 
     let vendor = cpuid::get_vendor_string();
-    println!("CPU vendor: {}", str::from_utf8_unchecked(&vendor));
+    // SAFETY: the vendor string is ASCII, so it is valid UTF-8.
+    let vendor = unsafe { str::from_utf8_unchecked(&vendor) };
+    println!("CPU vendor: {}", vendor);
     if let Some(brand) = cpuid::get_brand_string() {
         println!("CPU brand: {}", brand.as_str());
     }
 
-    // loop {
-    //     let c = unsafe {
-    // KEYBOARD.assume_init_mut().read_raw_scancode() };     if
-    // let Some(e) = c         && PS2ScanCode::from_scancode(e)
-    // == PS2ScanCode::Enter     {
-    //         break;
-    //     }
-    // }
-
-    // unsafe { PIC.enable_irq(CascadedPicInterruptLine::Ahci) };
-    // for device in pci_devices.iter_mut() {
-    //     // println!("{:#?}", unsafe { device.common.vendor_device
-    // });     // println!("{:#?}", unsafe {
-    // device.common.header_type });     // println!("{:#?}\n",
-    // unsafe { device.common.device_type });
-
-    //     if device.header.common().device_type.is_ahci() {
-    //         let a = unsafe {
-    //             PhysicalAddress::new_unchecked(
-    //                 device.header.general_device.bar5.address(),
-    //             )
-    //         };
-
-    //         println!(
-    //             "Bus Master: {}, Interrupts Disable {}, I/O Space:
-    // {}, \              Memory Space: {}",
-    //             device.header.common().command.is_bus_master(),
-    //
-    // device.header.common().command.is_interrupt_disable(),
-    //             device.header.common().command.is_io_space(),
-    //             device.header.common().command.is_memory_space()
-    //         );
-
-    //         println!(
-    //             "Interrupt Line: {}, Interrupt Pin: {}",
-    //             unsafe { device.header.general_device.interrupt_line
-    // },             unsafe {
-    // device.header.general_device.interrupt_pin }         );
-
-    //         let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
-    //         let hba = HBAMemoryRegisters::new(aligned).unwrap();
-    //         let _ = hba.probe_init();
-    //         let p = &mut hba.ports[0];
-
-    //         let buf =
-    //             unsafe { alloc_pages!(1) as *mut IdentityPacketData
-    // };
-
-    //         p.identity_packet(buf);
-    //         let id = unsafe {
-    //             core::ptr::read_volatile(
-    //                 (buf as usize + PHYSICAL_MEMORY_OFFSET)
-    //                     as *mut IdentityPacketData,
-    //             )
-    //         };
-
-    //         println!("{:?}", id);
-
-    //         println!("Cylinders: {}", id.cylinders);
-    //         println!("Heads: {}", id.heads);
-    //         println!("Sectors: {}", id.sectors);
-
-    //         println!("Serial: {:?}", &id.serial_number);
-    //         println!("Model: {:?}", &id.model_num);
-    //         println!("Firmware: {:?}", &id.firmware_rev);
-    //     }
-    // }
-    loop {
-        // SAFETY: the keyboard handler takes the same lock, so it must
-        // not run while this loop holds it.
-        unsafe { interrupts::disable() };
-        let input = KEYBOARD.lock().read_char();
-        unsafe { interrupts::enable() };
-        match input {
-            Ok(str) => print!("{}", str),
-            Err(key) => match key {
-                PS2ScanCode::UpArrow => WRITER.lock().inner.scroll_up(1),
-                PS2ScanCode::DownArrow => {
-                    WRITER.lock().inner.scroll_down(1)
-                }
-                PS2ScanCode::LeftArrow => {
-                    WRITER.lock().inner.scroll_up(24)
-                }
-                PS2ScanCode::RightArrow => {
-                    WRITER.lock().inner.scroll_down(24)
-                }
-
-                _ => {
-                    // println!("")
-                }
-            },
-        }
-    }
+    console::run()
 }
 
-/// This function is called on panic.
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    unsafe {
-        if let Some(screen) = SCREEN.get() {
-            screen.force_unlock();
-        }
-        SIMPLE_WRITER.force_unlock();
-        // if let Some(writer) = ADVANCED_WRITER.get() {
-        //     writer.force_unlock();
-        // }
-        // WRITER.force_unlock();
-    };
-    // eprintln!("{}", _info ; color =
-    // ColorCode::new().foreground(Color::Yellow).
-    // background(Color::Black));
-    SIMPLE_WRITER
-        .lock()
-        .panic_message(format_args!("{}", _info));
-    loop {
-        // let input = KEYBOARD.read_char();
-        // match input {
-        //     Err(key) => match key {
-        //         PS2ScanCode::UpArrow =>
-        // WRITER.lock().inner.scroll_up(1),
-        //         PS2ScanCode::DownArrow => {
-        //             WRITER.lock().inner.scroll_down(1)
-        //         }
-        //         _ => {}
-        //     },
-        //     Ok(_) => {}
-        // }
-    }
-}
+// The AHCI bring-up experiment, which ran after the hardware report and
+// before the input loop.
+//
+// unsafe { PIC.enable_irq(CascadedPicInterruptLine::Ahci) };
+// for device in pci_devices.iter_mut() {
+//     // println!("{:#?}", unsafe { device.common.vendor_device
+// });     // println!("{:#?}", unsafe {
+// device.common.header_type });     // println!("{:#?}\n",
+// unsafe { device.common.device_type });
+
+//     if device.header.common().device_type.is_ahci() {
+//         let a = unsafe {
+//             PhysicalAddress::new_unchecked(
+//                 device.header.general_device.bar5.address(),
+//             )
+//         };
+
+//         println!(
+//             "Bus Master: {}, Interrupts Disable {}, I/O Space:
+// {}, \              Memory Space: {}",
+//             device.header.common().command.is_bus_master(),
+//
+// device.header.common().command.is_interrupt_disable(),
+//             device.header.common().command.is_io_space(),
+//             device.header.common().command.is_memory_space()
+//         );
+
+//         println!(
+//             "Interrupt Line: {}, Interrupt Pin: {}",
+//             unsafe { device.header.general_device.interrupt_line
+// },             unsafe {
+// device.header.general_device.interrupt_pin }         );
+
+//         let aligned = a.align_down(REGULAR_PAGE_ALIGNMENT);
+//         let hba = HBAMemoryRegisters::new(aligned).unwrap();
+//         let _ = hba.probe_init();
+//         let p = &mut hba.ports[0];
+
+//         let buf =
+//             unsafe { alloc_pages!(1) as *mut IdentityPacketData
+// };
+
+//         p.identity_packet(buf);
+//         let id = unsafe {
+//             core::ptr::read_volatile(
+//                 (buf as usize + PHYSICAL_MEMORY_OFFSET)
+//                     as *mut IdentityPacketData,
+//             )
+//         };
+
+//         println!("{:?}", id);
+
+//         println!("Cylinders: {}", id.cylinders);
+//         println!("Heads: {}", id.heads);
+//         println!("Sectors: {}", id.sectors);
+
+//         println!("Serial: {:?}", &id.serial_number);
+//         println!("Model: {:?}", &id.model_num);
+//         println!("Firmware: {:?}", &id.firmware_rev);
+//     }
+// }

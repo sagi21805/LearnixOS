@@ -17,8 +17,5 @@ sync.workspace = true
 page.workspace = true
 slab.workspace = true
 
-[features]
-host = ["vga_display/host", "buddy/host", "page/host"]
-
 [lints]
 workspace = true
