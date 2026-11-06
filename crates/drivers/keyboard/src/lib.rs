@@ -5,7 +5,7 @@
 #![feature(const_result_trait_fn)]
 
 use common::enums::{CascadedPicInterruptLine, Port};
-use sync::{mutex::SpinMutex, once::Once};
+use sync::{mutex::SpinMutex, once::Once, spsc::SpscRingBuffer};
 use x86::{
     instructions::{interrupts, port::PortExt},
     pic8259::PIC,
@@ -18,6 +18,9 @@ pub mod ps2_keyboard;
 
 /// The PS/2 keyboard, which [`keyboard_handler`] feeds once it is set.
 pub static KEYBOARD: Once<SpinMutex<Keyboard>> = Once::uninit();
+
+/// The scan codes [`keyboard_handler`] queues for [`KEYBOARD`]'s reader.
+pub static KEYBOARD_BUFFER: Once<SpscRingBuffer<u8>> = Once::uninit();
 
 pub extern "x86-interrupt" fn keyboard_handler(
     _stack_frame: InterruptStackFrame,
