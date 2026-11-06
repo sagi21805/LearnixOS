@@ -1,3 +1,5 @@
+use core::ascii::Char;
+
 use crate::color_code::ColorCode;
 
 /// One cell of VGA text memory.
@@ -35,7 +37,7 @@ const impl Default for ScreenChar {
     /// the default [`ColorCode`]
     fn default() -> Self {
         Self {
-            glyph: b' ',
+            glyph: Char::Space.to_u8(),
             color_code: ColorCode::default(),
         }
     }

@@ -1,5 +1,7 @@
 #![no_std]
 #![feature(core_io)]
+#![feature(ascii_char)]
+#![feature(ascii_char_variants)]
 #![feature(const_trait_impl)]
 #![feature(const_default)]
 #![feature(const_convert)]

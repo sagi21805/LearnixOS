@@ -1,50 +1,32 @@
 //! Decodes the ANSI subset the console understands, per ECMA-48 section
 //! 5.4.
 
-/// Parameters a color sequence may hold. A longer sequence is dropped.
-const MAX_SGR_PARAMS: usize = 8;
+use core::ascii::Char;
 
-const ESCAPE: u8 = 0x1b;
-const BACKSPACE: u8 = 0x08;
-const DELETE: u8 = 0x7f;
+use extend::ext;
+
+use crate::color_code::ColorCode;
 
 /// What one byte of text asks the console to do.
-pub enum Decoded<'a> {
-    Print(u8),
+pub enum Decoded {
+    Print(Char),
     LineFeed,
     Backspace,
-    /// The parameters of a Select Graphic Rendition sequence.
-    Rendition(&'a [u16]),
 }
 
-/// Turns a stream of bytes into [`Decoded`] actions.
+/// Turns a stream of bytes into [`Decoded`] actions and change
+/// 'self.color' as the stream is parsed.
 ///
 /// It keeps its state between calls, because `write_fmt` splits one print
 /// into several writes, so a sequence can arrive in pieces.
-///
-/// ```
-/// use vga_display::ansi::{AnsiDecoder, Decoded};
-///
-/// let mut decoder = AnsiDecoder::default();
-///
-/// for &byte in b"\x1b[3" {
-///     assert!(decoder.advance(byte).is_none());
-/// }
-/// for &byte in b"1;" {
-///     assert!(decoder.advance(byte).is_none());
-/// }
-/// let Some(Decoded::Rendition(&[31, 0])) = decoder.advance(b'm') else {
-///     panic!("an empty parameter means 0");
-/// };
-///
-/// assert!(matches!(decoder.advance(b'a'), Some(Decoded::Print(b'a'))));
-/// assert!(matches!(decoder.advance(0xc3), Some(Decoded::Print(b'?'))));
-/// assert!(decoder.advance(0xa9).is_none());
-/// ```
 pub struct AnsiDecoder {
     state: DecoderState,
-    params: [u16; MAX_SGR_PARAMS],
-    param_count: usize,
+    /// The number the current control sequence is reading.
+    param: u8,
+    color: ColorCode,
+    /// `color` with the current sequence's parameters applied, which
+    /// replaces it only if the sequence turns out to be a color sequence.
+    pending_color: ColorCode,
 }
 
 /// Where in a control sequence the decoder is.
@@ -61,53 +43,55 @@ const impl Default for AnsiDecoder {
     fn default() -> Self {
         Self {
             state: DecoderState::Ground,
-            params: [0; MAX_SGR_PARAMS],
-            param_count: 0,
+            param: 0,
+            color: ColorCode::default(),
+            pending_color: ColorCode::default(),
         }
     }
 }
 
 impl AnsiDecoder {
+    /// The color the next printed character should have.
+    pub fn color(&self) -> ColorCode { self.color }
+
     /// Takes the next byte, and returns the action it completes.
-    pub fn advance(&mut self, byte: u8) -> Option<Decoded<'_>> {
+    ///
+    /// A non-ASCII byte reads as `?`.
+    pub fn advance(&mut self, byte: u8) -> Option<Decoded> {
+        let ascii = byte.as_ascii().unwrap_or(Char::QuestionMark);
         match self.state {
-            DecoderState::Ground => self.advance_ground(byte),
-            DecoderState::Escape => {
-                self.advance_escape(byte);
-                None
-            }
+            DecoderState::Ground => return self.advance_ground(ascii),
+            DecoderState::Escape => self.advance_escape(ascii),
             DecoderState::ControlSequence => {
-                self.advance_control_sequence(byte)
+                self.advance_control_sequence(ascii)
             }
             DecoderState::UnsupportedSequence => {
-                self.advance_unsupported_sequence(byte);
-                None
+                self.advance_unsupported_sequence(ascii)
             }
         }
+        None
     }
 
-    /// Plain text. A non-ASCII character prints one `?`, from its leading
-    /// byte, and its continuation bytes print nothing.
-    fn advance_ground(&mut self, byte: u8) -> Option<Decoded<'_>> {
-        match byte {
-            ESCAPE => {
+    /// Plain text.
+    fn advance_ground(&mut self, ascii: Char) -> Option<Decoded> {
+        match ascii {
+            Char::Escape => {
                 self.state = DecoderState::Escape;
                 None
             }
-            b'\n' => Some(Decoded::LineFeed),
-            BACKSPACE | DELETE => Some(Decoded::Backspace),
-            0x20..=0x7e => Some(Decoded::Print(byte)),
-            0xc0..=0xff => Some(Decoded::Print(b'?')),
-            _ => None,
+            Char::LineFeed => Some(Decoded::LineFeed),
+            Char::Backspace | Char::Delete => Some(Decoded::Backspace),
+            _ if ascii.is_control() => None,
+            _ => Some(Decoded::Print(ascii)),
         }
     }
 
     /// The byte after `ESC`, where only `[` starts a control sequence.
-    fn advance_escape(&mut self, byte: u8) {
-        self.state = match byte {
-            b'[' => {
-                self.params[0] = 0;
-                self.param_count = 1;
+    fn advance_escape(&mut self, ascii: Char) {
+        self.state = match ascii {
+            Char::LeftSquareBracket => {
+                self.param = 0;
+                self.pending_color = self.color;
                 DecoderState::ControlSequence
             }
             _ => DecoderState::Ground,
@@ -115,45 +99,53 @@ impl AnsiDecoder {
     }
 
     /// `CSI P ... P I ... I F`, where only numeric parameters are read.
-    fn advance_control_sequence(
-        &mut self,
-        byte: u8,
-    ) -> Option<Decoded<'_>> {
-        match byte {
-            b'0'..=b'9' => self.push_digit(byte - b'0'),
-            b';' => self.next_param(),
-            0x20..=0x2f | b':' | 0x3c..=0x3f => {
-                self.state = DecoderState::UnsupportedSequence;
-            }
-            b'm' => {
+    fn advance_control_sequence(&mut self, ascii: Char) {
+        match ascii {
+            Char::SmallM => {
+                self.pending_color.apply_sgr(self.param);
+                self.color = self.pending_color;
                 self.state = DecoderState::Ground;
-                return Some(Decoded::Rendition(
-                    &self.params[..self.param_count],
-                ));
+            }
+            Char::Semicolon => self.finish_param(),
+            _ if ascii.is_digit() => {
+                self.push_digit(ascii.to_u8() - Char::Digit0.to_u8());
+            }
+            _ if ascii.is_sequence_byte() => {
+                self.state = DecoderState::UnsupportedSequence;
             }
             _ => self.state = DecoderState::Ground,
         }
-        None
     }
 
     /// Skips to the final byte, or to any byte a sequence can't hold.
-    fn advance_unsupported_sequence(&mut self, byte: u8) {
-        if !matches!(byte, 0x20..=0x3f) {
+    fn advance_unsupported_sequence(&mut self, ascii: Char) {
+        if !ascii.is_sequence_byte() {
             self.state = DecoderState::Ground;
         }
     }
 
     fn push_digit(&mut self, digit: u8) {
-        let param = &mut self.params[self.param_count - 1];
-        *param = param.saturating_mul(10).saturating_add(digit.into());
+        self.param = self.param.saturating_mul(10).saturating_add(digit);
     }
 
-    fn next_param(&mut self) {
-        if self.param_count == MAX_SGR_PARAMS {
-            self.state = DecoderState::UnsupportedSequence;
-            return;
+    /// Applies the parameter before a `;`. Parameters 38 and 48 drop the
+    /// sequence, so the color number after them doesn't read as a color.
+    fn finish_param(&mut self) {
+        match self.param {
+            38 | 48 => self.state = DecoderState::UnsupportedSequence,
+            param => {
+                self.pending_color.apply_sgr(param);
+                self.param = 0;
+            }
         }
-        self.params[self.param_count] = 0;
-        self.param_count += 1;
+    }
+}
+
+#[ext]
+impl Char {
+    /// Whether this is a parameter or intermediate byte of a control
+    /// sequence, per ECMA-48 section 5.4.
+    fn is_sequence_byte(self) -> bool {
+        matches!(self.to_u8(), 0x20..=0x3f)
     }
 }

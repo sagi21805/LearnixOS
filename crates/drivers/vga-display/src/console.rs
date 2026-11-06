@@ -1,4 +1,6 @@
-use core::{array, fmt, io, ptr::with_exposed_provenance_mut};
+use core::{
+    array, ascii::Char, fmt, io, ptr::with_exposed_provenance_mut,
+};
 
 use common::{
     ansi::{BRIGHT_YELLOW, RED, RESET},
@@ -11,7 +13,6 @@ use x86::instructions::port::PortExt;
 
 use crate::{
     ansi::{AnsiDecoder, Decoded},
-    color_code::ColorCode,
     screen_char::ScreenChar,
     scrollback::Scrollback,
 };
@@ -31,7 +32,6 @@ pub static CONSOLE: SpinMutex<Console> = SpinMutex::new(Console::new());
 /// last cell scrolls the screen first.
 pub struct Console {
     cursor: usize,
-    color: ColorCode,
     decoder: AnsiDecoder,
     scrollback: Option<Scrollback>,
 }
@@ -40,7 +40,6 @@ impl Console {
     const fn new() -> Self {
         Self {
             cursor: 0,
-            color: ColorCode::default(),
             decoder: AnsiDecoder::default(),
             scrollback: None,
         }
@@ -117,10 +116,11 @@ impl Console {
         unsafe { &mut *cells }
     }
 
-    /// Writes one glyph in the current color.
-    fn put(&mut self, glyph: u8) {
-        let (position, color) = (self.cursor, self.color);
-        self.vga_cells()[position].write(ScreenChar::new(glyph, color));
+    /// Writes one character in the current color.
+    fn put(&mut self, ascii: Char) {
+        let (position, color) = (self.cursor, self.decoder.color());
+        self.vga_cells()[position]
+            .write(ScreenChar::new(ascii.to_u8(), color));
         self.move_cursor_to(position + 1);
     }
 
@@ -224,12 +224,9 @@ impl io::Write for Console {
         self.scroll_view_down(usize::MAX);
         for &byte in bytes {
             match self.decoder.advance(byte) {
-                Some(Decoded::Print(glyph)) => self.put(glyph),
+                Some(Decoded::Print(ascii)) => self.put(ascii),
                 Some(Decoded::LineFeed) => self.line_feed(),
                 Some(Decoded::Backspace) => self.backspace(),
-                Some(Decoded::Rendition(params)) => {
-                    self.color.apply_sgr(params)
-                }
                 None => {}
             }
         }

@@ -8,6 +8,7 @@ common.workspace = true
 x86.workspace = true
 bitfields.workspace = true
 sync.workspace = true
+extend.workspace = true
 
 [features]
 host = []
