@@ -6,6 +6,7 @@
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
 pub mod advanced_writer;
+pub mod ansi;
 pub mod color_code;
 pub mod generic_writer;
 pub mod screen_char;
