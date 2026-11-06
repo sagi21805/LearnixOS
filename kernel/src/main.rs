@@ -3,13 +3,13 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
-use vga_display::{okprintln, println, vga_init};
-use x86::instructions::cpuid;
+use vga_display::{okprintln, vga_init};
 
 mod console;
 mod interrupts;
 mod memory;
 mod panic;
+mod report;
 mod timer;
 
 /// The kernel's entry point.
@@ -40,27 +40,14 @@ pub unsafe extern "C" fn _start() -> ! {
 
     console::use_advanced_writer();
 
-    println!("{}", memory.mmap);
-
     let pci_devices = pci::scan_pci(memory.slab);
-    for device in &pci_devices {
-        println!("{}", device);
-    }
-    println!("");
-
-    let vendor = cpuid::get_vendor_string();
-    // SAFETY: the vendor string is ASCII, so it is valid UTF-8.
-    let vendor = unsafe { str::from_utf8_unchecked(&vendor) };
-    println!("CPU vendor: {}", vendor);
-    if let Some(brand) = cpuid::get_brand_string() {
-        println!("CPU brand: {}", brand.as_str());
-    }
+    report::print_hardware(memory.mmap, &pci_devices);
 
     console::run()
 }
 
-// The AHCI bring-up I experimented with, which ran after the hardware
-// report and before the input loop.
+// The AHCI bring-up experiment, which ran after the hardware report and
+// before the input loop.
 //
 // unsafe { PIC.enable_irq(CascadedPicInterruptLine::Ahci) };
 // for device in pci_devices.iter_mut() {
