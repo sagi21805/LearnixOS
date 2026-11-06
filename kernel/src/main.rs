@@ -26,7 +26,7 @@ use vga_display::{
 use x86::{
     instructions::interrupts::{self, hlt},
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
-    pic8259::CascadedPIC,
+    pic8259::PIC,
     structures::{
         interrupt_descriptor_table::InterruptDescriptorTable,
         segments::TSS,
@@ -43,10 +43,6 @@ mod interrupt_handlers;
 mod timer;
 
 static MMAP: Once<MemoryMap> = Once::uninit();
-
-#[unsafe(no_mangle)]
-static PIC: SpinMutex<CascadedPIC> =
-    SpinMutex::new(CascadedPIC::default());
 
 static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
 
