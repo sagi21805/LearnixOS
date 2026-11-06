@@ -2,7 +2,6 @@ use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
     enums::{PageSize, interrupts::GateType},
 };
-use keyboard::keyboard_handler;
 use libk::alloc::VirtualAddressMapping;
 use vga_display::println;
 use x86::{
@@ -15,184 +14,10 @@ use x86::{
     },
 };
 
-use crate::timer::timer_handler;
-
-pub extern "x86-interrupt" fn division_error_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!("Interrupt: DivisionError\nStack frame: {stack_frame:?}");
-}
-
-pub extern "x86-interrupt" fn debug_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!("Interrupt: Debug\nStack frame: {stack_frame:?}");
-}
-
-pub extern "x86-interrupt" fn non_maskable_interrupt_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!(
-        "Interrupt: NonMaskableInterrupt\nStack frame: {stack_frame:?}"
-    );
-}
-
-pub extern "x86-interrupt" fn breakpoint_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    println!("Interrupt: Breakpoint");
-    println!("Stack frame: {:#?}", stack_frame);
-}
-
-pub extern "x86-interrupt" fn overflow_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!("Interrupt: Overflow\nStack frame: {stack_frame:?}");
-}
-
-pub extern "x86-interrupt" fn bound_range_exceeded_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!("Interrupt: BoundRangeExceeded\nStack frame: {stack_frame:?}");
-}
-
-pub extern "x86-interrupt" fn invalid_opcode_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!("Interrupt: InvalidOpcode\nStack frame: {stack_frame:?}");
-}
-
-pub extern "x86-interrupt" fn device_not_found_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!("Interrupt: DeviceNotFound\nStack frame: {stack_frame:?}");
-}
-
-pub extern "x86-interrupt" fn coprocessor_segment_overrun_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!(
-        "Interrupt: CoprocessorSegmentOverrun\nStack frame: \
-         {stack_frame:?}"
-    );
-}
-
-pub extern "x86-interrupt" fn floating_point_error_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!("Interrupt: FloatingPointError\nStack frame: {stack_frame:?}");
-}
-
-pub extern "x86-interrupt" fn machine_check_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!("Interrupt: MachineCheck\nStack frame: {stack_frame:?}");
-}
-
-pub extern "x86-interrupt" fn simd_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!("Interrupt: SIMD\nStack frame: {stack_frame:?}");
-}
-
-pub extern "x86-interrupt" fn virtualization_handler(
-    stack_frame: InterruptStackFrame,
-) {
-    panic!("Interrupt: Virtualization\nStack frame: {stack_frame:?}");
-}
-
-pub extern "x86-interrupt" fn double_fault_handler(
-    stack_frame: InterruptStackFrame,
-    error_code: u64,
-) {
-    panic!(
-        "Interrupt: DoubleFault\nError code: {error_code:#x}\nStack \
-         frame: {stack_frame:?}"
-    );
-}
-
-pub extern "x86-interrupt" fn invalid_tss_handler(
-    stack_frame: InterruptStackFrame,
-    error_code: u64,
-) {
-    panic!(
-        "Interrupt: InvalidTSS\nError code: {error_code:#x}\nStack \
-         frame: {stack_frame:?}"
-    );
-}
-
-pub extern "x86-interrupt" fn segment_not_present_handler(
-    stack_frame: InterruptStackFrame,
-    error_code: u64,
-) {
-    panic!(
-        "Interrupt: SegmentNotPresent\nError code: \
-         {error_code:#x}\nStack frame: {stack_frame:?}"
-    );
-}
-
-pub extern "x86-interrupt" fn stack_segment_fault_handler(
-    stack_frame: InterruptStackFrame,
-    error_code: u64,
-) {
-    panic!(
-        "Interrupt: StackSegmentFault\nError code: \
-         {error_code:#x}\nStack frame: {stack_frame:?}"
-    );
-}
-
-pub extern "x86-interrupt" fn general_protection_handler(
-    stack_frame: InterruptStackFrame,
-    error_code: u64,
-) {
-    panic!(
-        "Interrupt: GeneralProtection\nError code: \
-         {error_code:#x}\nStack frame: {stack_frame:?}"
-    );
-}
-
-pub extern "x86-interrupt" fn page_fault_handler(
-    _stack_frame: InterruptStackFrame,
-    _error_code: u64,
-) {
-    let faulting_address =
-        unsafe { VirtualAddress::new_unchecked(cr2::read() as usize) };
-
-    let identity_map =
-        unsafe { PhysicalAddress::new_unchecked(cr2::read() as usize) };
-
-    faulting_address
-        .map(
-            identity_map,
-            Some(PageEntryFlags::regular_page_flags()),
-            PageSize::Regular,
-        )
-        .expect("Cannot map address");
-}
-
-pub extern "x86-interrupt" fn alignment_check_handler(
-    stack_frame: InterruptStackFrame,
-    error_code: u64,
-) {
-    panic!(
-        "Interrupt: AlignmentCheck\nError code: {error_code:#x}\nStack \
-         frame: {stack_frame:?}"
-    );
-}
-
-pub extern "x86-interrupt" fn control_protection_handler(
-    stack_frame: InterruptStackFrame,
-    error_code: u64,
-) {
-    panic!(
-        "Interrupt: ControlProtection\nError code: \
-         {error_code:#x}\nStack frame: {stack_frame:?}"
-    );
-}
-
-#[extend::ext]
+#[extend::ext(name = ExceptionHandlers)]
 pub impl InterruptDescriptorTable {
-    fn init_handlers(&mut self) {
+    /// Registers the handler of every CPU exception.
+    fn set_exception_handlers(&mut self) {
         self.division_error
             .set_handler(division_error_handler, GateType::Interrupt);
         self.debug.set_handler(debug_handler, GateType::Interrupt);
@@ -240,10 +65,174 @@ pub impl InterruptDescriptorTable {
             .set_handler(virtualization_handler, GateType::Interrupt);
         self.control_protection
             .set_handler(control_protection_handler, GateType::Interrupt);
-
-        // TODO: ADD THESE INTERRUPT ON A DIFFERENT OCCASION
-        self.timer.set_handler(timer_handler, GateType::Trap);
-        self.keyboard.set_handler(keyboard_handler, GateType::Trap);
-        // self.ahci.set_handler(ahci_interrupt, GateType::Trap);
     }
+}
+
+extern "x86-interrupt" fn division_error_handler(
+    stack_frame: InterruptStackFrame,
+) {
+    panic!("Interrupt: DivisionError\nStack frame: {stack_frame:?}");
+}
+
+extern "x86-interrupt" fn debug_handler(stack_frame: InterruptStackFrame) {
+    panic!("Interrupt: Debug\nStack frame: {stack_frame:?}");
+}
+
+extern "x86-interrupt" fn non_maskable_interrupt_handler(
+    stack_frame: InterruptStackFrame,
+) {
+    panic!(
+        "Interrupt: NonMaskableInterrupt\nStack frame: {stack_frame:?}"
+    );
+}
+
+extern "x86-interrupt" fn breakpoint_handler(
+    stack_frame: InterruptStackFrame,
+) {
+    println!("Interrupt: Breakpoint");
+    println!("Stack frame: {:#?}", stack_frame);
+}
+
+extern "x86-interrupt" fn overflow_handler(
+    stack_frame: InterruptStackFrame,
+) {
+    panic!("Interrupt: Overflow\nStack frame: {stack_frame:?}");
+}
+
+extern "x86-interrupt" fn bound_range_exceeded_handler(
+    stack_frame: InterruptStackFrame,
+) {
+    panic!("Interrupt: BoundRangeExceeded\nStack frame: {stack_frame:?}");
+}
+
+extern "x86-interrupt" fn invalid_opcode_handler(
+    stack_frame: InterruptStackFrame,
+) {
+    panic!("Interrupt: InvalidOpcode\nStack frame: {stack_frame:?}");
+}
+
+extern "x86-interrupt" fn device_not_found_handler(
+    stack_frame: InterruptStackFrame,
+) {
+    panic!("Interrupt: DeviceNotFound\nStack frame: {stack_frame:?}");
+}
+
+extern "x86-interrupt" fn coprocessor_segment_overrun_handler(
+    stack_frame: InterruptStackFrame,
+) {
+    panic!(
+        "Interrupt: CoprocessorSegmentOverrun\nStack frame: \
+         {stack_frame:?}"
+    );
+}
+
+extern "x86-interrupt" fn floating_point_error_handler(
+    stack_frame: InterruptStackFrame,
+) {
+    panic!("Interrupt: FloatingPointError\nStack frame: {stack_frame:?}");
+}
+
+extern "x86-interrupt" fn machine_check_handler(
+    stack_frame: InterruptStackFrame,
+) {
+    panic!("Interrupt: MachineCheck\nStack frame: {stack_frame:?}");
+}
+
+extern "x86-interrupt" fn simd_handler(stack_frame: InterruptStackFrame) {
+    panic!("Interrupt: SIMD\nStack frame: {stack_frame:?}");
+}
+
+extern "x86-interrupt" fn virtualization_handler(
+    stack_frame: InterruptStackFrame,
+) {
+    panic!("Interrupt: Virtualization\nStack frame: {stack_frame:?}");
+}
+
+extern "x86-interrupt" fn double_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    panic!(
+        "Interrupt: DoubleFault\nError code: {error_code:#x}\nStack \
+         frame: {stack_frame:?}"
+    );
+}
+
+extern "x86-interrupt" fn invalid_tss_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    panic!(
+        "Interrupt: InvalidTSS\nError code: {error_code:#x}\nStack \
+         frame: {stack_frame:?}"
+    );
+}
+
+extern "x86-interrupt" fn segment_not_present_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    panic!(
+        "Interrupt: SegmentNotPresent\nError code: \
+         {error_code:#x}\nStack frame: {stack_frame:?}"
+    );
+}
+
+extern "x86-interrupt" fn stack_segment_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    panic!(
+        "Interrupt: StackSegmentFault\nError code: \
+         {error_code:#x}\nStack frame: {stack_frame:?}"
+    );
+}
+
+extern "x86-interrupt" fn general_protection_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    panic!(
+        "Interrupt: GeneralProtection\nError code: \
+         {error_code:#x}\nStack frame: {stack_frame:?}"
+    );
+}
+
+extern "x86-interrupt" fn page_fault_handler(
+    _stack_frame: InterruptStackFrame,
+    _error_code: u64,
+) {
+    let faulting_address =
+        unsafe { VirtualAddress::new_unchecked(cr2::read() as usize) };
+
+    let identity_map =
+        unsafe { PhysicalAddress::new_unchecked(cr2::read() as usize) };
+
+    faulting_address
+        .map(
+            identity_map,
+            Some(PageEntryFlags::regular_page_flags()),
+            PageSize::Regular,
+        )
+        .expect("Cannot map address");
+}
+
+extern "x86-interrupt" fn alignment_check_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    panic!(
+        "Interrupt: AlignmentCheck\nError code: {error_code:#x}\nStack \
+         frame: {stack_frame:?}"
+    );
+}
+
+extern "x86-interrupt" fn control_protection_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    panic!(
+        "Interrupt: ControlProtection\nError code: \
+         {error_code:#x}\nStack frame: {stack_frame:?}"
+    );
 }

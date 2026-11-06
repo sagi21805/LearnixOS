@@ -10,25 +10,14 @@ use vga_display::{
     ADVANCED_WRITER, WRITER, advanced_writer::AdvancedWriter, okprintln,
     print, println, vga_init,
 };
-use x86::{
-    instructions::{cpuid, interrupts as cpu_interrupts},
-    pic8259::PIC,
-    structures::{
-        interrupt_descriptor_table::InterruptDescriptorTable,
-        segments::TSS,
-    },
-};
+use x86::instructions::{cpuid, interrupts as cpu_interrupts};
 
-use sync::{mutex::SpinMutex, once::Once, spsc::SpscRingBuffer};
-
-use crate::interrupts::exceptions::InterruptDescriptorTableExt;
+use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
 
 mod interrupts;
 mod memory;
 mod panic;
 mod timer;
-
-static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
 
 /// The kernel's entry point.
 ///
@@ -47,25 +36,20 @@ pub unsafe extern "C" fn _start() -> ! {
     // SAFETY: the second stage stored the memory map before jumping here.
     let memory = unsafe { memory::init() };
 
-    unsafe {
-        cpu_interrupts::disable();
-        TSS.load();
-        okprintln!("Loaded task state segment");
-        let mut table = Box::new(InterruptDescriptorTable::default());
-        table.init_handlers();
-        IDT.init(table).load();
-        okprintln!("Initialized interrupt descriptor table");
-        PIC.lock().init();
-        okprintln!("Initialized Programmable Interrupt Controller");
-        let buffer: Box<[u8], _> = Box::new_in([0u8; 4096], memory.slab);
-        let buffer_address = buffer.as_ptr();
-        let keyboard_buffer =
-            KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
+    // SAFETY: `memory::init` set the global allocator, and the second
+    // stage's GDT is still loaded.
+    unsafe { interrupts::init() };
 
-        KEYBOARD.init(SpinMutex::new(Keyboard::new(keyboard_buffer)));
-        okprintln!("Initialized Keyboard at {:p}", buffer_address);
-        cpu_interrupts::enable();
-    }
+    let buffer: Box<[u8], _> = Box::new_in([0u8; 4096], memory.slab);
+    let buffer_address = buffer.as_ptr();
+    let keyboard_buffer =
+        KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
+    KEYBOARD.init(SpinMutex::new(Keyboard::new(keyboard_buffer)));
+    okprintln!("Initialized Keyboard at {:p}", buffer_address);
+
+    // SAFETY: the IDT, PIC and keyboard are ready for the first interrupt.
+    unsafe { interrupts::enable() };
+
     // SAFETY: this is the only `leak` of the writer, and it stays locked.
     let w = unsafe {
         ADVANCED_WRITER
