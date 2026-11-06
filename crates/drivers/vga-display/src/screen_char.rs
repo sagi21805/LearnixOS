@@ -1,4 +1,4 @@
-use super::ColorCode;
+use crate::color_code::ColorCode;
 
 /// One cell of VGA text memory.
 ///

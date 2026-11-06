@@ -2,7 +2,7 @@ use common::{
     address_types::{Address, VirtualAddress},
     enums::interrupts::GateType,
 };
-use vga_display::println;
+use libk::println;
 use x86::{
     registers::cr2,
     structures::interrupt_descriptor_table::{
