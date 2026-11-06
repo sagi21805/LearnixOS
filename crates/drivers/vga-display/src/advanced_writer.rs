@@ -5,10 +5,9 @@ use core::ascii::Char;
 use alloc::boxed::Box;
 
 use common::constants::REGULAR_PAGE_SIZE;
-use sync::{mutex::SpinMutex, once::Once};
 
 use crate::{
-    SCREEN, Screen, WriteInfo, color_code::ColorCode,
+    SCREEN, WriteInfo, color_code::ColorCode,
     generic_writer::GenericWriter, screen_char::ScreenChar,
 };
 
@@ -22,7 +21,6 @@ pub struct AdvancedWriter<const W: usize, const H: usize> {
     pub buffer: Box<[ScreenChar]>,
     pub display_line: usize,
     pub row_table: Box<[usize]>,
-    pub screen: &'static Once<SpinMutex<Screen>>,
 }
 
 impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
@@ -47,7 +45,6 @@ impl<const W: usize, const H: usize> Default for AdvancedWriter<W, H> {
             row_table: unsafe {
                 Box::<[usize; ROW_TABLE_SIZE]>::new_zeroed().assume_init()
             },
-            screen: &SCREEN,
         }
     }
 }
@@ -92,8 +89,8 @@ impl<const W: usize, const H: usize> GenericWriter
             return;
         }
         if self.row_table[new_line + self.screen_height()] != 0 {
-            self.screen.lock().scroll_up(lines);
-            self.screen.lock().reset_cursor();
+            SCREEN.lock().scroll_up(lines);
+            SCREEN.lock().reset_cursor();
             self.display_line = new_line;
             self.screen_start = self.row_table[new_line];
         }
@@ -105,8 +102,8 @@ impl<const W: usize, const H: usize> GenericWriter
             return;
         }
         if self.row_table[new_line] != 0 || new_line == 0 {
-            self.screen.lock().scroll_down(lines);
-            self.screen.lock().reset_cursor();
+            SCREEN.lock().scroll_down(lines);
+            SCREEN.lock().reset_cursor();
             self.display_line = new_line;
             self.screen_start = self.row_table[new_line];
         }
@@ -114,7 +111,7 @@ impl<const W: usize, const H: usize> GenericWriter
 
     fn update(&mut self) {
         for i in self.screen_start..self.cursor {
-            let mut screen = self.screen.lock();
+            let mut screen = SCREEN.lock();
             let char = self.buffer.get(i).cloned().unwrap_or_default();
             match screen.write_char(char) {
                 WriteInfo::LineDown
@@ -129,10 +126,10 @@ impl<const W: usize, const H: usize> GenericWriter
     fn write_cursor_position(&self) -> usize { todo!() }
 
     fn set_cursor_position(&mut self, position: usize) {
-        let mut screen = self.screen.lock();
+        let mut screen = SCREEN.lock();
         if self.screen_start == 0 {
-            for char in screen.buffer.iter().take(position) {
-                self.write_vga_char(*char);
+            for cell in screen.vga_cells().iter().take(position) {
+                self.write_vga_char(cell.read());
             }
             screen.reset_cursor();
             // self.screen_start = self.cursor;

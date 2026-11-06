@@ -15,12 +15,14 @@ use color_code::ColorCode;
 use common::{
     constants::VGA_BUFFER_PTR,
     enums::{Port, VgaCommand},
+    volatile::Volatile,
 };
 use x86::instructions::port::PortExt;
 
 use core::{
     ascii::Char,
     fmt::{self, Write},
+    ptr::with_exposed_provenance_mut,
 };
 
 use crate::{
@@ -30,7 +32,13 @@ use crate::{
 
 use sync::{mutex::SpinMutex, once::Once};
 
-pub static SCREEN: Once<SpinMutex<Screen>> = Once::uninit();
+/// Columns of the VGA text mode.
+pub const WIDTH: usize = 80;
+/// Rows of the VGA text mode.
+pub const HEIGHT: usize = 25;
+const CELLS: usize = WIDTH * HEIGHT;
+
+pub static SCREEN: SpinMutex<Screen> = SpinMutex::new(Screen::new());
 
 /// The writer that needs no heap, used by [`WRITER`] until a better one is
 /// set, and by the panic handler.
@@ -50,10 +58,7 @@ pub static ADVANCED_WRITER: Once<SpinMutex<AdvancedWriter<80, 25>>> =
     Once::uninit();
 
 pub struct Screen {
-    buffer: &'static mut [ScreenChar],
     screen_position: usize,
-    pub width: usize,
-    pub height: usize,
 }
 
 pub enum WriteInfo {
@@ -68,18 +73,27 @@ pub enum WriteInfo {
 }
 
 impl Screen {
+    const fn new() -> Self { Self { screen_position: 0 } }
+
+    /// VGA text memory, which `&mut self` keeps exclusive because
+    /// [`SCREEN`] is the only `Screen`.
+    fn vga_cells(&mut self) -> &mut [Volatile<ScreenChar>; CELLS] {
+        let cells = with_exposed_provenance_mut(VGA_BUFFER_PTR as usize);
+        // SAFETY: the boot page tables map VGA text memory, and any byte
+        // is a valid `ScreenChar`.
+        unsafe { &mut *cells }
+    }
+
     pub fn write_char(&mut self, c: ScreenChar) -> WriteInfo {
         let info = match Char::from_u8(c.glyph) {
             Some(Char::LineFeed) => self.new_line(),
             Some(Char::Backspace | Char::Delete) => self.backspace(),
             _ => {
-                if self.screen_position < self.buffer.len() {
-                    let position = &mut self.buffer[self.screen_position];
-                    unsafe {
-                        ::core::ptr::write_volatile(position as *mut _, c);
-                    }
+                if self.screen_position < CELLS {
+                    let position = self.screen_position;
+                    self.vga_cells()[position].write(c);
                     self.screen_position += 1;
-                    if self.screen_position.is_multiple_of(self.width) {
+                    if self.screen_position.is_multiple_of(WIDTH) {
                         WriteInfo::LineUp
                     } else {
                         WriteInfo::SameLine
@@ -95,15 +109,17 @@ impl Screen {
     }
 
     pub fn new_line(&mut self) -> WriteInfo {
-        let offset = self.screen_position % self.width;
-        for i in 0..self.width - offset {
-            self.buffer[self.screen_position + i] = ScreenChar::default()
-        }
+        let offset = self.screen_position % WIDTH;
+        let new_position = self.screen_position + (WIDTH - offset);
 
-        let new_position = self.screen_position + (self.width - offset);
+        let position = self.screen_position;
+        let line_end = new_position.min(CELLS);
+        self.vga_cells()[position..line_end]
+            .iter_mut()
+            .for_each(|cell| cell.write(ScreenChar::default()));
 
-        if new_position >= self.buffer.len() {
-            self.screen_position = self.buffer.len() - 1;
+        if new_position >= CELLS {
+            self.screen_position = CELLS - 1;
             WriteInfo::EndOfScreen
         } else {
             self.screen_position = new_position;
@@ -114,9 +130,10 @@ impl Screen {
     pub fn backspace(&mut self) -> WriteInfo {
         if self.screen_position > 0 {
             self.screen_position -= 1;
-            self.buffer[self.screen_position] = ScreenChar::default();
+            let position = self.screen_position;
+            self.vga_cells()[position].write(ScreenChar::default());
             // Backspace to the first character of the line
-            if self.screen_position % self.width == self.width - 1 {
+            if self.screen_position % WIDTH == WIDTH - 1 {
                 return WriteInfo::LineDown;
             }
         }
@@ -136,35 +153,24 @@ impl Screen {
     }
 
     fn scroll_up(&mut self, lines: usize) {
-        let anchor = lines * self.width;
-        let len = self.buffer.len();
-        self.buffer[len - anchor..].fill(ScreenChar::default());
+        self.vga_cells()[CELLS - lines * WIDTH..]
+            .iter_mut()
+            .for_each(|cell| cell.write(ScreenChar::default()));
     }
 
     fn scroll_down(&mut self, lines: usize) {
-        let anchor = lines * self.width;
-        self.buffer[0..anchor].fill(ScreenChar::default());
+        self.vga_cells()[..lines * WIDTH]
+            .iter_mut()
+            .for_each(|cell| cell.write(ScreenChar::default()));
     }
 
     pub fn reset_cursor(&mut self) { self.screen_position = 0; }
 
-    pub fn clear(&mut self) { self.buffer.fill(ScreenChar::default()); }
-}
-
-pub fn vga_init() {
-    let screen = unsafe {
-        core::slice::from_raw_parts_mut(
-            VGA_BUFFER_PTR as *mut ScreenChar,
-            80 * 25,
-        )
-    };
-
-    SCREEN.init(SpinMutex::new(Screen {
-        buffer: screen,
-        screen_position: 0,
-        width: 80,
-        height: 25,
-    }));
+    pub fn clear(&mut self) {
+        self.vga_cells()
+            .iter_mut()
+            .for_each(|cell| cell.write(ScreenChar::default()));
+    }
 }
 
 pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {

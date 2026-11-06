@@ -6,17 +6,15 @@ use core::{
 };
 
 use common::enums::Color;
-use sync::{mutex::SpinMutex, once::Once};
 
 use crate::{
-    SCREEN, Screen, color_code::ColorCode, generic_writer::GenericWriter,
+    SCREEN, color_code::ColorCode, generic_writer::GenericWriter,
     screen_char::ScreenChar,
 };
 
 /// Writer implementation for the VGA driver.
 pub struct SimpleWriter<const W: usize, const H: usize> {
     pub color: ColorCode,
-    screen: &'static Once<SpinMutex<Screen>>,
 }
 
 impl<const W: usize, const H: usize> SimpleWriter<W, H> {
@@ -43,7 +41,6 @@ const impl<const W: usize, const H: usize> Default for SimpleWriter<W, H> {
     fn default() -> Self {
         Self {
             color: ColorCode::default(),
-            screen: &SCREEN,
         }
     }
 }
@@ -54,14 +51,14 @@ impl<const W: usize, const H: usize> GenericWriter for SimpleWriter<W, H> {
     fn set_cursor_position(&mut self, _p: usize) {}
 
     fn write_cursor_position(&self) -> usize {
-        self.screen.lock().screen_position
+        SCREEN.lock().screen_position
     }
 
     fn scroll_up(&mut self, _lines: usize) { unimplemented!() }
 
-    fn new_line(&mut self) { self.screen.lock().new_line(); }
+    fn new_line(&mut self) { SCREEN.lock().new_line(); }
 
-    fn backspace(&mut self) { self.screen.lock().backspace(); }
+    fn backspace(&mut self) { SCREEN.lock().backspace(); }
 
     fn color(&self) -> ColorCode { self.color }
 
@@ -74,7 +71,7 @@ impl<const W: usize, const H: usize> GenericWriter for SimpleWriter<W, H> {
     fn update(&mut self) {}
 
     fn write_vga_char(&mut self, char: ScreenChar) {
-        self.screen.lock().write_char(char);
+        SCREEN.lock().write_char(char);
     }
 
     fn write_char(&mut self, char: char) {
