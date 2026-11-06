@@ -142,6 +142,9 @@ pub unsafe extern "C" fn _start() -> ! {
         "CPU vendor: {}",
         str::from_utf8(&vendor).expect("CPUID vendor strings are ASCII")
     );
+    if let Some(brand) = cpuid::get_brand_string() {
+        println!("CPU brand: {}", brand.as_str());
+    }
 
     // loop {
     //     let c = unsafe {
