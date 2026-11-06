@@ -30,7 +30,7 @@ pub struct KernelMemory {
 ///
 /// # Safety
 ///
-/// Only `_start` may call this, under the contract of [`read_memory_map`].
+/// The contract of [`read_memory_map`] applies.
 pub unsafe fn init() -> KernelMemory {
     let mmap = MMAP.init(unsafe { read_memory_map() });
 

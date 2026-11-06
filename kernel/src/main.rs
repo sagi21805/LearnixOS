@@ -16,8 +16,8 @@ mod timer;
 ///
 /// # Safety
 ///
-/// Only the second stage may jump here, in long mode with the boot page
-/// tables and the kernel stack set up.
+/// Only the second stage may jump here, in long mode with interrupts
+/// disabled and the boot page tables and the kernel stack set up.
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 pub unsafe extern "C" fn _start() -> ! {
@@ -29,14 +29,10 @@ pub unsafe extern "C" fn _start() -> ! {
     // SAFETY: the second stage stored the memory map before jumping here.
     let memory = unsafe { memory::init() };
 
-    // SAFETY: `memory::init` set the global allocator, and the second
-    // stage's GDT is still loaded.
+    // SAFETY: the second stage's GDT is still loaded.
     unsafe { interrupts::init() };
 
     console::init_keyboard(memory.slab);
-
-    // SAFETY: the IDT, PIC and keyboard are ready for the first interrupt.
-    unsafe { interrupts::enable() };
 
     console::use_advanced_writer();
 
