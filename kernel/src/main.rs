@@ -4,17 +4,8 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use buddy::BuddyAllocator;
-use common::{
-    constants::{
-        MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, PARSED_MEMORY_MAP,
-        REGULAR_PAGE_SIZE,
-    },
-    enums::PS2ScanCode,
-};
+use common::enums::PS2ScanCode;
 use keyboard::{KEYBOARD, KEYBOARD_BUFFER, ps2_keyboard::Keyboard};
-use page::{Page, arena::PageMap};
-use slab::SlabAllocator;
 use vga_display::{
     ADVANCED_WRITER, WRITER, advanced_writer::AdvancedWriter, okprintln,
     print, println, vga_init,
@@ -24,7 +15,6 @@ use x86::{
         cpuid,
         interrupts::{self, hlt},
     },
-    memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
     pic8259::PIC,
     structures::{
         interrupt_descriptor_table::InterruptDescriptorTable,
@@ -32,28 +22,16 @@ use x86::{
     },
 };
 
-use libk::alloc::GlobalAllocator;
-
 use sync::{mutex::SpinMutex, once::Once, spsc::SpscRingBuffer};
 
 use crate::interrupt_handlers::InterruptDescriptorTableExt;
 
 mod interrupt_handlers;
+mod memory;
 mod panic;
 mod timer;
 
-static MMAP: Once<MemoryMap> = Once::uninit();
-
 static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
-
-#[global_allocator]
-static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
-
-pub static BUDDY_ALLOCATOR: Once<BuddyAllocator<PageMap, Page>> =
-    Once::uninit();
-
-pub static SLAB_ALLOCATOR: Once<SlabAllocator<Page, PageMap>> =
-    Once::uninit();
 
 /// The kernel's entry point.
 ///
@@ -69,32 +47,9 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Entered Protected Mode");
     okprintln!("Enabled Paging");
     okprintln!("Entered Long Mode");
-    let len = unsafe { *(MEMORY_MAP_LENGTH as *const u32) as usize };
-    let raw = unsafe {
-        core::slice::from_raw_parts_mut(
-            MEMORY_MAP_OFFSET as *mut MemoryRegionExtended,
-            len,
-        )
-    };
-    let buf = unsafe {
-        core::slice::from_raw_parts_mut(
-            PARSED_MEMORY_MAP as *mut MemoryRegion,
-            REGULAR_PAGE_SIZE / size_of::<MemoryRegion>(),
-        )
-    };
+    // SAFETY: the second stage stored the memory map before jumping here.
+    let memory = unsafe { memory::init() };
 
-    let mmap = MMAP.init(MemoryMap::parse_map(raw, buf).unwrap());
-
-    let buddy = BUDDY_ALLOCATOR
-        .init_with(BuddyAllocator::<PageMap, Page>::new(mmap), |buddy| {
-            buddy.get_mut().initialize(mmap)
-        });
-    // SAFETY: the buddy allocator takes pages only from its own arena.
-    unsafe { GLOBAL_ALLOCATOR.set(buddy) };
-
-    okprintln!("Initialized Buddy Allocator");
-    let slab = SLAB_ALLOCATOR.init(SlabAllocator::new(buddy));
-    okprintln!("Initialized Slab Allocator");
     unsafe {
         interrupts::disable();
         TSS.load();
@@ -105,7 +60,7 @@ pub unsafe extern "C" fn _start() -> ! {
         okprintln!("Initialized interrupt descriptor table");
         PIC.lock().init();
         okprintln!("Initialized Programmable Interrupt Controller");
-        let buffer: Box<[u8], _> = Box::new_in([0u8; 4096], slab);
+        let buffer: Box<[u8], _> = Box::new_in([0u8; 4096], memory.slab);
         let buffer_address = buffer.as_ptr();
         let keyboard_buffer =
             KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
@@ -127,9 +82,9 @@ pub unsafe extern "C" fn _start() -> ! {
         hlt();
     }
 
-    println!("{}", mmap);
+    println!("{}", memory.mmap);
 
-    let pci_devices = pci::scan_pci(slab);
+    let pci_devices = pci::scan_pci(memory.slab);
     for device in &pci_devices {
         println!("{}", device);
     }
