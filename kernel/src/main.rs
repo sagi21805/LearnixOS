@@ -19,7 +19,7 @@ use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use vga_display::{
     ADVANCED_WRITER, SCREEN, SIMPLE_WRITER, WRITER,
-    advanced_writer::AdvancedWriter, okprintln, vga_init,
+    advanced_writer::AdvancedWriter, okprintln, print, println, vga_init,
 };
 use x86::{
     instructions::{
@@ -34,7 +34,7 @@ use x86::{
     },
 };
 
-use libk::{alloc::GlobalAllocator, print, println};
+use libk::alloc::GlobalAllocator;
 
 use sync::{mutex::SpinMutex, once::Once, spsc::SpscRingBuffer};
 
@@ -137,7 +137,9 @@ pub unsafe extern "C" fn _start() -> ! {
     println!("");
 
     let vendor = cpuid::get_vendor_string();
-    println!("CPU vendor: {}", str::from_utf8_unchecked(&vendor));
+    // SAFETY: the vendor string is ASCII, so it is valid UTF-8.
+    let vendor = unsafe { str::from_utf8_unchecked(&vendor) };
+    println!("CPU vendor: {}", vendor);
     if let Some(brand) = cpuid::get_brand_string() {
         println!("CPU brand: {}", brand.as_str());
     }
