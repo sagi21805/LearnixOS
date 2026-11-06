@@ -14,7 +14,7 @@ use common::{
     },
     enums::PS2ScanCode,
 };
-use keyboard::{KEYBOARD, ps2_keyboard::Keyboard};
+use keyboard::{KEYBOARD, KEYBOARD_BUFFER, ps2_keyboard::Keyboard};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use vga_display::{
@@ -43,8 +43,6 @@ mod timer;
 static MMAP: Once<MemoryMap> = Once::uninit();
 
 static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
-
-static KEYBOARD_BUFFER: Once<SpscRingBuffer<u8>> = Once::uninit();
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
