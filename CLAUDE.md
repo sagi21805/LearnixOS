@@ -41,7 +41,7 @@ The book that explains this kernel chapter by chapter lives in a separate reposi
   - `arch/x86`: architecture-specific code
   - `memory/{bump,buddy,page,slab}`: allocators
   - `sync`: synchronization primitives
-  - `drivers/`: keyboard, VGA display (`ahci` and `pci` are currently disabled in the workspace)
+  - `drivers/`: keyboard, VGA display, PCI (`ahci` is currently disabled in the workspace)
   - `macros`: proc macros
   - `common`, `libk`: shared kernel utilities
 - `xtask/`: build tooling
