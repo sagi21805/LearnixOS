@@ -24,7 +24,8 @@ use core::{
 };
 
 use crate::{
-    generic_writer::Writer, screen_char::ScreenChar, writer::SimpleWriter,
+    advanced_writer::AdvancedWriter, generic_writer::Writer,
+    screen_char::ScreenChar, writer::SimpleWriter,
 };
 
 use sync::{mutex::SpinMutex, once::Once};
@@ -42,6 +43,11 @@ pub static SIMPLE_WRITER: SpinMutex<SimpleWriter<80, 25>> =
 // SAFETY: this is the only `leak` of `SIMPLE_WRITER`.
 pub static WRITER: SpinMutex<Writer<'static>> =
     SpinMutex::new(Writer::new(unsafe { SIMPLE_WRITER.leak() }));
+
+/// The writer with a scrollback buffer, which replaces [`SIMPLE_WRITER`]
+/// in [`WRITER`] once the heap works.
+pub static ADVANCED_WRITER: Once<SpinMutex<AdvancedWriter<80, 25>>> =
+    Once::uninit();
 
 pub struct Screen {
     buffer: &'static mut [ScreenChar],

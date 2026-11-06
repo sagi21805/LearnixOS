@@ -18,8 +18,8 @@ use keyboard::{KEYBOARD, ps2_keyboard::Keyboard};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use vga_display::{
-    SCREEN, SIMPLE_WRITER, WRITER, advanced_writer::AdvancedWriter,
-    okprintln, vga_init,
+    ADVANCED_WRITER, SCREEN, SIMPLE_WRITER, WRITER,
+    advanced_writer::AdvancedWriter, okprintln, vga_init,
 };
 use x86::{
     instructions::interrupts::{self, hlt},
@@ -45,9 +45,6 @@ static MMAP: Once<MemoryMap> = Once::uninit();
 static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
 
 static KEYBOARD_BUFFER: Once<SpscRingBuffer<u8>> = Once::uninit();
-
-static ADVANCED_WRITER: Once<SpinMutex<AdvancedWriter<80, 25>>> =
-    Once::uninit();
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
