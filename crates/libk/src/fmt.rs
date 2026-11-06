@@ -1,5 +1,7 @@
+// SAFETY: `vga_display` defines `kprint` with this signature, and printing
+// has no preconditions.
 unsafe extern "Rust" {
-    pub unsafe fn kprint(args: ::core::fmt::Arguments<'_>);
+    pub safe fn kprint(args: ::core::fmt::Arguments<'_>);
 }
 
 /// Prints formatted text to the console, without a newline.
@@ -16,7 +18,7 @@ unsafe extern "Rust" {
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => {{
-        unsafe { $crate::fmt::kprint(format_args!($($arg)*)) }
+        $crate::fmt::kprint(format_args!($($arg)*))
     }};
 }
 
