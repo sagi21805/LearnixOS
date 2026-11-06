@@ -5,6 +5,13 @@ use common::enums::{
     CascadedPicInterruptLine, PicCommandCode, PicInterruptLine,
     PicInterruptVectorOffset, PicMode, Port,
 };
+#[cfg(target_arch = "x86_64")]
+use sync::mutex::SpinMutex;
+
+/// The master and slave PICs of this machine.
+#[cfg(target_arch = "x86_64")]
+pub static PIC: SpinMutex<CascadedPIC> =
+    SpinMutex::new(CascadedPIC::default());
 
 struct ProgrammableInterruptController {
     command: Port,

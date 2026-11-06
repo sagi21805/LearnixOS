@@ -4,13 +4,11 @@
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
 
-use core::cell::OnceCell;
-
-use common::enums::{CascadedPicInterruptLine, PS2ScanCode, Port};
-use sync::mutex::SpinMutex;
+use common::enums::{CascadedPicInterruptLine, Port};
+use sync::{mutex::SpinMutex, once::Once, spsc::SpscRingBuffer};
 use x86::{
     instructions::{interrupts, port::PortExt},
-    pic8259::CascadedPIC,
+    pic8259::PIC,
     structures::interrupt_descriptor_table::InterruptStackFrame,
 };
 
@@ -18,56 +16,23 @@ use crate::ps2_keyboard::Keyboard;
 
 pub mod ps2_keyboard;
 
-unsafe extern "Rust" {
-    unsafe static KEYBOARD: SpinMutex<OnceCell<Keyboard>>;
-    unsafe static PIC: SpinMutex<CascadedPIC>;
-}
+/// The PS/2 keyboard, which [`keyboard_handler`] feeds once it is set.
+pub static KEYBOARD: Once<SpinMutex<Keyboard>> = Once::uninit();
+
+/// The scan codes [`keyboard_handler`] queues for [`KEYBOARD`]'s reader.
+pub static KEYBOARD_BUFFER: Once<SpscRingBuffer<u8>> = Once::uninit();
 
 pub extern "x86-interrupt" fn keyboard_handler(
     _stack_frame: InterruptStackFrame,
 ) {
     unsafe { interrupts::disable() };
-    let mut locked = unsafe { KEYBOARD.lock() };
-    let Some(keyboard) = locked.get_mut() else {
-        return;
-    };
-    unsafe {
-        let scan_code = Port::KeyboardData.inb();
-        keyboard.producer.push(scan_code);
-        match PS2ScanCode::from(scan_code) {
-            PS2ScanCode::LeftShift => {
-                keyboard.flags.set_lshift_pressed(true);
-            }
-            PS2ScanCode::ReleasedLeftShift => {
-                keyboard.flags.set_lshift_pressed(false)
-            }
-            PS2ScanCode::RightShift => {
-                keyboard.flags.set_rshift_pressed(true)
-            }
-            PS2ScanCode::ReleasedRightShift => {
-                keyboard.flags.set_rshift_pressed(false)
-            }
-            PS2ScanCode::LeftCtrl => {
-                keyboard.flags.set_lctrl_pressed(true)
-            }
-            PS2ScanCode::ReleasedLeftCtrl => {
-                keyboard.flags.set_lctrl_pressed(false)
-            }
-            PS2ScanCode::SuperKey => {
-                keyboard.flags.set_superkey_pressed(true)
-            }
-            PS2ScanCode::ReleasedSuperKey => {
-                keyboard.flags.set_superkey_pressed(false)
-            }
-            PS2ScanCode::CapsLock => {
-                keyboard.flags.set_capslock_pressed(
-                    keyboard.flags.is_capslock_pressed() ^ true,
-                );
-            }
-            _ => {}
-        }
-        PIC.lock()
-            .end_of_interrupt(CascadedPicInterruptLine::Keyboard);
-        interrupts::enable();
+    // The controller holds its next byte until this read, so it always
+    // runs.
+    let scan_code = unsafe { Port::KeyboardData.inb() };
+    if let Some(keyboard) = KEYBOARD.get() {
+        keyboard.lock().handle_scan_code(scan_code);
     }
+    PIC.lock()
+        .end_of_interrupt(CascadedPicInterruptLine::Keyboard);
+    unsafe { interrupts::enable() };
 }

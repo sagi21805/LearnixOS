@@ -23,11 +23,31 @@ use core::{
     fmt::{self, Write},
 };
 
-use crate::{generic_writer::Writer, screen_char::ScreenChar};
+use crate::{
+    advanced_writer::AdvancedWriter, generic_writer::Writer,
+    screen_char::ScreenChar, writer::SimpleWriter,
+};
 
 use sync::{mutex::SpinMutex, once::Once};
 
 pub static SCREEN: Once<SpinMutex<Screen>> = Once::uninit();
+
+/// The writer that needs no heap, used by [`WRITER`] until a better one is
+/// set, and by the panic handler.
+// SAFETY: only `WRITER`'s `leak` and the panic handler's `force_unlock`
+// reach it.
+pub static SIMPLE_WRITER: SpinMutex<SimpleWriter<80, 25>> =
+    unsafe { SpinMutex::new_locked(SimpleWriter::default()) };
+
+/// The writer behind [`print!`] and [`println!`].
+// SAFETY: this is the only `leak` of `SIMPLE_WRITER`.
+pub static WRITER: SpinMutex<Writer<'static>> =
+    SpinMutex::new(Writer::new(unsafe { SIMPLE_WRITER.leak() }));
+
+/// The writer with a scrollback buffer, which replaces [`SIMPLE_WRITER`]
+/// in [`WRITER`] once the heap works.
+pub static ADVANCED_WRITER: Once<SpinMutex<AdvancedWriter<80, 25>>> =
+    Once::uninit();
 
 pub struct Screen {
     buffer: &'static mut [ScreenChar],
@@ -131,10 +151,6 @@ impl Screen {
     pub fn clear(&mut self) { self.buffer.fill(ScreenChar::default()); }
 }
 
-unsafe extern "Rust" {
-    static WRITER: SpinMutex<Writer<'static>>;
-}
-
 pub fn vga_init() {
     let screen = unsafe {
         core::slice::from_raw_parts_mut(
@@ -152,15 +168,13 @@ pub fn vga_init() {
 }
 
 pub fn vga_print(args: fmt::Arguments<'_>, color: Option<ColorCode>) {
-    unsafe {
-        let writer = &mut WRITER.lock().inner;
+    let writer = &mut WRITER.lock().inner;
 
-        writer.set_color(color.unwrap_or_default());
+    writer.set_color(color.unwrap_or_default());
 
-        writer.write_fmt(args).unwrap();
+    writer.write_fmt(args).unwrap();
 
-        writer.set_color(ColorCode::default());
-    }
+    writer.set_color(ColorCode::default());
 }
 #[unsafe(no_mangle)]
 pub fn kprint(args: fmt::Arguments<'_>) { vga_print(args, None); }

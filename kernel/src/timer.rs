@@ -1,10 +1,10 @@
 use common::enums::CascadedPicInterruptLine;
 use x86::{
-    instructions::interrupts,
+    instructions::interrupts, pic8259::PIC,
     structures::interrupt_descriptor_table::InterruptStackFrame,
 };
 
-use crate::{PIC, WRITER};
+use vga_display::WRITER;
 
 pub extern "x86-interrupt" fn timer_handler(
     _stack_frame: InterruptStackFrame,
