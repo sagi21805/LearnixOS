@@ -1,12 +1,12 @@
 [package]
 name = "pci"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-common = { path = "../../common" }
-x86 = { path = "../../arch/x86" }
-bitfields = { path = "../../macros/bitfields" }
+common.workspace = true
+x86.workspace = true
+bitfields.workspace = true
 
 [lints]
 workspace = true
