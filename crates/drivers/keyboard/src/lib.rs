@@ -8,7 +8,7 @@ use common::enums::{CascadedPicInterruptLine, Port};
 use sync::{mutex::SpinMutex, once::Once};
 use x86::{
     instructions::{interrupts, port::PortExt},
-    pic8259::CascadedPIC,
+    pic8259::PIC,
     structures::interrupt_descriptor_table::InterruptStackFrame,
 };
 
@@ -18,10 +18,6 @@ pub mod ps2_keyboard;
 
 /// The PS/2 keyboard, which [`keyboard_handler`] feeds once it is set.
 pub static KEYBOARD: Once<SpinMutex<Keyboard>> = Once::uninit();
-
-unsafe extern "Rust" {
-    unsafe static PIC: SpinMutex<CascadedPIC>;
-}
 
 pub extern "x86-interrupt" fn keyboard_handler(
     _stack_frame: InterruptStackFrame,
@@ -33,9 +29,7 @@ pub extern "x86-interrupt" fn keyboard_handler(
     if let Some(keyboard) = KEYBOARD.get() {
         keyboard.lock().handle_scan_code(scan_code);
     }
-    unsafe {
-        PIC.lock()
-            .end_of_interrupt(CascadedPicInterruptLine::Keyboard);
-        interrupts::enable();
-    }
+    PIC.lock()
+        .end_of_interrupt(CascadedPicInterruptLine::Keyboard);
+    unsafe { interrupts::enable() };
 }
