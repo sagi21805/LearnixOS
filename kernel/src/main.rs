@@ -3,8 +3,6 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
-use core::panic::PanicInfo;
-
 use alloc::boxed::Box;
 use buddy::BuddyAllocator;
 use common::{
@@ -18,8 +16,8 @@ use keyboard::{KEYBOARD, KEYBOARD_BUFFER, ps2_keyboard::Keyboard};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use vga_display::{
-    ADVANCED_WRITER, SCREEN, SIMPLE_WRITER, WRITER,
-    advanced_writer::AdvancedWriter, okprintln, print, println, vga_init,
+    ADVANCED_WRITER, WRITER, advanced_writer::AdvancedWriter, okprintln,
+    print, println, vga_init,
 };
 use x86::{
     instructions::{
@@ -41,6 +39,7 @@ use sync::{mutex::SpinMutex, once::Once, spsc::SpscRingBuffer};
 use crate::interrupt_handlers::InterruptDescriptorTableExt;
 
 mod interrupt_handlers;
+mod panic;
 mod timer;
 
 static MMAP: Once<MemoryMap> = Once::uninit();
@@ -230,18 +229,3 @@ pub unsafe extern "C" fn _start() -> ! {
 //         println!("Firmware: {:?}", &id.firmware_rev);
 //     }
 // }
-
-/// This function is called on panic.
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    unsafe {
-        if let Some(screen) = SCREEN.get() {
-            screen.force_unlock();
-        }
-        SIMPLE_WRITER.force_unlock();
-    };
-    SIMPLE_WRITER
-        .lock()
-        .panic_message(format_args!("{}", _info));
-    loop {}
-}
