@@ -6,10 +6,7 @@ edition.workspace = true
 [dependencies]
 common.workspace = true
 x86.workspace = true
-num_enum.workspace = true
 bitfields.workspace = true
-strum_macros = { version = "0.27", default-features = false }
-strum = { version = "0.27", default-features = false }
 
 [lints]
 workspace = true

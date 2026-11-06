@@ -27,7 +27,10 @@ use x86::{
     instructions::interrupts::{self, hlt},
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
     pic8259::CascadedPIC,
-    structures::interrupt_descriptor_table::InterruptDescriptorTable,
+    structures::{
+        interrupt_descriptor_table::InterruptDescriptorTable,
+        segments::TSS,
+    },
 };
 
 use libk::{alloc::GlobalAllocator, print, println};
@@ -45,8 +48,7 @@ static MMAP: Once<MemoryMap> = Once::uninit();
 static PIC: SpinMutex<CascadedPIC> =
     SpinMutex::new(CascadedPIC::default());
 
-static IDT: Once<SpinMutex<Box<InterruptDescriptorTable>>> =
-    Once::uninit();
+static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
 
 #[unsafe(no_mangle)]
 static KEYBOARD: SpinMutex<OnceCell<Keyboard>> =
@@ -116,10 +118,12 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Initialized Slab Allocator");
     unsafe {
         interrupts::disable();
-        InterruptDescriptorTable::init(&IDT);
+        TSS.load();
+        okprintln!("Loaded task state segment");
+        let mut table = Box::new(InterruptDescriptorTable::default());
+        table.init_handlers();
+        IDT.init(table).load();
         okprintln!("Initialized interrupt descriptor table");
-        IDT.lock().init_handlers();
-        okprintln!("Initialized interrupts handlers");
         PIC.lock().init();
         okprintln!("Initialized Programmable Interrupt Controller");
         let buffer: Box<[u8], _> = Box::new_in([0u8; 4096], slab);
@@ -148,10 +152,10 @@ pub unsafe extern "C" fn _start() -> ! {
 
     // BUDDY_ALLOCATOR.print_allocated_regions();
     // panic!("")
-    // let mut pci_devices = pci::scan_pci();
-    // println!("Press ENTER to enumerate PCI devices!");
-    // let a = pci_devices.as_ptr() as usize;
-    // println!("pci_devices address: {:x}", a);
+    let pci_devices = pci::scan_pci(slab);
+    for device in &pci_devices {
+        println!("{}", device);
+    }
 
     // loop {
     //     let c = unsafe {
