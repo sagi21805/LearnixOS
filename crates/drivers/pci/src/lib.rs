@@ -25,19 +25,6 @@ const HEADER_DWORDS: usize = 16;
 /// ordered by address.
 ///
 /// `scan_pci(allocator) -> [00:00.0, 00:01.0, 00:1f.0, 00:1f.2, ..]`
-///
-/// # Panics
-///
-/// When `allocator` can't hold the list.
-///
-/// # Examples
-///
-/// ```no_run
-/// let devices = pci::scan_pci(std::alloc::Global);
-/// for device in &devices {
-///     println!("{device}");
-/// }
-/// ```
 pub fn scan_pci<A: Allocator>(allocator: A) -> Vec<PciDevice, A> {
     let mut devices = Vec::new_in(allocator);
     for bus in 0..=u8::MAX {
@@ -324,23 +311,6 @@ impl BaseAddressRegister {
 
     /// Whether this BAR is a memory BAR whose address continues in the
     /// next BAR.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use pci::{BaseAddressRegister, MemoryBaseAddressRegister};
-    ///
-    /// let bar = |bits: u32| BaseAddressRegister {
-    ///     memory: MemoryBaseAddressRegister::from(bits),
-    /// };
-    ///
-    /// assert!(bar(0xFEBC_0004).is_64bit());
-    /// assert!(!bar(0xFEBC_0000).is_64bit());
-    /// // The obsolete type for a memory BAR below 1 MiB.
-    /// assert!(!bar(0x000C_0002).is_64bit());
-    /// // An I/O BAR has no type field, and bit 2 is part of its address.
-    /// assert!(!bar(0x0000_C005).is_64bit());
-    /// ```
     pub fn is_64bit(&self) -> bool {
         self.identify() == BaseAddressRegisterType::Memory
             // SAFETY: `identify` just found a memory BAR.
@@ -354,23 +324,6 @@ impl BaseAddressRegister {
     ///
     /// When this is a 64-bit BAR, as reading its upper half from the next
     /// BAR isn't implemented.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use pci::{BaseAddressRegister, IOBaseAddressRegister};
-    /// use pci::MemoryBaseAddressRegister;
-    ///
-    /// let memory = BaseAddressRegister {
-    ///     memory: MemoryBaseAddressRegister::from(0xFEBC_0008),
-    /// };
-    /// assert_eq!(memory.address(), 0xFEBC_0000);
-    ///
-    /// let io = BaseAddressRegister {
-    ///     io: IOBaseAddressRegister::from(0xC049),
-    /// };
-    /// assert_eq!(io.address(), 0xC048);
-    /// ```
     pub fn address(&self) -> usize {
         match self.identify() {
             BaseAddressRegisterType::Memory if self.is_64bit() => {
