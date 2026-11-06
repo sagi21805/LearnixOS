@@ -11,10 +11,7 @@ use vga_display::{
     print, println, vga_init,
 };
 use x86::{
-    instructions::{
-        cpuid,
-        interrupts::{self, hlt},
-    },
+    instructions::{cpuid, interrupts as cpu_interrupts},
     pic8259::PIC,
     structures::{
         interrupt_descriptor_table::InterruptDescriptorTable,
@@ -24,9 +21,9 @@ use x86::{
 
 use sync::{mutex::SpinMutex, once::Once, spsc::SpscRingBuffer};
 
-use crate::interrupt_handlers::InterruptDescriptorTableExt;
+use crate::interrupts::exceptions::InterruptDescriptorTableExt;
 
-mod interrupt_handlers;
+mod interrupts;
 mod memory;
 mod panic;
 mod timer;
@@ -51,7 +48,7 @@ pub unsafe extern "C" fn _start() -> ! {
     let memory = unsafe { memory::init() };
 
     unsafe {
-        interrupts::disable();
+        cpu_interrupts::disable();
         TSS.load();
         okprintln!("Loaded task state segment");
         let mut table = Box::new(InterruptDescriptorTable::default());
@@ -67,7 +64,7 @@ pub unsafe extern "C" fn _start() -> ! {
 
         KEYBOARD.init(SpinMutex::new(Keyboard::new(keyboard_buffer)));
         okprintln!("Initialized Keyboard at {:p}", buffer_address);
-        interrupts::enable();
+        cpu_interrupts::enable();
     }
     // SAFETY: this is the only `leak` of the writer, and it stays locked.
     let w = unsafe {
@@ -79,7 +76,7 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Set advanced writer");
     // Wait for the next update.
     unsafe {
-        hlt();
+        cpu_interrupts::hlt();
     }
 
     println!("{}", memory.mmap);
@@ -101,9 +98,9 @@ pub unsafe extern "C" fn _start() -> ! {
     loop {
         // SAFETY: the keyboard handler takes the same lock, so it must
         // not run while this loop holds it.
-        unsafe { interrupts::disable() };
+        unsafe { cpu_interrupts::disable() };
         let input = KEYBOARD.lock().read_char();
-        unsafe { interrupts::enable() };
+        unsafe { cpu_interrupts::enable() };
         match input {
             Ok(str) => print!("{}", str),
             Err(key) => match key {
