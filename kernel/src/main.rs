@@ -1,8 +1,6 @@
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
-#![feature(const_default)]
-#![feature(const_trait_impl)]
 extern crate alloc;
 
 use core::panic::PanicInfo;
@@ -20,8 +18,8 @@ use keyboard::{KEYBOARD, ps2_keyboard::Keyboard};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use vga_display::{
-    SCREEN, advanced_writer::AdvancedWriter, generic_writer::Writer,
-    okprintln, vga_init, writer::SimpleWriter,
+    SCREEN, SIMPLE_WRITER, WRITER, advanced_writer::AdvancedWriter,
+    okprintln, vga_init,
 };
 use x86::{
     instructions::interrupts::{self, hlt},
@@ -48,16 +46,8 @@ static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
 
 static KEYBOARD_BUFFER: Once<SpscRingBuffer<u8>> = Once::uninit();
 
-#[unsafe(no_mangle)]
-static SIMPLE_WRITER: SpinMutex<SimpleWriter<80, 25>> =
-    unsafe { SpinMutex::new_locked(SimpleWriter::default()) };
-
 static ADVANCED_WRITER: Once<SpinMutex<AdvancedWriter<80, 25>>> =
     Once::uninit();
-
-#[unsafe(no_mangle)]
-static WRITER: SpinMutex<Writer<'static>> =
-    SpinMutex::new(Writer::new(unsafe { SIMPLE_WRITER.leak() }));
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
