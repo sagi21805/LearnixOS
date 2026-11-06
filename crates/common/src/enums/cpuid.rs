@@ -79,6 +79,10 @@ pub struct QueryRegisters {
 pub enum CpuidQuery {
     GetVendorString,
     GetCpuFeatures,
+    GetMaxExtendedLeaf,
+    GetBrandStringFirst,
+    GetBrandStringSecond,
+    GetBrandStringThird,
 }
 
 impl CpuidQuery {
@@ -90,6 +94,22 @@ impl CpuidQuery {
             CpuidQuery::GetCpuFeatures => {
                 QueryRegisters { eax: 1, ecx: 0 }
             }
+            CpuidQuery::GetMaxExtendedLeaf => QueryRegisters {
+                eax: 0x8000_0000,
+                ecx: 0,
+            },
+            CpuidQuery::GetBrandStringFirst => QueryRegisters {
+                eax: 0x8000_0002,
+                ecx: 0,
+            },
+            CpuidQuery::GetBrandStringSecond => QueryRegisters {
+                eax: 0x8000_0003,
+                ecx: 0,
+            },
+            CpuidQuery::GetBrandStringThird => QueryRegisters {
+                eax: 0x8000_0004,
+                ecx: 0,
+            },
         }
     }
 }
