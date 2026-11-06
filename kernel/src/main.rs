@@ -22,7 +22,10 @@ use vga_display::{
     advanced_writer::AdvancedWriter, okprintln, vga_init,
 };
 use x86::{
-    instructions::interrupts::{self, hlt},
+    instructions::{
+        cpuid,
+        interrupts::{self, hlt},
+    },
     memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended},
     pic8259::PIC,
     structures::{
@@ -133,6 +136,12 @@ pub unsafe extern "C" fn _start() -> ! {
     for device in &pci_devices {
         println!("{}", device);
     }
+
+    let vendor = cpuid::get_vendor_string();
+    println!(
+        "CPU vendor: {}",
+        str::from_utf8(&vendor).expect("CPUID vendor strings are ASCII")
+    );
 
     // loop {
     //     let c = unsafe {
