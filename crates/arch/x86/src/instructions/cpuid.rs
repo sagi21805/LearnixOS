@@ -62,6 +62,9 @@ pub fn cpuid(query: CpuidQuery) -> CpuidResult {
     CpuidResult { eax, ebx, ecx, edx }
 }
 
+/// The CPU vendor's ASCII name, such as `GenuineIntel`.
+///
+/// Leaf 0 returns it in `EBX`, `EDX`, `ECX`, in that order.
 pub fn get_vendor_string() -> [u8; 12] {
     let result = cpuid(CpuidQuery::GetVendorString);
     let mut vendor_string = [0u8; 12];
