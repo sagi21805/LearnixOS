@@ -68,10 +68,25 @@ pub impl InterruptDescriptorTable {
     }
 }
 
-/// Defines exception handlers that panic with the exception's name, its
-/// error code if the CPU pushes one, and the stack frame.
-macro_rules! panicking_handlers {
-    (error_code: $($handler:ident => $name:literal),+ $(,)?) => {$(
+/// Defines an exception handler that panics with the exception's name and
+/// the stack frame.
+macro_rules! panicking_handler {
+    ($handler:ident, $name:literal) => {
+        extern "x86-interrupt" fn $handler(
+            stack_frame: InterruptStackFrame,
+        ) {
+            panic!(
+                concat!("Interrupt: ", $name, "\nStack frame: {:?}"),
+                stack_frame
+            );
+        }
+    };
+}
+
+/// Defines an exception handler that panics with the exception's name, the
+/// error code the CPU pushed and the stack frame.
+macro_rules! panicking_handler_with_error_code {
+    ($handler:ident, $name:literal) => {
         extern "x86-interrupt" fn $handler(
             stack_frame: InterruptStackFrame,
             error_code: u64,
@@ -85,44 +100,47 @@ macro_rules! panicking_handlers {
                 error_code, stack_frame
             );
         }
-    )+};
-    ($($handler:ident => $name:literal),+ $(,)?) => {$(
-        extern "x86-interrupt" fn $handler(
-            stack_frame: InterruptStackFrame,
-        ) {
-            panic!(
-                concat!("Interrupt: ", $name, "\nStack frame: {:?}"),
-                stack_frame
-            );
-        }
-    )+};
+    };
 }
 
-panicking_handlers! {
-    division_error_handler => "DivisionError",
-    debug_handler => "Debug",
-    non_maskable_interrupt_handler => "NonMaskableInterrupt",
-    overflow_handler => "Overflow",
-    bound_range_exceeded_handler => "BoundRangeExceeded",
-    invalid_opcode_handler => "InvalidOpcode",
-    device_not_found_handler => "DeviceNotFound",
-    coprocessor_segment_overrun_handler => "CoprocessorSegmentOverrun",
-    floating_point_error_handler => "FloatingPointError",
-    machine_check_handler => "MachineCheck",
-    simd_handler => "SIMD",
-    virtualization_handler => "Virtualization",
-}
+panicking_handler!(division_error_handler, "DivisionError");
+panicking_handler!(debug_handler, "Debug");
+panicking_handler!(non_maskable_interrupt_handler, "NonMaskableInterrupt");
+panicking_handler!(overflow_handler, "Overflow");
+panicking_handler!(bound_range_exceeded_handler, "BoundRangeExceeded");
+panicking_handler!(invalid_opcode_handler, "InvalidOpcode");
+panicking_handler!(device_not_found_handler, "DeviceNotFound");
+panicking_handler!(
+    coprocessor_segment_overrun_handler,
+    "CoprocessorSegmentOverrun"
+);
+panicking_handler!(floating_point_error_handler, "FloatingPointError");
+panicking_handler!(machine_check_handler, "MachineCheck");
+panicking_handler!(simd_handler, "SIMD");
+panicking_handler!(virtualization_handler, "Virtualization");
 
-panicking_handlers! {
-    error_code:
-    double_fault_handler => "DoubleFault",
-    invalid_tss_handler => "InvalidTSS",
-    segment_not_present_handler => "SegmentNotPresent",
-    stack_segment_fault_handler => "StackSegmentFault",
-    general_protection_handler => "GeneralProtection",
-    alignment_check_handler => "AlignmentCheck",
-    control_protection_handler => "ControlProtection",
-}
+panicking_handler_with_error_code!(double_fault_handler, "DoubleFault");
+panicking_handler_with_error_code!(invalid_tss_handler, "InvalidTSS");
+panicking_handler_with_error_code!(
+    segment_not_present_handler,
+    "SegmentNotPresent"
+);
+panicking_handler_with_error_code!(
+    stack_segment_fault_handler,
+    "StackSegmentFault"
+);
+panicking_handler_with_error_code!(
+    general_protection_handler,
+    "GeneralProtection"
+);
+panicking_handler_with_error_code!(
+    alignment_check_handler,
+    "AlignmentCheck"
+);
+panicking_handler_with_error_code!(
+    control_protection_handler,
+    "ControlProtection"
+);
 
 extern "x86-interrupt" fn breakpoint_handler(
     stack_frame: InterruptStackFrame,
