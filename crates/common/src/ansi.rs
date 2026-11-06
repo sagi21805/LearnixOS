@@ -1,6 +1,6 @@
 //! Named ANSI color sequences, for printing in color.
 
-use core::fmt::{self, Display, Formatter};
+use core::fmt::{self, Debug, Display, Formatter};
 
 /// Cancels every color, back to the default colors.
 pub const RESET: &str = "\x1b[0m";
@@ -28,6 +28,16 @@ pub struct Colored<T> {
 }
 
 impl<T: Display> Display for Colored<T> {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.color)?;
+        self.value.fmt(f)?;
+        f.write_str(RESET)
+    }
+}
+
+impl<T: Debug> Debug for Colored<T> {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(self.color)?;
         self.value.fmt(f)?;
@@ -43,10 +53,11 @@ macro_rules! colors {
             pub const $constant: &str =
                 concat!("\x1b[", $parameter, "m");
 
+            #[inline]
             #[doc = concat!(
                 "`value` in `", stringify!($function), "`, then a reset."
             )]
-            pub const fn $function<T: Display>(value: T) -> Colored<T> {
+            pub const fn $function<T>(value: T) -> Colored<T> {
                 Colored { color: $constant, value }
             }
         )*

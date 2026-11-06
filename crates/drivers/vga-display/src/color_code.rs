@@ -1,9 +1,6 @@
 use bitfields::bitfields;
 use common::enums::Color;
 
-const DEFAULT_FOREGROUND: Color = Color::White;
-const DEFAULT_BACKGROUND: Color = Color::Black;
-
 /// ANSI color numbers, as VGA colors. ANSI puts red in bit 0 of the color
 /// number, and VGA puts blue there.
 const ANSI_COLORS: [Color; 8] = [
@@ -40,18 +37,16 @@ pub struct ColorCode {
 const impl Default for ColorCode {
     fn default() -> Self {
         ColorCode::new()
-            .foreground(DEFAULT_FOREGROUND)
-            .background(DEFAULT_BACKGROUND)
+            .foreground(Color::White)
+            .background(Color::Black)
     }
 }
 
 impl ColorCode {
-    /// Applies the parameters of a Select Graphic Rendition sequence, in
-    /// order.
+    /// Applies one parameter of a Select Graphic Rendition sequence.
     ///
     /// Bright backgrounds are ignored, because VGA uses that attribute bit
-    /// for blinking. Parameter 38 or 48 stops the sequence, so the color
-    /// number in `38;5;31` doesn't read as red.
+    /// for blinking.
     ///
     /// ```
     /// use vga_display::color_code::ColorCode;
@@ -59,28 +54,26 @@ impl ColorCode {
     /// let mut color = ColorCode::default();
     /// assert_eq!(u8::from(color), 0x0f);
     ///
-    /// color.apply_sgr(&[31, 44]);
+    /// color.apply_sgr(31);
+    /// color.apply_sgr(44);
     /// assert_eq!(u8::from(color), 0x14);
     ///
-    /// color.apply_sgr(&[91]);
+    /// color.apply_sgr(91);
     /// assert_eq!(u8::from(color), 0x1c);
     ///
-    /// color.apply_sgr(&[0, 38, 5, 31]);
+    /// color.apply_sgr(0);
     /// assert_eq!(u8::from(color), 0x0f);
     /// ```
-    pub fn apply_sgr(&mut self, params: &[u16]) {
-        for &param in params {
-            let index = usize::from(param % 10);
-            match param {
-                0 => *self = ColorCode::default(),
-                30..=37 => self.set_foreground(ANSI_COLORS[index]),
-                39 => self.set_foreground(DEFAULT_FOREGROUND),
-                40..=47 => self.set_background(ANSI_COLORS[index]),
-                49 => self.set_background(DEFAULT_BACKGROUND),
-                90..=97 => self.set_foreground(ANSI_BRIGHT_COLORS[index]),
-                38 | 48 => return,
-                _ => {}
-            }
+    pub fn apply_sgr(&mut self, param: u8) {
+        let index = usize::from(param % 10);
+        match param {
+            0 => *self = ColorCode::default(),
+            30..=37 => self.set_foreground(ANSI_COLORS[index]),
+            39 => self.set_foreground(Color::White),
+            40..=47 => self.set_background(ANSI_COLORS[index]),
+            49 => self.set_background(Color::Black),
+            90..=97 => self.set_foreground(ANSI_BRIGHT_COLORS[index]),
+            _ => {}
         }
     }
 }
