@@ -87,10 +87,10 @@ impl<const W: usize, const H: usize> GenericWriter for SimpleWriter<W, H> {
             }
             _ => {
                 if !ascii.is_control() || ascii == Char::LineFeed {
-                    self.write_vga_char(ScreenChar {
-                        char: ascii,
-                        color_code: self.color,
-                    });
+                    self.write_vga_char(ScreenChar::new(
+                        ascii.to_u8(),
+                        self.color,
+                    ));
                 }
             }
         }

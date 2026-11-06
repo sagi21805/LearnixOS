@@ -69,9 +69,9 @@ pub enum WriteInfo {
 
 impl Screen {
     pub fn write_char(&mut self, c: ScreenChar) -> WriteInfo {
-        let info = match c.char {
-            Char::LineFeed => self.new_line(),
-            Char::Backspace | Char::Delete => self.backspace(),
+        let info = match Char::from_u8(c.glyph) {
+            Some(Char::LineFeed) => self.new_line(),
+            Some(Char::Backspace | Char::Delete) => self.backspace(),
             _ => {
                 if self.screen_position < self.buffer.len() {
                     let position = &mut self.buffer[self.screen_position];
