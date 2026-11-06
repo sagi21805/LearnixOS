@@ -8,7 +8,7 @@ members = [
     "crates/macros/bitfields",
     # "crates/drivers/ahci",
     "crates/drivers/keyboard",
-    # "crates/drivers/pci",
+    "crates/drivers/pci",
     "crates/drivers/vga-display",
     "crates/memory/buddy",
     "crates/memory/slab",
@@ -44,7 +44,7 @@ page = { path = "crates/memory/page" }
 keyboard = { path = "crates/drivers/keyboard" }
 vga_display = { path = "crates/drivers/vga-display" }
 # ahci = { path = "crates/drivers/ahci" }
-# pci = { path = "crates/drivers/pci" }
+pci = { path = "crates/drivers/pci" }
 
 # External crates used by more than one crate
 num_enum = { git = "https://github.com/sagi21805/num_enum.git", default-features = false, features = [
