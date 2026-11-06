@@ -1,16 +1,12 @@
 use common::{
-    address_types::{Address, PhysicalAddress, VirtualAddress},
-    enums::{PageSize, interrupts::GateType},
+    address_types::{Address, VirtualAddress},
+    enums::interrupts::GateType,
 };
-use libk::alloc::VirtualAddressMapping;
 use vga_display::println;
 use x86::{
     registers::cr2,
-    structures::{
-        interrupt_descriptor_table::{
-            InterruptDescriptorTable, InterruptStackFrame,
-        },
-        paging::PageEntryFlags,
+    structures::interrupt_descriptor_table::{
+        InterruptDescriptorTable, InterruptStackFrame,
     },
 };
 
@@ -150,20 +146,15 @@ extern "x86-interrupt" fn breakpoint_handler(
 }
 
 extern "x86-interrupt" fn page_fault_handler(
-    _stack_frame: InterruptStackFrame,
-    _error_code: u64,
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
 ) {
     let faulting_address =
         unsafe { VirtualAddress::new_unchecked(cr2::read() as usize) };
 
-    let identity_map =
-        unsafe { PhysicalAddress::new_unchecked(cr2::read() as usize) };
-
-    faulting_address
-        .map(
-            identity_map,
-            Some(PageEntryFlags::regular_page_flags()),
-            PageSize::Regular,
-        )
-        .expect("Cannot map address");
+    panic!(
+        "Interrupt: PageFault\nError code: {:#x}\nStack frame: \
+         {:#?}\nFaulting Address: {:#?}",
+        error_code, stack_frame, faulting_address
+    );
 }
