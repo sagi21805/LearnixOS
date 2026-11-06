@@ -73,9 +73,8 @@ pub unsafe fn sgdt() -> &'static GlobalDescriptorTableProtected {
 ///
 /// # Safety
 /// There is no way to check if the register has valid data in it, or it is
-/// not initialized. The caller must also hold no other reference to the
-/// GDT while using the returned one.
-pub unsafe fn sgdt() -> &'static mut GlobalDescriptorTableLong {
+/// not initialized
+pub unsafe fn sgdt() -> &'static GlobalDescriptorTableLong {
     let mut gdt_register: MaybeUninit<GlobalDescriptorTableRegister> =
         MaybeUninit::uninit();
     unsafe {
@@ -87,7 +86,7 @@ pub unsafe fn sgdt() -> &'static mut GlobalDescriptorTableLong {
 
         // Get gdt from it's register.
         &mut *(gdt_register.assume_init().base
-            as *mut GlobalDescriptorTableLong)
+            as *mut &GlobalDescriptorTableLong)
     }
 }
 

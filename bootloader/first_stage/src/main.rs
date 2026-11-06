@@ -4,9 +4,8 @@ mod disk;
 
 use common::{
     constants::{
-        DISK_NUMBER_OFFSET, KERNEL_READS, KERNEL_SECTORS_PER_READ,
-        MEMORY_MAP_LENGTH, MEMORY_MAP_MAGIC_NUMBER, MEMORY_MAP_OFFSET,
-        SECOND_STAGE_OFFSET,
+        DISK_NUMBER_OFFSET, KERNEL_SECTORS, MEMORY_MAP_LENGTH,
+        MEMORY_MAP_MAGIC_NUMBER, MEMORY_MAP_OFFSET, SECOND_STAGE_OFFSET,
     },
     enums::{
         BiosInterrupts, MemoryInterrupt, MemoryRegionSize, Sections,
@@ -71,17 +70,15 @@ unsafe fn load_kernel_dap() {
     let disk_number =
         unsafe { core::ptr::read(DISK_NUMBER_OFFSET as *const u8) };
 
-    for read in 0..KERNEL_READS {
-        #[rustfmt::skip]
-        let kernel_dap = DiskAddressPacket::new(
-            KERNEL_SECTORS_PER_READ,
-            0,
-            0x1000 * (read + 1),
-            66 + (read * KERNEL_SECTORS_PER_READ) as u64
-        );
+    #[rustfmt::skip]
+    let kernel_dap = DiskAddressPacket::new(
+        KERNEL_SECTORS,
+        0,
+        0x1000,
+        66
+    );
 
-        unsafe { kernel_dap.load(disk_number) };
-    }
+    unsafe { kernel_dap.load(disk_number) };
 }
 
 unsafe fn enter_vga_text() {

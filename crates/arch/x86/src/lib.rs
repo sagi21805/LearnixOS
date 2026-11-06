@@ -1,5 +1,4 @@
 #![no_std]
-#![cfg_attr(target_arch = "x86_64", feature(abi_x86_interrupt))]
 #![feature(macro_metavar_expr_concat)]
 #![feature(stmt_expr_attributes)]
 #![feature(const_trait_impl)]

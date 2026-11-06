@@ -1,7 +1,3 @@
-use crate::error::ConversionError;
-use bitfields::bitfields;
-use num_enum::ConstTryFromPrimitive;
-
 #[repr(u16)]
 #[non_exhaustive]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -62,20 +58,52 @@ pub enum NVIDIADeviceID {
     NonExistent = 0xFFFF,
 }
 
-/// The vendor and device of a PCI function, as read from the hardware.
-///
-/// The hardware picks these values, so most of them have no name in
-/// [`VendorID`] or in the device enums.
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct VendorDevice {
-    pub vendor: u16,
-    pub device: u16,
+#[derive(Clone, Copy)]
+pub union DeviceID {
+    pub intel: IntelDeviceID,
+    pub virtio: VirtIODeviceID,
+    pub nvidia: NVIDIADeviceID,
+    pub realtek: RealtekDeviceID,
+    pub qemu: QEMUDeviceID,
+    pub num: u16,
+    pub none: (),
 }
 
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct VendorDevice {
+    pub vendor: VendorID,
+    pub device: DeviceID,
+}
+
+impl core::fmt::Debug for VendorDevice {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Vendor: {:?} ", self.vendor)?;
+        write!(f, "Device: ")?;
+        match self.vendor {
+            VendorID::Intel => {
+                write!(f, "{:?}", unsafe { self.device.intel })
+            }
+            VendorID::Nvidia => {
+                write!(f, "{:?}", unsafe { self.device.nvidia })
+            }
+            VendorID::QEMU => {
+                write!(f, "{:?}", unsafe { self.device.qemu })
+            }
+            VendorID::Realtek => {
+                write!(f, "{:?}", unsafe { self.device.realtek })
+            }
+            VendorID::VirtIO => {
+                write!(f, "{:?}", unsafe { self.device.virtio })
+            }
+            VendorID::NonExistent => {
+                write!(f, "NonExistent")
+            }
+        }
+    }
+}
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ConstTryFromPrimitive)]
-#[num_enum(error_type(name = ConversionError<u8>, constructor = ConversionError::CantConvertFrom))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClassCode {
     Unclassified = 0x00,
     MassStorageController = 0x01,
@@ -291,6 +319,36 @@ pub enum SignalProcessingSubClass {
     Other = 0x80,
 }
 
+#[derive(Clone, Copy)]
+pub union SubClass {
+    pub unclassified: UnclassifiedSubClass,
+    pub storage: MassStorageSubClass,
+    pub network: NetworkSubClass,
+    pub display: DisplaySubClass,
+    pub multimedia: MultimediaSubClass,
+    pub memory: MemorySubClass,
+    pub bridge: BridgeSubClass,
+    pub simple_comm: SimpleCommSubClass,
+    pub base_system: BaseSystemSubClass,
+    pub input: InputSubClass,
+    pub docking: DockingStationSubClass,
+    pub processor: ProcessorSubClass,
+    pub serial_bus: SerialBusSubClass,
+    pub wireless: WirelessSubClass,
+    pub intelligent: IntelligentSubClass,
+    pub satellite: SatelliteCommSubClass,
+    pub encryption: EncryptionSubClass,
+    pub signal_processing: SignalProcessingSubClass,
+    pub num: u8,
+    pub none: (),
+}
+
+impl core::fmt::Debug for SubClass {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:x}", unsafe { self.num })
+    }
+}
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IDEControllerPI {
@@ -459,36 +517,242 @@ pub enum IPMIPI {
     BlockTransfer = 0x02,
 }
 
-/// The class of a PCI function, as read from the hardware.
-///
-/// The hardware picks these values, and the meaning of `subclass` and
-/// `prog_if` depends on `class`, so they stay raw.
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
+pub union ProgrammingInterface {
+    pub ide: IDEControllerPI,
+    pub ata: ATAControllerPI,
+    pub sata: SATAControllerPI,
+    pub scsi: SCSIControllerPI,
+    pub nvm: NVMControllerPI,
+    pub vga: VGAControllerPI,
+    pub pci2pci: PCItoPCIBridgePI,
+    pub raceway: RACEwayBridgePI,
+    pub semi_pci2pci: PCItoPCIBridgeSemiPI,
+    pub serial: SerialControllerPI,
+    pub parallel: ParallelControllerPI,
+    pub modem: ModemPI,
+    pub pic: PICPI,
+    pub dma: DMAControllerPI,
+    pub timer: TimerPI,
+    pub rtc: RTCPI,
+    pub game_port: GameportControllerPI,
+    pub firewire: FireWirePI,
+    pub usb: USBPI,
+    pub ipmi: IPMIPI,
+    pub num: u8,
+    pub none: (),
+}
+
+impl core::fmt::Debug for ProgrammingInterface {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:x}", unsafe { self.num })
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
 pub struct PciDeviceType {
-    pub prog_if: u8,
-    pub subclass: u8,
-    pub class: u8,
+    pub prog_if: ProgrammingInterface,
+    pub subclass: SubClass,
+    pub class: ClassCode,
+}
+
+impl core::fmt::Debug for PciDeviceType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Class: {:?} ", self.class)?;
+        write!(f, "SubClass: ")?;
+        match self.class {
+            ClassCode::Unclassified => {
+                write!(f, "{:?}", unsafe { self.subclass.unclassified })
+            }
+            ClassCode::MassStorageController => {
+                write!(f, "{:?}", unsafe { self.subclass.storage })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.storage } {
+                    MassStorageSubClass::IDE => {
+                        write!(f, "{:?}", unsafe { self.prog_if.ide })
+                    }
+                    MassStorageSubClass::ATA => {
+                        write!(f, "{:?}", unsafe { self.prog_if.ata })
+                    }
+                    MassStorageSubClass::SATA => {
+                        write!(f, "{:?}", unsafe { self.prog_if.sata })
+                    }
+                    MassStorageSubClass::SCSI => {
+                        write!(f, "{:?}", unsafe { self.prog_if.scsi })
+                    }
+                    MassStorageSubClass::NVM => {
+                        write!(f, "{:?}", unsafe { self.prog_if.nvm })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
+            }
+            ClassCode::NetworkController => {
+                write!(f, "{:?}", unsafe { self.subclass.network })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::DisplayController => {
+                write!(f, "{:?}", unsafe { self.subclass.display })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.display } {
+                    DisplaySubClass::VGA => {
+                        write!(f, "{:?}", unsafe { self.prog_if.vga })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
+            }
+            ClassCode::MultimediaController => {
+                write!(f, "{:?}", unsafe { self.subclass.multimedia })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::MemoryController => {
+                write!(f, "{:?}", unsafe { self.subclass.memory })
+            }
+            ClassCode::Bridge => {
+                write!(f, "{:?}", unsafe { self.subclass.bridge })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.bridge } {
+                    BridgeSubClass::PCItoPCI => {
+                        write!(f, "{:?}", unsafe { self.prog_if.pci2pci })
+                    }
+                    BridgeSubClass::PCItoPCISemi => {
+                        write!(f, "{:?}", unsafe { self.prog_if.pci2pci })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
+            }
+            ClassCode::SimpleCommunicationController => {
+                write!(f, "{:?}", unsafe { self.subclass.simple_comm })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.simple_comm } {
+                    SimpleCommSubClass::Serial => {
+                        write!(f, "{:?}", unsafe { self.prog_if.serial })
+                    }
+                    SimpleCommSubClass::Parallel => {
+                        write!(f, "{:?}", unsafe { self.prog_if.parallel })
+                    }
+                    SimpleCommSubClass::Modem => {
+                        write!(f, "{:?}", unsafe { self.prog_if.modem })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
+            }
+            ClassCode::BaseSystemPeripheral => {
+                write!(f, "{:?}", unsafe { self.subclass.base_system })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.base_system } {
+                    BaseSystemSubClass::PIC => {
+                        write!(f, "{:?}", unsafe { self.prog_if.pic })
+                    }
+                    BaseSystemSubClass::DMAController => {
+                        write!(f, "{:?}", unsafe { self.prog_if.dma })
+                    }
+                    BaseSystemSubClass::Timer => {
+                        write!(f, "{:?}", unsafe { self.prog_if.timer })
+                    }
+                    BaseSystemSubClass::RTC => {
+                        write!(f, "{:?}", unsafe { self.prog_if.rtc })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
+            }
+            ClassCode::InputDeviceController => {
+                write!(f, "{:?} ", unsafe { self.subclass.input })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.input } {
+                    InputSubClass::Gameport => {
+                        write!(f, "{:?}", unsafe { self.subclass.input })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
+            }
+            ClassCode::DockingStation => {
+                write!(f, "{:?} ", unsafe { self.subclass.docking })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::Processor => {
+                write!(f, "{:?} ", unsafe { self.subclass.processor })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::SerialBusController => {
+                write!(f, "{:?} ", unsafe { self.subclass.serial_bus })?;
+                write!(f, " ProgIf: ")?;
+                match unsafe { self.subclass.serial_bus } {
+                    SerialBusSubClass::FireWire => {
+                        write!(f, "{:?}", unsafe { self.prog_if.firewire })
+                    }
+                    SerialBusSubClass::USB => {
+                        write!(f, "{:?}", unsafe { self.prog_if.usb })
+                    }
+                    SerialBusSubClass::IPMI => {
+                        write!(f, "{:?}", unsafe { self.prog_if.ipmi })
+                    }
+                    _ => write!(f, "{:?}", unsafe { self.prog_if.none }),
+                }
+            }
+            ClassCode::WirelessController => {
+                write!(f, "{:?}", unsafe { self.subclass.wireless })
+            }
+            ClassCode::IntelligentController => {
+                write!(f, "{:?} ", unsafe { self.subclass.intelligent })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::SatelliteCommunicationController => {
+                write!(f, "{:?} ", unsafe { self.subclass.satellite })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::EncryptionController => {
+                write!(f, "{:?} ", unsafe { self.subclass.encryption })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::SignalProcessingController => {
+                write!(f, "{:?} ", unsafe {
+                    self.subclass.signal_processing
+                })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::ProcessingAccel => {
+                write!(f, "{:?} ", unsafe { self.subclass.none })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+
+            ClassCode::NonEssentialInstrumentation => {
+                write!(f, "{:?} ", unsafe { self.subclass.none })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::Coprocessor => {
+                write!(f, "{:?} ", unsafe { self.subclass.none })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+            ClassCode::Unassigned => {
+                write!(f, "{:?} ", unsafe { self.subclass.none })?;
+                write!(f, " ProgIf: {:?}", unsafe { self.prog_if.none })
+            }
+        }
+    }
 }
 
 impl PciDeviceType {
-    /// The name of this class, or an error for a class with no name.
-    pub fn class_code(&self) -> Result<ClassCode, ConversionError<u8>> {
-        ClassCode::try_from(self.class)
-    }
-
-    /// Whether this function is an AHCI 1.0 SATA controller.
     pub fn is_ahci(&self) -> bool {
-        self.class == ClassCode::MassStorageController as u8
-            && self.subclass == MassStorageSubClass::SATA as u8
-            && self.prog_if == SATAControllerPI::AHCI1 as u8
+        unsafe {
+            self.class == ClassCode::MassStorageController
+                && self.subclass.storage == MassStorageSubClass::SATA
+                && self.prog_if.sata == SATAControllerPI::AHCI1
+        }
     }
 }
 
-/// The header type register. Bit 7 says whether the device has more than
-/// one function, and the rest select the layout of the header.
-#[bitfields]
-pub struct HeaderType {
-    pub layout: B7,
-    pub multifunction: B1,
+#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
+pub enum HeaderType {
+    GeneralDevice = 0x00,
+    PciToPciBridge = 0x01,
+    PciToCardBusBridge = 0x02,
+    GeneralDeviceMultiFunction = 0x80,
+    PciToPciBridgeMultiFunction = 0x81,
+    PciToCardBusBridgeMultiFunction = 0x82,
+}
+
+impl HeaderType {
+    pub fn is_multifunction(self) -> bool { (self as u8) & 0x80 != 0 }
 }

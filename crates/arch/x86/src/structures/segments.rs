@@ -3,20 +3,7 @@ use common::{
     enums::{ProtectionLevel, Sections},
 };
 
-#[cfg(target_arch = "x86_64")]
-use common::enums::SystemSegmentType;
-
 use bitfields::bitfields;
-
-#[cfg(target_arch = "x86_64")]
-use crate::{
-    instructions,
-    structures::global_descriptor_table::SystemSegmentDescriptor64,
-};
-
-/// The kernel's Task State Segment
-#[cfg(target_arch = "x86_64")]
-pub static TSS: TaskStateSegment = TaskStateSegment::default();
 
 #[bitfields]
 pub struct SegmentSelector {
@@ -44,21 +31,8 @@ pub struct TaskStateSegment {
 }
 
 impl TaskStateSegment {
-    /// Installs this TSS in the current GDT and loads the task register.
-    ///
-    /// # Safety
-    /// The loaded GDT must be a `GlobalDescriptorTableLong` in writable
-    /// memory, because `ltr` writes the busy bit into its descriptor. The
-    /// caller must hold no other reference to the GDT.
-    #[cfg(target_arch = "x86_64")]
-    pub unsafe fn load(&'static self) {
-        let descriptor = SystemSegmentDescriptor64::new(
-            self as *const _ as u64,
-            (size_of::<Self>() - 1) as u32,
-            SystemSegmentType::TaskStateSegmentAvailable,
-        );
-        unsafe { instructions::sgdt() }.load_tss(descriptor);
-    }
+    /// Return the I/O map base address
+    pub const fn iomb(&self) -> u16 { self.io_map_offset }
 
     /// Construct a default TSS
     pub const fn default() -> Self {

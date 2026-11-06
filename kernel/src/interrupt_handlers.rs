@@ -1,6 +1,9 @@
 use common::{
     address_types::{Address, PhysicalAddress, VirtualAddress},
-    enums::{PageSize, interrupts::GateType},
+    enums::{
+        PageSize, ProtectionLevel,
+        interrupts::{Interrupt, InterruptType},
+    },
 };
 use keyboard::keyboard_handler;
 use libk::alloc::VirtualAddressMapping;
@@ -193,57 +196,222 @@ pub extern "x86-interrupt" fn control_protection_handler(
 #[extend::ext]
 pub impl InterruptDescriptorTable {
     fn init_handlers(&mut self) {
-        self.division_error
-            .set_handler(division_error_handler, GateType::Interrupt);
-        self.debug.set_handler(debug_handler, GateType::Interrupt);
-        self.non_maskable_interrupt.set_handler(
-            non_maskable_interrupt_handler,
-            GateType::Interrupt,
-        );
-        self.breakpoint
-            .set_handler(breakpoint_handler, GateType::Trap);
-        self.overflow.set_handler(overflow_handler, GateType::Trap);
-        self.bound_range_exceeded.set_handler(
-            bound_range_exceeded_handler,
-            GateType::Interrupt,
-        );
-        self.invalid_opcode
-            .set_handler(invalid_opcode_handler, GateType::Interrupt);
-        self.device_not_found
-            .set_handler(device_not_found_handler, GateType::Interrupt);
-        self.double_fault
-            .set_handler(double_fault_handler, GateType::Interrupt);
-        self.coprocessor_segment_overrun.set_handler(
-            coprocessor_segment_overrun_handler,
-            GateType::Interrupt,
-        );
-        self.invalid_tss
-            .set_handler(invalid_tss_handler, GateType::Interrupt);
-        self.segment_not_present
-            .set_handler(segment_not_present_handler, GateType::Interrupt);
-        self.stack_segment_fault
-            .set_handler(stack_segment_fault_handler, GateType::Interrupt);
-        self.general_protection
-            .set_handler(general_protection_handler, GateType::Interrupt);
-        self.page_fault
-            .set_handler(page_fault_handler, GateType::Interrupt);
-        self.floating_point_error.set_handler(
-            floating_point_error_handler,
-            GateType::Interrupt,
-        );
-        self.alignment_check
-            .set_handler(alignment_check_handler, GateType::Interrupt);
-        self.machine_check
-            .set_handler(machine_check_handler, GateType::Interrupt);
-        self.simd.set_handler(simd_handler, GateType::Interrupt);
-        self.virtualization
-            .set_handler(virtualization_handler, GateType::Interrupt);
-        self.control_protection
-            .set_handler(control_protection_handler, GateType::Interrupt);
+        unsafe {
+            self.set_interrupt_handler(
+                Interrupt::DivisionError,
+                VirtualAddress::new_unchecked(
+                    division_error_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
 
-        // TODO: ADD THESE INTERRUPT ON A DIFFERENT OCCASION
-        self.timer.set_handler(timer_handler, GateType::Trap);
-        self.keyboard.set_handler(keyboard_handler, GateType::Trap);
-        // self.ahci.set_handler(ahci_interrupt, GateType::Trap);
+            self.set_interrupt_handler(
+                Interrupt::Debug,
+                VirtualAddress::new_unchecked(
+                    debug_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::NonMaskableInterrupt,
+                VirtualAddress::new_unchecked(
+                    non_maskable_interrupt_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::Breakpoint,
+                VirtualAddress::new_unchecked(
+                    breakpoint_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Trap,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::Overflow,
+                VirtualAddress::new_unchecked(
+                    overflow_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Trap,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::BoundRangeExceeded,
+                VirtualAddress::new_unchecked(
+                    bound_range_exceeded_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::InvalidOpcode,
+                VirtualAddress::new_unchecked(
+                    invalid_opcode_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::DeviceNotFound,
+                VirtualAddress::new_unchecked(
+                    device_not_found_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::DoubleFault,
+                VirtualAddress::new_unchecked(
+                    double_fault_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::CoprocessorSegmentOverrun,
+                VirtualAddress::new_unchecked(
+                    coprocessor_segment_overrun_handler as *const ()
+                        as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::InvalidTSS,
+                VirtualAddress::new_unchecked(
+                    invalid_tss_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::SegmentNotPresent,
+                VirtualAddress::new_unchecked(
+                    segment_not_present_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::StackSegmentFault,
+                VirtualAddress::new_unchecked(
+                    stack_segment_fault_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::GeneralProtection,
+                VirtualAddress::new_unchecked(
+                    general_protection_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::PageFault,
+                VirtualAddress::new_unchecked(
+                    page_fault_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::FloatingPointError,
+                VirtualAddress::new_unchecked(
+                    floating_point_error_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::AlignmentCheck,
+                VirtualAddress::new_unchecked(
+                    alignment_check_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::MachineCheck,
+                VirtualAddress::new_unchecked(
+                    machine_check_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::SIMD,
+                VirtualAddress::new_unchecked(
+                    simd_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::Virtualization,
+                VirtualAddress::new_unchecked(
+                    virtualization_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            self.set_interrupt_handler(
+                Interrupt::ControlProtection,
+                VirtualAddress::new_unchecked(
+                    control_protection_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Fault,
+            );
+
+            // TODO: ADD THESE INTERRUPT ON A DIFFERENT OCCASION
+            self.set_interrupt_handler(
+                Interrupt::Timer,
+                VirtualAddress::new_unchecked(
+                    timer_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Trap,
+            );
+            self.set_interrupt_handler(
+                Interrupt::Keyboard,
+                VirtualAddress::new_unchecked(
+                    keyboard_handler as *const () as usize,
+                ),
+                ProtectionLevel::Ring0,
+                InterruptType::Trap,
+            );
+            // self.set_interrupt_handler(
+            //     Interrupt::Ahci,
+            //     VirtualAddress::new_unchecked(
+            //         ahci_interrupt as *const () as usize,
+            //     ),
+            //     ProtectionLevel::Ring0,
+            //     InterruptType::Trap,
+            // );
+        }
     }
 }
