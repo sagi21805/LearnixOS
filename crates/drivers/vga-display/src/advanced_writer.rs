@@ -56,7 +56,10 @@ impl<const W: usize, const H: usize> GenericWriter
     for AdvancedWriter<W, H>
 {
     fn backspace(&mut self) {
-        self.write_vga_char(ScreenChar::new(Char::Backspace, self.color));
+        self.write_vga_char(ScreenChar::new(
+            Char::Backspace.to_u8(),
+            self.color,
+        ));
         if self.line_offset > 0 {
             self.line_offset -= 1;
         } else {
@@ -66,7 +69,10 @@ impl<const W: usize, const H: usize> GenericWriter
     }
 
     fn new_line(&mut self) {
-        self.write_vga_char(ScreenChar::new(Char::LineFeed, self.color));
+        self.write_vga_char(ScreenChar::new(
+            Char::LineFeed.to_u8(),
+            self.color,
+        ));
         self.line += 1;
         if self.line >= self.row_table.len() {
             return;
@@ -171,10 +177,10 @@ impl<const W: usize, const H: usize> GenericWriter
             }
             _ => {
                 if !ascii.is_control() {
-                    self.write_vga_char(ScreenChar {
-                        char: ascii,
-                        color_code: self.color,
-                    });
+                    self.write_vga_char(ScreenChar::new(
+                        ascii.to_u8(),
+                        self.color,
+                    ));
                 }
             }
         }
