@@ -1,4 +1,4 @@
-use core::{ascii::Char, fmt, io, ptr::with_exposed_provenance_mut};
+use core::{fmt, io, ptr::with_exposed_provenance_mut};
 
 use common::{
     ansi::{BRIGHT_YELLOW, RED, RESET},
@@ -34,17 +34,6 @@ pub struct Console {
     decoder: AnsiDecoder,
 }
 
-pub enum WriteInfo {
-    /// Reached the end of the screen.
-    EndOfScreen,
-    /// Write was on the same line.
-    SameLine,
-    /// Went one line up
-    LineUp,
-    /// Went one line down
-    LineDown,
-}
-
 impl Console {
     const fn new() -> Self {
         Self {
@@ -71,9 +60,7 @@ impl Console {
 
     /// VGA text memory, which `&mut self` keeps exclusive because
     /// [`CONSOLE`] is the only `Console`.
-    pub(crate) fn vga_cells(
-        &mut self,
-    ) -> &mut [Volatile<ScreenChar>; CELLS] {
+    fn vga_cells(&mut self) -> &mut [Volatile<ScreenChar>; CELLS] {
         let cells = with_exposed_provenance_mut(VGA_BUFFER_PTR as usize);
         // SAFETY: the boot page tables map VGA text memory, and any byte
         // is a valid `ScreenChar`.
@@ -137,73 +124,6 @@ impl Console {
             Port::VgaData.outb(((self.cursor >> 8) & 0xff) as u8);
         }
     }
-
-    pub fn write_char(&mut self, c: ScreenChar) -> WriteInfo {
-        let info = match Char::from_u8(c.glyph) {
-            Some(Char::LineFeed) => self.legacy_new_line(),
-            Some(Char::Backspace | Char::Delete) => {
-                self.legacy_backspace()
-            }
-            _ => {
-                if self.cursor < CELLS {
-                    let position = self.cursor;
-                    self.vga_cells()[position].write(c);
-                    self.cursor += 1;
-                    if self.cursor.is_multiple_of(WIDTH) {
-                        WriteInfo::LineUp
-                    } else {
-                        WriteInfo::SameLine
-                    }
-                } else {
-                    WriteInfo::EndOfScreen
-                }
-            }
-        };
-        if self.cursor < CELLS {
-            self.move_hardware_cursor();
-        }
-
-        info
-    }
-
-    pub fn legacy_new_line(&mut self) -> WriteInfo {
-        let offset = self.cursor % WIDTH;
-        let new_position = self.cursor + (WIDTH - offset);
-
-        self.blank_cells(self.cursor, new_position.min(CELLS));
-
-        if new_position >= CELLS {
-            self.cursor = CELLS - 1;
-            WriteInfo::EndOfScreen
-        } else {
-            self.cursor = new_position;
-            WriteInfo::LineUp
-        }
-    }
-
-    pub fn legacy_backspace(&mut self) -> WriteInfo {
-        if self.cursor > 0 {
-            self.cursor -= 1;
-            self.blank_cells(self.cursor, self.cursor + 1);
-            // Backspace to the first character of the line
-            if self.cursor % WIDTH == WIDTH - 1 {
-                return WriteInfo::LineDown;
-            }
-        }
-        WriteInfo::SameLine
-    }
-
-    pub fn cursor(&self) -> usize { self.cursor }
-
-    pub(crate) fn scroll_up(&mut self, lines: usize) {
-        self.blank_cells(CELLS - lines * WIDTH, CELLS);
-    }
-
-    pub(crate) fn scroll_down(&mut self, lines: usize) {
-        self.blank_cells(0, lines * WIDTH);
-    }
-
-    pub fn reset_cursor(&mut self) { self.cursor = 0; }
 
     /// Blanks the whole screen, and moves the cursor to its start.
     pub fn clear(&mut self) {
