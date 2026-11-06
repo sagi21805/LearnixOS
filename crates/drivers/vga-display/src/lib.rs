@@ -8,10 +8,12 @@ pub mod ansi;
 pub mod color_code;
 pub mod console;
 pub mod screen_char;
+pub mod scrollback;
 
 use core::{fmt, io::Write};
 
 pub use console::{CONSOLE, Console};
+pub use scrollback::Scrollback;
 
 /// Prints through [`CONSOLE`], which is what `libk`'s print macros reach
 /// at link time.

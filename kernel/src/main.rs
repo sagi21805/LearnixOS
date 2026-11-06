@@ -32,6 +32,8 @@ pub unsafe extern "C" fn _start() -> ! {
 
     console::init_keyboard(memory.slab);
 
+    console::attach_scrollback();
+
     let pci_devices = pci::scan_pci(memory.slab);
     println!("{}", memory.mmap);
 
