@@ -16,8 +16,10 @@ use crate::ps2_keyboard::Keyboard;
 
 pub mod ps2_keyboard;
 
+/// The PS/2 keyboard, which [`keyboard_handler`] feeds once it is set.
+pub static KEYBOARD: Once<SpinMutex<Keyboard>> = Once::uninit();
+
 unsafe extern "Rust" {
-    unsafe static KEYBOARD: Once<SpinMutex<Keyboard>>;
     unsafe static PIC: SpinMutex<CascadedPIC>;
 }
 
@@ -28,8 +30,7 @@ pub extern "x86-interrupt" fn keyboard_handler(
     // The controller holds its next byte until this read, so it always
     // runs.
     let scan_code = unsafe { Port::KeyboardData.inb() };
-    // SAFETY: the kernel defines `KEYBOARD` with this type.
-    if let Some(keyboard) = unsafe { KEYBOARD.get() } {
+    if let Some(keyboard) = KEYBOARD.get() {
         keyboard.lock().handle_scan_code(scan_code);
     }
     unsafe {
