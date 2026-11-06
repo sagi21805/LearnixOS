@@ -6,7 +6,7 @@
 
 use core::cell::OnceCell;
 
-use common::enums::{CascadedPicInterruptLine, PS2ScanCode, Port};
+use common::enums::{CascadedPicInterruptLine, Port};
 use sync::mutex::SpinMutex;
 use x86::{
     instructions::{interrupts, port::PortExt},
@@ -32,40 +32,7 @@ pub extern "x86-interrupt" fn keyboard_handler(
         return;
     };
     unsafe {
-        let scan_code = Port::KeyboardData.inb();
-        keyboard.producer.push(scan_code);
-        match PS2ScanCode::from(scan_code) {
-            PS2ScanCode::LeftShift => {
-                keyboard.flags.set_lshift_pressed(true);
-            }
-            PS2ScanCode::ReleasedLeftShift => {
-                keyboard.flags.set_lshift_pressed(false)
-            }
-            PS2ScanCode::RightShift => {
-                keyboard.flags.set_rshift_pressed(true)
-            }
-            PS2ScanCode::ReleasedRightShift => {
-                keyboard.flags.set_rshift_pressed(false)
-            }
-            PS2ScanCode::LeftCtrl => {
-                keyboard.flags.set_lctrl_pressed(true)
-            }
-            PS2ScanCode::ReleasedLeftCtrl => {
-                keyboard.flags.set_lctrl_pressed(false)
-            }
-            PS2ScanCode::SuperKey => {
-                keyboard.flags.set_superkey_pressed(true)
-            }
-            PS2ScanCode::ReleasedSuperKey => {
-                keyboard.flags.set_superkey_pressed(false)
-            }
-            PS2ScanCode::CapsLock => {
-                keyboard.flags.set_capslock_pressed(
-                    keyboard.flags.is_capslock_pressed() ^ true,
-                );
-            }
-            _ => {}
-        }
+        keyboard.handle_scan_code(Port::KeyboardData.inb());
         PIC.lock()
             .end_of_interrupt(CascadedPicInterruptLine::Keyboard);
         interrupts::enable();

@@ -15,8 +15,8 @@ pub struct KeyboardFlags {
 }
 
 pub struct Keyboard {
-    pub(crate) producer: Producer<'static, u8>,
-    pub(crate) flags: KeyboardFlags,
+    producer: Producer<'static, u8>,
+    flags: KeyboardFlags,
     consumer: Consumer<'static, u8>,
 }
 
@@ -29,6 +29,38 @@ impl Keyboard {
             producer,
             consumer,
             flags: KeyboardFlags::new(),
+        }
+    }
+
+    /// Queues `scan_code` for [`Self::read_char`], and updates the
+    /// modifier flags it changes.
+    pub(crate) fn handle_scan_code(&mut self, scan_code: u8) {
+        self.producer.push(scan_code);
+        match PS2ScanCode::from(scan_code) {
+            PS2ScanCode::LeftShift => {
+                self.flags.set_lshift_pressed(true);
+            }
+            PS2ScanCode::ReleasedLeftShift => {
+                self.flags.set_lshift_pressed(false)
+            }
+            PS2ScanCode::RightShift => self.flags.set_rshift_pressed(true),
+            PS2ScanCode::ReleasedRightShift => {
+                self.flags.set_rshift_pressed(false)
+            }
+            PS2ScanCode::LeftCtrl => self.flags.set_lctrl_pressed(true),
+            PS2ScanCode::ReleasedLeftCtrl => {
+                self.flags.set_lctrl_pressed(false)
+            }
+            PS2ScanCode::SuperKey => self.flags.set_superkey_pressed(true),
+            PS2ScanCode::ReleasedSuperKey => {
+                self.flags.set_superkey_pressed(false)
+            }
+            PS2ScanCode::CapsLock => {
+                self.flags.set_capslock_pressed(
+                    self.flags.is_capslock_pressed() ^ true,
+                );
+            }
+            _ => {}
         }
     }
 
