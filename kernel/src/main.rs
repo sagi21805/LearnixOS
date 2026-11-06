@@ -3,17 +3,10 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
-use alloc::boxed::Box;
-use common::enums::PS2ScanCode;
-use keyboard::{KEYBOARD, KEYBOARD_BUFFER, ps2_keyboard::Keyboard};
-use vga_display::{
-    ADVANCED_WRITER, WRITER, advanced_writer::AdvancedWriter, okprintln,
-    print, println, vga_init,
-};
-use x86::instructions::{cpuid, interrupts as cpu_interrupts};
+use vga_display::{okprintln, println, vga_init};
+use x86::instructions::cpuid;
 
-use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
-
+mod console;
 mod interrupts;
 mod memory;
 mod panic;
@@ -40,28 +33,12 @@ pub unsafe extern "C" fn _start() -> ! {
     // stage's GDT is still loaded.
     unsafe { interrupts::init() };
 
-    let buffer: Box<[u8], _> = Box::new_in([0u8; 4096], memory.slab);
-    let buffer_address = buffer.as_ptr();
-    let keyboard_buffer =
-        KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
-    KEYBOARD.init(SpinMutex::new(Keyboard::new(keyboard_buffer)));
-    okprintln!("Initialized Keyboard at {:p}", buffer_address);
+    console::init_keyboard(memory.slab);
 
     // SAFETY: the IDT, PIC and keyboard are ready for the first interrupt.
     unsafe { interrupts::enable() };
 
-    // SAFETY: this is the only `leak` of the writer, and it stays locked.
-    let w = unsafe {
-        ADVANCED_WRITER
-            .init(SpinMutex::new_locked(AdvancedWriter::default()))
-            .leak()
-    };
-    WRITER.lock().set_writer(w);
-    okprintln!("Set advanced writer");
-    // Wait for the next update.
-    unsafe {
-        cpu_interrupts::hlt();
-    }
+    console::use_advanced_writer();
 
     println!("{}", memory.mmap);
 
@@ -79,29 +56,7 @@ pub unsafe extern "C" fn _start() -> ! {
         println!("CPU brand: {}", brand.as_str());
     }
 
-    loop {
-        // SAFETY: the keyboard handler takes the same lock, so it must
-        // not run while this loop holds it.
-        unsafe { cpu_interrupts::disable() };
-        let input = KEYBOARD.lock().read_char();
-        unsafe { cpu_interrupts::enable() };
-        match input {
-            Ok(str) => print!("{}", str),
-            Err(key) => match key {
-                PS2ScanCode::UpArrow => WRITER.lock().inner.scroll_up(1),
-                PS2ScanCode::DownArrow => {
-                    WRITER.lock().inner.scroll_down(1)
-                }
-                PS2ScanCode::LeftArrow => {
-                    WRITER.lock().inner.scroll_up(24)
-                }
-                PS2ScanCode::RightArrow => {
-                    WRITER.lock().inner.scroll_down(24)
-                }
-                _ => {}
-            },
-        }
-    }
+    console::run()
 }
 
 // The AHCI bring-up I experimented with, which ran after the hardware
