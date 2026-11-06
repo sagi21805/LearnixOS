@@ -6,9 +6,7 @@ use vga_display::{SCREEN, SIMPLE_WRITER};
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     unsafe {
-        if let Some(screen) = SCREEN.get() {
-            screen.force_unlock();
-        }
+        SCREEN.force_unlock();
         SIMPLE_WRITER.force_unlock();
     };
     SIMPLE_WRITER

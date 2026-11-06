@@ -3,7 +3,7 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
-use vga_display::{okprintln, println, vga_init};
+use vga_display::{okprintln, println};
 use x86::instructions::cpuid;
 
 mod console;
@@ -21,8 +21,6 @@ mod timer;
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 pub unsafe extern "C" fn _start() -> ! {
-    vga_init();
-
     okprintln!("Entered Protected Mode");
     okprintln!("Enabled Paging");
     okprintln!("Entered Long Mode");
