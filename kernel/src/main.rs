@@ -5,7 +5,7 @@
 #![feature(const_trait_impl)]
 extern crate alloc;
 
-use core::{cell::OnceCell, panic::PanicInfo};
+use core::panic::PanicInfo;
 
 use alloc::boxed::Box;
 use buddy::BuddyAllocator;
@@ -51,8 +51,7 @@ static PIC: SpinMutex<CascadedPIC> =
 static IDT: Once<Box<InterruptDescriptorTable>> = Once::uninit();
 
 #[unsafe(no_mangle)]
-static KEYBOARD: SpinMutex<OnceCell<Keyboard>> =
-    SpinMutex::new(OnceCell::new());
+static KEYBOARD: Once<SpinMutex<Keyboard>> = Once::uninit();
 
 static KEYBOARD_BUFFER: Once<SpscRingBuffer<u8>> = Once::uninit();
 
@@ -131,9 +130,7 @@ pub unsafe extern "C" fn _start() -> ! {
         let keyboard_buffer =
             KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
 
-        KEYBOARD
-            .lock()
-            .get_or_init(|| Keyboard::new(keyboard_buffer));
+        KEYBOARD.init(SpinMutex::new(Keyboard::new(keyboard_buffer)));
         okprintln!("Initialized Keyboard at {:p}", buffer_address);
         interrupts::enable();
     }
@@ -228,11 +225,7 @@ pub unsafe extern "C" fn _start() -> ! {
         // SAFETY: the keyboard handler takes the same lock, so it must
         // not run while this loop holds it.
         unsafe { interrupts::disable() };
-        let input = KEYBOARD
-            .lock()
-            .get()
-            .expect("the keyboard is set before this loop")
-            .read_char();
+        let input = KEYBOARD.lock().read_char();
         unsafe { interrupts::enable() };
         match input {
             Ok(str) => print!("{}", str),
