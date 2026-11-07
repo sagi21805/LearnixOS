@@ -1,12 +1,16 @@
 use core::{
-    array, ascii::Char, fmt, io, ptr::with_exposed_provenance_mut,
+    array,
+    ascii::Char,
+    fmt, io,
+    ops::{Range, RangeBounds},
+    ptr,
+    range::RangeFrom,
 };
 
 use common::{
     ansi::{BRIGHT_YELLOW, RED, RESET},
     constants::VGA_BUFFER_PTR,
     enums::{Port, VgaCommand},
-    volatile::Volatile,
 };
 use sync::mutex::SpinMutex;
 use x86::instructions::port::PortExt;
@@ -33,6 +37,7 @@ pub static CONSOLE: SpinMutex<Console> = SpinMutex::new(Console::new());
 pub struct Console {
     cursor: usize,
     decoder: AnsiDecoder,
+    vga: VgaMemory,
     scrollback: Option<Scrollback>,
 }
 
@@ -42,6 +47,7 @@ impl Console {
             cursor: 0,
             decoder: AnsiDecoder::default(),
             scrollback: None,
+            vga: VgaMemory,
         }
     }
 
@@ -109,8 +115,9 @@ impl Console {
 
     /// VGA text memory, which `&mut self` keeps exclusive because
     /// [`CONSOLE`] is the only `Console`.
-    fn vga_cells(&mut self) -> &mut [Volatile<ScreenChar>; CELLS] {
-        let cells = with_exposed_provenance_mut(VGA_BUFFER_PTR as usize);
+    fn vga_cells(&mut self) -> &mut [ScreenChar; CELLS] {
+        let cells =
+            ptr::with_exposed_provenance_mut(VGA_BUFFER_PTR as usize);
         // SAFETY: the boot page tables map VGA text memory, and any byte
         // is a valid `ScreenChar`.
         unsafe { &mut *cells }
@@ -119,8 +126,7 @@ impl Console {
     /// Writes one character in the current color.
     fn put(&mut self, ascii: Char) {
         let (position, color) = (self.cursor, self.decoder.color());
-        self.vga_cells()[position]
-            .write(ScreenChar::new(ascii.to_u8(), color));
+        self.vga_cells()[position] = ScreenChar::new(ascii.to_u8(), color);
         self.move_cursor_to(position + 1);
     }
 
@@ -128,7 +134,7 @@ impl Console {
     fn line_feed(&mut self) {
         let position = self.cursor;
         let next_row = (position / WIDTH + 1) * WIDTH;
-        self.blank_cells(position, next_row);
+        self.blank_cells(position..next_row);
         self.move_cursor_to(next_row);
     }
 
@@ -136,7 +142,7 @@ impl Console {
     fn backspace(&mut self) {
         if self.cursor > 0 {
             self.cursor -= 1;
-            self.blank_cells(self.cursor, self.cursor + 1);
+            self.blank_cells(self.cursor..self.cursor + 1);
         }
     }
 
@@ -151,11 +157,8 @@ impl Console {
     /// Moves every row up by one and blanks the last row.
     fn scroll_contents_up(&mut self) {
         self.store_row(0);
-        let cells = self.vga_cells();
-        for position in 0..CELLS - WIDTH {
-            cells[position].write(cells[position + WIDTH].read());
-        }
-        self.blank_cells(CELLS - WIDTH, CELLS);
+        self.vga_cells().copy_within(WIDTH.., 0);
+        self.blank_cells(CELLS - WIDTH..);
         self.cursor -= WIDTH;
     }
 
@@ -168,12 +171,12 @@ impl Console {
 
     /// Copies one row of the screen into the scrollback, if there is one.
     fn store_row(&mut self, row: usize) {
-        let cells = self.vga_cells();
-        let row =
-            array::from_fn(|column| cells[row * WIDTH + column].read());
-        if let Some(scrollback) = &mut self.scrollback {
-            scrollback.push_row(&row);
-        }
+        let Some(scrollback) = &mut self.scrollback else {
+            return;
+        };
+        let cells = self.vga.cells();
+        let row = array::from_fn(|column| cells[row * WIDTH + column]);
+        scrollback.push_row(&row);
     }
 
     /// Draws the rows of the scrollback's current view.
@@ -188,15 +191,14 @@ impl Console {
             };
             let cells = self.vga_cells();
             for (column, cell) in row.into_iter().enumerate() {
-                cells[screen_row * WIDTH + column].write(cell);
+                cells[screen_row * WIDTH + column] = cell;
             }
         }
     }
 
-    fn blank_cells(&mut self, start: usize, end: usize) {
-        self.vga_cells()[start..end]
-            .iter_mut()
-            .for_each(|cell| cell.write(ScreenChar::default()));
+    fn blank_cells<R: RangeBounds<usize>>(&mut self, cells: R) {
+        let range = core::slice::range(cells, ..CELLS);
+        self.vga_cells()[range].fill(ScreenChar::default());
     }
 
     /// Moves the blinking cursor, through CRTC registers `0xE` and `0xF`.
@@ -212,7 +214,7 @@ impl Console {
 
     /// Blanks the whole screen, and moves the cursor to its start.
     pub fn clear(&mut self) {
-        self.blank_cells(0, CELLS);
+        self.blank_cells(0..);
         self.cursor = 0;
     }
 }
@@ -236,5 +238,18 @@ impl io::Write for Console {
     fn flush(&mut self) -> io::Result<()> {
         self.move_hardware_cursor();
         Ok(())
+    }
+}
+
+/// Exclusive access to VGA text memory.
+struct VgaMemory;
+
+impl VgaMemory {
+    fn cells(&mut self) -> &mut [ScreenChar; CELLS] {
+        let cells =
+            ptr::with_exposed_provenance_mut(VGA_BUFFER_PTR as usize);
+        // SAFETY: the boot page tables map VGA text memory, and any byte
+        // is a valid `ScreenChar`.
+        unsafe { &mut *cells }
     }
 }
