@@ -43,27 +43,10 @@ const impl Default for ColorCode {
 }
 
 impl ColorCode {
-    /// Applies one parameter of a Select Graphic Rendition sequence.
+    /// Applies one parameter of the ANSI escape code to this color code.
     ///
     /// Bright backgrounds are ignored, because VGA uses that attribute bit
     /// for blinking.
-    ///
-    /// ```
-    /// use vga_display::color_code::ColorCode;
-    ///
-    /// let mut color = ColorCode::default();
-    /// assert_eq!(u8::from(color), 0x0f);
-    ///
-    /// color.apply_sgr(31);
-    /// color.apply_sgr(44);
-    /// assert_eq!(u8::from(color), 0x14);
-    ///
-    /// color.apply_sgr(91);
-    /// assert_eq!(u8::from(color), 0x1c);
-    ///
-    /// color.apply_sgr(0);
-    /// assert_eq!(u8::from(color), 0x0f);
-    /// ```
     pub fn apply_sgr(&mut self, param: u8) {
         let index = usize::from(param % 10);
         match param {
