@@ -12,6 +12,7 @@ pub mod color_code;
 pub mod console;
 pub mod screen_char;
 pub mod scrollback;
+mod vga_memory;
 
 use core::{fmt, io::Write};
 
