@@ -1,13 +1,11 @@
 use core::panic::PanicInfo;
 
-use vga_display::CONSOLE;
+use vga_display::print_panic_message;
 
 /// This function is called on panic.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    // SAFETY: this never returns, so a guard this panic interrupted
-    // doesn't use the console again.
-    unsafe { CONSOLE.force_unlock() };
-    CONSOLE.lock().panic_message(format_args!("{}", info));
+    // SAFETY: this is the panic handler.
+    unsafe { print_panic_message(format_args!("{}", info)) };
     loop {}
 }
