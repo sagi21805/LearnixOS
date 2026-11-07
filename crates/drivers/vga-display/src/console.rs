@@ -20,62 +20,86 @@ pub const WIDTH: usize = 80;
 pub const HEIGHT: usize = 25;
 pub(crate) const CELLS: usize = WIDTH * HEIGHT;
 
-/// The console behind every print macro.
-pub static CONSOLE: SpinMutex<Console> = SpinMutex::new(Console::new());
+/// The only screen, which every [`Console`] borrows.
+///
+/// Lock this before [`CONSOLE`], whenever taking both.
+pub(crate) static SCREEN: SpinMutex<Screen> =
+    // SAFETY: this is the only `VgaMemory` the kernel creates.
+    SpinMutex::new(Screen::new(unsafe { VgaMemory::new() }));
 
-/// The VGA text screen, as a writer that understands ANSI colors.
+/// The scrollback, empty until the heap exists.
+pub(crate) static CONSOLE: SpinMutex<Option<Scrollback>> =
+    SpinMutex::new(None);
+
+/// The state of the VGA text screen, which outlives every [`Console`].
 ///
 /// `cursor` always stays inside VGA text memory, because writing past the
 /// last cell scrolls the screen first.
-pub struct Console {
+pub(crate) struct Screen {
     cursor: usize,
     decoder: AnsiDecoder,
     vga: VgaMemory,
-    scrollback: Option<Scrollback>,
 }
 
-impl Console {
-    const fn new() -> Self {
+impl Screen {
+    const fn new(vga: VgaMemory) -> Self {
         Self {
             cursor: 0,
             decoder: AnsiDecoder::default(),
-            scrollback: None,
-            // SAFETY: this is the only `VgaMemory` the kernel creates.
-            vga: unsafe { VgaMemory::new() },
+            vga,
         }
     }
 
-    /// Starts keeping finished rows, beginning with those above the
-    /// cursor.
-    pub fn attach_scrollback(&mut self, mut scrollback: Scrollback) {
-        for row in &self.vga.rows()[..self.cursor / WIDTH] {
-            scrollback.push_row(row);
-        }
-        self.scrollback = Some(scrollback);
+    /// The rows above the cursor.
+    pub(crate) fn finished_rows(&mut self) -> &[[ScreenChar; WIDTH]] {
+        &self.vga.rows()[..self.cursor / WIDTH]
+    }
+}
+
+/// The screen and the scrollback, as a writer that understands ANSI
+/// colors, for the length of one operation.
+pub(crate) struct Console<'a> {
+    screen: &'a mut Screen,
+    scrollback: &'a mut Option<Scrollback>,
+}
+
+impl<'a> Console<'a> {
+    pub(crate) fn new(
+        screen: &'a mut Screen,
+        scrollback: &'a mut Option<Scrollback>,
+    ) -> Self {
+        Self { screen, scrollback }
+    }
+
+    /// Prints `args` and moves the hardware cursor after them.
+    pub(crate) fn print(&mut self, args: fmt::Arguments<'_>) {
+        io::Write::write_fmt(self, args)
+            .expect("only a failing Display implementation fails a print");
+        io::Write::flush(self).expect("flushing the console can't fail");
     }
 
     /// Moves the scrollback's view `lines` rows up.
-    pub fn scroll_view_up(&mut self, lines: usize) {
+    pub(crate) fn scroll_view_up(&mut self, lines: usize) {
         if let Some(scrollback) = &mut self.scrollback {
             scrollback.scroll_view_up(
-                &mut self.vga,
-                self.cursor / WIDTH,
+                &mut self.screen.vga,
+                self.screen.cursor / WIDTH,
                 lines,
             );
         }
     }
 
     /// Moves the scrollback's view `lines` rows down.
-    pub fn scroll_view_down(&mut self, lines: usize) {
+    pub(crate) fn scroll_view_down(&mut self, lines: usize) {
         if let Some(scrollback) = &mut self.scrollback {
-            scrollback.scroll_view_down(&mut self.vga, lines);
+            scrollback.scroll_view_down(&mut self.screen.vga, lines);
         }
     }
 
     /// Prints a failure message in color, from any state the panic left
     /// this console in.
-    pub fn panic_message(&mut self, message: fmt::Arguments<'_>) {
-        self.decoder = AnsiDecoder::default();
+    pub(crate) fn panic_message(&mut self, message: fmt::Arguments<'_>) {
+        self.screen.decoder = AnsiDecoder::default();
         self.scroll_view_down(usize::MAX);
         // Nothing can report a failure to print while panicking.
         let _ = io::Write::write_fmt(
@@ -90,14 +114,16 @@ impl Console {
 
     /// Writes one character in the current color.
     fn put(&mut self, ascii: Char) {
-        let (position, color) = (self.cursor, self.decoder.color());
-        self.vga.cells()[position] = ScreenChar::new(ascii.to_u8(), color);
+        let (position, color) =
+            (self.screen.cursor, self.screen.decoder.color());
+        self.screen.vga.cells()[position] =
+            ScreenChar::new(ascii.to_u8(), color);
         self.move_cursor_to(position + 1);
     }
 
     /// Blanks the rest of the row and starts the next one.
     fn line_feed(&mut self) {
-        let position = self.cursor;
+        let position = self.screen.cursor;
         let next_row = (position / WIDTH + 1) * WIDTH;
         self.blank_cells(position..next_row);
         self.move_cursor_to(next_row);
@@ -106,7 +132,7 @@ impl Console {
     /// Deletes the character before the cursor, or the line break if the
     /// cursor is at the start of a row.
     fn backspace(&mut self) {
-        if self.cursor.is_multiple_of(WIDTH) {
+        if self.screen.cursor.is_multiple_of(WIDTH) {
             self.reopen_previous_row();
         } else {
             self.erase_previous_cell();
@@ -121,7 +147,8 @@ impl Console {
     /// this does nothing.
     fn reopen_previous_row(&mut self) {
         self.scroll_contents_down();
-        let Some(previous_row) = (self.cursor / WIDTH).checked_sub(1)
+        let Some(previous_row) =
+            (self.screen.cursor / WIDTH).checked_sub(1)
         else {
             return;
         };
@@ -129,7 +156,7 @@ impl Console {
             return;
         };
         let text_end = scrollback.pop_row().columns().end;
-        self.cursor = previous_row * WIDTH + text_end;
+        self.screen.cursor = previous_row * WIDTH + text_end;
         if text_end == WIDTH {
             self.erase_previous_cell();
         }
@@ -137,18 +164,20 @@ impl Console {
 
     /// Blanks the cell before the cursor and moves back onto it.
     fn erase_previous_cell(&mut self) {
-        self.cursor -= 1;
-        self.vga.cells()[self.cursor] = ScreenChar::default();
+        self.screen.cursor -= 1;
+        self.screen.vga.cells()[self.screen.cursor] =
+            ScreenChar::default();
     }
 
     /// Moves the cursor, storing the row it finished if `position` starts
     /// a new one, and scrolling if `position` is past the last cell.
     fn move_cursor_to(&mut self, position: usize) {
-        self.cursor = position;
+        self.screen.cursor = position;
         if position.is_multiple_of(WIDTH)
             && let Some(scrollback) = &mut self.scrollback
         {
-            scrollback.push_row(&self.vga.rows()[position / WIDTH - 1]);
+            scrollback
+                .push_row(&self.screen.vga.rows()[position / WIDTH - 1]);
         }
         if position == CELLS {
             self.scroll_contents_up();
@@ -160,9 +189,9 @@ impl Console {
         if let Some(scrollback) = &mut self.scrollback {
             scrollback.advance_screen_top();
         }
-        self.vga.cells().copy_within(WIDTH.., 0);
+        self.screen.vga.cells().copy_within(WIDTH.., 0);
         self.blank_cells(CELLS - WIDTH..);
-        self.cursor -= WIDTH;
+        self.screen.cursor -= WIDTH;
     }
 
     /// Moves every row down by one and brings back the row above the
@@ -171,15 +200,16 @@ impl Console {
         if let Some(scrollback) = &mut self.scrollback
             && scrollback.has_rows_above_screen()
         {
-            self.vga.cells().copy_within(..CELLS - WIDTH, WIDTH);
-            scrollback.restore_row_above_screen(&mut self.vga.rows()[0]);
-            self.cursor += WIDTH;
+            self.screen.vga.cells().copy_within(..CELLS - WIDTH, WIDTH);
+            scrollback
+                .restore_row_above_screen(&mut self.screen.vga.rows()[0]);
+            self.screen.cursor += WIDTH;
         }
     }
 
     fn blank_cells<R: RangeBounds<usize>>(&mut self, cells: R) {
         let range = core::slice::range(cells, ..CELLS);
-        self.vga.cells()[range].fill(ScreenChar::default());
+        self.screen.vga.cells()[range].fill(ScreenChar::default());
     }
 
     /// Moves the blinking cursor, through CRTC registers `0xE` and `0xF`.
@@ -187,30 +217,31 @@ impl Console {
         // SAFETY: these registers only select where the cursor shows.
         unsafe {
             Port::VgaControl.outb(VgaCommand::CursorOffsetLow as u8);
-            Port::VgaData.outb((self.cursor & 0xff) as u8);
+            Port::VgaData.outb((self.screen.cursor & 0xff) as u8);
             Port::VgaControl.outb(VgaCommand::CursorOffsetHigh as u8);
-            Port::VgaData.outb(((self.cursor >> 8) & 0xff) as u8);
+            Port::VgaData.outb(((self.screen.cursor >> 8) & 0xff) as u8);
         }
     }
 
     /// Blanks the whole screen, and moves the cursor to its start.
-    pub fn clear(&mut self) {
+    #[expect(dead_code, reason = "nothing clears the screen yet")]
+    pub(crate) fn clear(&mut self) {
         self.scroll_view_down(usize::MAX);
         self.blank_cells(0..);
-        self.cursor = 0;
+        self.screen.cursor = 0;
         if let Some(scrollback) = &mut self.scrollback {
             scrollback.start_new_screen();
         }
     }
 }
 
-impl io::Write for Console {
+impl io::Write for Console<'_> {
     /// New text always goes to the live screen, so this leaves the
     /// scrollback's view first.
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         self.scroll_view_down(usize::MAX);
         for &byte in bytes {
-            match self.decoder.advance(byte) {
+            match self.screen.decoder.advance(byte) {
                 Some(Decoded::Print(ascii)) => self.put(ascii),
                 Some(Decoded::LineFeed) => self.line_feed(),
                 Some(Decoded::Backspace) => self.backspace(),

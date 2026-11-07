@@ -5,7 +5,7 @@ use libk::{okprintln, print};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
-use vga_display::{CONSOLE, Scrollback};
+use vga_display::{Scrollback, scroll_view_down, scroll_view_up};
 use x86::instructions::interrupts;
 
 /// Publishes the keyboard and its scan code buffer.
@@ -24,8 +24,7 @@ pub fn init_keyboard(slab: &'static SlabAllocator<Page, PageMap>) {
 /// This allocates before it locks the console, so nothing below the
 /// allocator can deadlock by printing.
 pub fn attach_scrollback() {
-    let scrollback = Scrollback::default();
-    CONSOLE.lock().attach_scrollback(scrollback);
+    vga_display::attach_scrollback(Scrollback::default());
     okprintln!("Attached scrollback");
 }
 
@@ -52,10 +51,10 @@ fn read_input() -> Result<&'static str, PS2ScanCode> {
 /// Scrolls one line on up and down, and 24 lines on left and right.
 fn scroll(key: PS2ScanCode) {
     match key {
-        PS2ScanCode::UpArrow => CONSOLE.lock().scroll_view_up(1),
-        PS2ScanCode::DownArrow => CONSOLE.lock().scroll_view_down(1),
-        PS2ScanCode::LeftArrow => CONSOLE.lock().scroll_view_up(24),
-        PS2ScanCode::RightArrow => CONSOLE.lock().scroll_view_down(24),
+        PS2ScanCode::UpArrow => scroll_view_up(1),
+        PS2ScanCode::DownArrow => scroll_view_down(1),
+        PS2ScanCode::LeftArrow => scroll_view_up(24),
+        PS2ScanCode::RightArrow => scroll_view_down(24),
         _ => {}
     }
 }
