@@ -7,8 +7,7 @@ use bitfields::bitfields;
 use common::constants::REGULAR_PAGE_SIZE;
 
 use crate::{
-    console::{VgaMemory, WIDTH},
-    screen_char::ScreenChar,
+    console::WIDTH, screen_char::ScreenChar, vga_memory::VgaMemory,
 };
 
 const SCROLLBACK_CELLS: usize =

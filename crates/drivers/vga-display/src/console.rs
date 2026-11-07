@@ -1,8 +1,7 @@
-use core::{ascii::Char, fmt, io, ops::RangeBounds, ptr};
+use core::{ascii::Char, fmt, io, ops::RangeBounds};
 
 use common::{
     ansi::{BRIGHT_YELLOW, RED, RESET},
-    constants::VGA_BUFFER_PTR,
     enums::{Port, VgaCommand},
 };
 use sync::mutex::SpinMutex;
@@ -12,13 +11,14 @@ use crate::{
     ansi::{AnsiDecoder, Decoded},
     screen_char::ScreenChar,
     scrollback::Scrollback,
+    vga_memory::VgaMemory,
 };
 
 /// Columns of the VGA text mode.
 pub const WIDTH: usize = 80;
 /// Rows of the VGA text mode.
 pub const HEIGHT: usize = 25;
-const CELLS: usize = WIDTH * HEIGHT;
+pub(crate) const CELLS: usize = WIDTH * HEIGHT;
 
 /// The console behind every print macro.
 pub static CONSOLE: SpinMutex<Console> = SpinMutex::new(Console::new());
@@ -40,7 +40,8 @@ impl Console {
             cursor: 0,
             decoder: AnsiDecoder::default(),
             scrollback: None,
-            vga: VgaMemory,
+            // SAFETY: this is the only `VgaMemory` the kernel creates.
+            vga: unsafe { VgaMemory::new() },
         }
     }
 
@@ -222,22 +223,5 @@ impl io::Write for Console {
     fn flush(&mut self) -> io::Result<()> {
         self.move_hardware_cursor();
         Ok(())
-    }
-}
-
-/// Exclusive access to VGA text memory.
-pub(crate) struct VgaMemory;
-
-impl VgaMemory {
-    pub(crate) fn cells(&mut self) -> &mut [ScreenChar; CELLS] {
-        let cells =
-            ptr::with_exposed_provenance_mut(VGA_BUFFER_PTR as usize);
-        // SAFETY: the boot page tables map VGA text memory, and any byte
-        // is a valid `ScreenChar`.
-        unsafe { &mut *cells }
-    }
-
-    pub(crate) fn rows(&mut self) -> &mut [[ScreenChar; WIDTH]] {
-        self.cells().as_chunks_mut().0
     }
 }
