@@ -10,7 +10,7 @@ use x86::instructions::port::PortExt;
 
 use crate::{
     ansi::{AnsiDecoder, Decoded},
-    screen_char::{RowText, ScreenChar},
+    screen_char::ScreenChar,
     scrollback::Scrollback,
 };
 
@@ -116,17 +116,18 @@ impl Console {
     /// makes that row unfinished again.
     ///
     /// A full row wrapped without a line break, so this deletes its last
-    /// character instead.
+    /// character instead. Before the scrollback exists no row is kept, so
+    /// this does nothing.
     fn reopen_previous_row(&mut self) {
         self.scroll_contents_down();
         let Some(previous_row) = (self.cursor / WIDTH).checked_sub(1)
         else {
             return;
         };
-        if let Some(scrollback) = &mut self.scrollback {
-            scrollback.pop_row();
-        }
-        let text_end = self.vga.rows()[previous_row].text_columns().end;
+        let Some(scrollback) = &mut self.scrollback else {
+            return;
+        };
+        let text_end = scrollback.pop_row().columns().end;
         self.cursor = previous_row * WIDTH + text_end;
         if text_end == WIDTH {
             self.erase_previous_cell();

@@ -8,7 +8,7 @@ use common::constants::REGULAR_PAGE_SIZE;
 
 use crate::{
     console::{VgaMemory, WIDTH},
-    screen_char::{RowText, ScreenChar},
+    screen_char::ScreenChar,
 };
 
 const SCROLLBACK_CELLS: usize =
@@ -30,7 +30,7 @@ pub struct RowSpan {
 
 impl RowSpan {
     /// The columns of the screen row that hold this text.
-    fn columns(&self) -> Range<usize> {
+    pub(crate) fn columns(&self) -> Range<usize> {
         let indent = self.get_indent() as usize;
         indent..indent + self.get_len() as usize
     }
@@ -125,7 +125,7 @@ impl Scrollback {
     /// Stores `row` as the newest row, dropping the oldest rows if it
     /// doesn't fit.
     pub(crate) fn push_row(&mut self, row: &[ScreenChar; WIDTH]) {
-        let columns = row.text_columns();
+        let columns = text_columns(row);
         let text = &row[columns.clone()];
 
         self.make_room(text.len());
@@ -145,12 +145,14 @@ impl Scrollback {
         self.row_count += 1;
     }
 
-    /// Removes the newest row, whose cells become free again.
-    pub(crate) fn pop_row(&mut self) {
+    /// Removes the newest row, whose cells become free again, and returns
+    /// its span.
+    pub(crate) fn pop_row(&mut self) -> RowSpan {
         self.row_count -= 1;
         let span = self.spans[self.slot_of(self.row_count)];
         self.used_cells -= span.get_len() as usize;
         self.next_cell = span.get_start() as usize;
+        span
     }
 
     pub(crate) fn has_rows_above_screen(&self) -> bool {
@@ -222,4 +224,13 @@ impl Scrollback {
             self.screen_top -= 1;
         }
     }
+}
+
+/// The columns between `row`'s blank ends, which are `0..0` if the whole
+/// row is blank.
+fn text_columns(row: &[ScreenChar; WIDTH]) -> Range<usize> {
+    let is_text = |cell: &ScreenChar| !cell.is_blank();
+    let start = row.iter().position(is_text).unwrap_or(0);
+    let end = row.iter().rposition(is_text).map_or(0, |last| last + 1);
+    start..end
 }

@@ -1,6 +1,4 @@
-use core::{ascii::Char, ops::Range};
-
-use extend::ext;
+use core::ascii::Char;
 
 use crate::color_code::ColorCode;
 
@@ -42,18 +40,5 @@ const impl Default for ScreenChar {
             char: Char::Space.to_u8(),
             color_code: ColorCode::default(),
         }
-    }
-}
-
-#[ext(name = RowText)]
-pub(crate) impl [ScreenChar] {
-    /// The columns between this row's blank ends, which are `0..0` if the
-    /// whole row is blank.
-    fn text_columns(&self) -> Range<usize> {
-        let is_text = |cell: &ScreenChar| !cell.is_blank();
-        let start = self.iter().position(is_text).unwrap_or(0);
-        let end =
-            self.iter().rposition(is_text).map_or(0, |last| last + 1);
-        start..end
     }
 }
