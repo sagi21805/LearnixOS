@@ -1,14 +1,14 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use core::array;
+use core::ops::Range;
 
 use bitfields::bitfields;
 use common::constants::REGULAR_PAGE_SIZE;
 
 use crate::{
-    console::{HEIGHT, WIDTH},
-    screen_char::ScreenChar,
+    console::{VgaMemory, WIDTH},
+    screen_char::{RowText, ScreenChar},
 };
 
 const SCROLLBACK_CELLS: usize =
@@ -28,28 +28,40 @@ pub struct RowSpan {
     pub len: B8,
 }
 
-/// Rows that left the screen, stored without their blank ends.
+impl RowSpan {
+    /// The columns of the screen row that hold this text.
+    fn columns(&self) -> Range<usize> {
+        let indent = self.get_indent() as usize;
+        indent..indent + self.get_len() as usize
+    }
+}
+
+/// Every finished row, stored without its blank ends.
 ///
-/// `cells` and `row_table` are both rings, so a new row drops the oldest
-/// rows when it doesn't fit. Most rows are short, so this holds more
-/// history than storing every row at full width, and row `n` is still one
-/// lookup away.
+/// Row numbers count from the oldest stored row. The live screen and the
+/// view are two windows over these rows, and scrolling only moves the
+/// view's window.
+///
+/// `cells` and `spans` are both rings, so a new row drops the oldest rows
+/// when it doesn't fit.
 pub struct Scrollback {
     cells: Box<[ScreenChar; SCROLLBACK_CELLS]>,
-    row_table: Box<[RowSpan; SCROLLBACK_ROWS]>,
+    spans: Box<[RowSpan; SCROLLBACK_ROWS]>,
     next_cell: usize,
     used_cells: usize,
-    oldest_row: usize,
+    /// The slot in `spans` of the oldest row.
+    oldest_slot: usize,
     row_count: usize,
-    /// Rows between the bottom of the view and the newest row. Anything
-    /// but 0 means the newest [`HEIGHT`] rows are a copy of the screen.
+    /// The row at the top of the live screen.
+    screen_top: usize,
+    /// How many rows the view sits above the live screen.
     view_offset: usize,
 }
 
 impl Default for Scrollback {
     fn default() -> Self {
         // SAFETY: all zeros is a valid `ScreenChar` and a valid `RowSpan`.
-        let (cells, row_table) = unsafe {
+        let (cells, spans) = unsafe {
             (
                 Box::new_zeroed().assume_init(),
                 Box::new_zeroed().assume_init(),
@@ -58,47 +70,63 @@ impl Default for Scrollback {
 
         Self {
             cells,
-            row_table,
+            spans,
             next_cell: 0,
             used_cells: 0,
-            oldest_row: 0,
+            oldest_slot: 0,
             row_count: 0,
+            screen_top: 0,
             view_offset: 0,
         }
     }
 }
 
 impl Scrollback {
-    pub(crate) fn is_viewing_history(&self) -> bool {
-        self.view_offset > 0
-    }
-
-    pub(crate) fn has_history(&self) -> bool { self.row_count > 0 }
-
-    /// Moves the view towards older rows, stopping at the oldest.
-    pub(crate) fn view_older(&mut self, lines: usize) {
-        let oldest_view = self.row_count.saturating_sub(HEIGHT);
+    /// Moves the view `lines` rows up, stopping at the oldest row.
+    ///
+    /// Leaving the live screen pushes the cursor's unfinished row, because
+    /// drawing the view overwrites the only copy of it.
+    pub(crate) fn scroll_view_up(
+        &mut self,
+        vga: &mut VgaMemory,
+        cursor_row: usize,
+        lines: usize,
+    ) {
+        if lines == 0 || !self.has_rows_above_screen() {
+            return;
+        }
+        if !self.is_viewing_history() {
+            self.push_row(&vga.rows()[cursor_row]);
+        }
         self.view_offset =
-            self.view_offset.saturating_add(lines).min(oldest_view);
+            self.view_offset.saturating_add(lines).min(self.screen_top);
+        self.draw_view(vga);
     }
 
-    /// Moves the view towards newer rows, stopping at the newest.
-    pub(crate) fn view_newer(&mut self, lines: usize) {
+    /// Moves the view `lines` rows down, stopping at the live screen.
+    ///
+    /// Reaching the live screen pops the row [`Self::scroll_view_up`]
+    /// pushed, as the screen holds it again.
+    pub(crate) fn scroll_view_down(
+        &mut self,
+        vga: &mut VgaMemory,
+        lines: usize,
+    ) {
+        if !self.is_viewing_history() {
+            return;
+        }
         self.view_offset = self.view_offset.saturating_sub(lines);
+        self.draw_view(vga);
+        if !self.is_viewing_history() {
+            self.pop_row();
+        }
     }
 
-    /// Stores `row` without its blank ends, dropping the oldest rows if it
+    /// Stores `row` as the newest row, dropping the oldest rows if it
     /// doesn't fit.
     pub(crate) fn push_row(&mut self, row: &[ScreenChar; WIDTH]) {
-        let indent = row
-            .iter()
-            .position(|cell| !cell.is_blank())
-            .unwrap_or(WIDTH);
-        let end = row
-            .iter()
-            .rposition(|cell| !cell.is_blank())
-            .map_or(indent, |last| last + 1);
-        let text = &row[indent..end];
+        let columns = row.text_columns();
+        let text = &row[columns.clone()];
 
         self.make_room(text.len());
 
@@ -107,10 +135,9 @@ impl Scrollback {
                 cell;
         }
 
-        let newest = (self.oldest_row + self.row_count) % SCROLLBACK_ROWS;
-        self.row_table[newest] = RowSpan::new()
+        self.spans[self.slot_of(self.row_count)] = RowSpan::new()
             .start(self.next_cell as u32)
-            .indent(indent as u8)
+            .indent(columns.start as u8)
             .len(text.len() as u8);
 
         self.next_cell = (self.next_cell + text.len()) % SCROLLBACK_CELLS;
@@ -118,37 +145,69 @@ impl Scrollback {
         self.row_count += 1;
     }
 
-    /// Removes the `count` newest rows, whose cells become free again.
-    pub(crate) fn forget_newest_rows(&mut self, count: usize) {
-        for _ in 0..count {
-            self.row_count -= 1;
-            let span = self.row_table
-                [(self.oldest_row + self.row_count) % SCROLLBACK_ROWS];
-            self.used_cells -= span.get_len() as usize;
-            self.next_cell = span.get_start() as usize;
+    /// Removes the newest row, whose cells become free again.
+    pub(crate) fn pop_row(&mut self) {
+        self.row_count -= 1;
+        let span = self.spans[self.slot_of(self.row_count)];
+        self.used_cells -= span.get_len() as usize;
+        self.next_cell = span.get_start() as usize;
+    }
+
+    pub(crate) fn has_rows_above_screen(&self) -> bool {
+        self.screen_top > 0
+    }
+
+    /// The live screen moved one row down the stored rows.
+    pub(crate) fn advance_screen_top(&mut self) { self.screen_top += 1; }
+
+    /// Moves the live screen one row up the stored rows, and draws the row
+    /// it reached onto `top_row`.
+    pub(crate) fn restore_row_above_screen(
+        &mut self,
+        top_row: &mut [ScreenChar; WIDTH],
+    ) {
+        self.screen_top -= 1;
+        self.draw_row(self.screen_top, top_row);
+    }
+
+    /// The live screen starts over, below every stored row.
+    pub(crate) fn start_new_screen(&mut self) {
+        self.screen_top = self.row_count;
+    }
+
+    fn is_viewing_history(&self) -> bool { self.view_offset > 0 }
+
+    /// Draws the rows from the top of the view, and blanks the screen past
+    /// the newest row.
+    fn draw_view(&self, vga: &mut VgaMemory) {
+        let view_top = self.screen_top - self.view_offset;
+        for (row, screen_row) in (view_top..).zip(vga.rows()) {
+            if row < self.row_count {
+                self.draw_row(row, screen_row);
+            } else {
+                screen_row.fill(ScreenChar::default());
+            }
         }
     }
 
-    /// The row at `screen_row` of the current view, with its blank ends
-    /// back in place.
-    pub(crate) fn visible_row(
-        &self,
-        screen_row: usize,
-    ) -> [ScreenChar; WIDTH] {
-        let view_start = self.row_count - HEIGHT - self.view_offset;
-        let span =
-            self.row_table[(self.oldest_row + view_start + screen_row)
-                % SCROLLBACK_ROWS];
+    /// Draws `row` with its blank ends back in place.
+    fn draw_row(&self, row: usize, screen_row: &mut [ScreenChar; WIDTH]) {
+        let span = self.spans[self.slot_of(row)];
         let start = span.get_start() as usize;
-        let indent = span.get_indent() as usize;
-        let len = span.get_len() as usize;
+        let columns = span.columns();
 
-        array::from_fn(|column| match column.checked_sub(indent) {
-            Some(offset) if offset < len => {
-                self.cells[(start + offset) % SCROLLBACK_CELLS]
-            }
-            _ => ScreenChar::default(),
-        })
+        screen_row[..columns.start].fill(ScreenChar::default());
+        for (offset, cell) in
+            screen_row[columns.clone()].iter_mut().enumerate()
+        {
+            *cell = self.cells[(start + offset) % SCROLLBACK_CELLS];
+        }
+        screen_row[columns.end..].fill(ScreenChar::default());
+    }
+
+    /// The slot in `spans` of `row`.
+    fn slot_of(&self, row: usize) -> usize {
+        (self.oldest_slot + row) % SCROLLBACK_ROWS
     }
 
     /// Drops the oldest rows until `len` more cells and one more row fit.
@@ -156,10 +215,11 @@ impl Scrollback {
         while self.row_count == SCROLLBACK_ROWS
             || self.used_cells + len > SCROLLBACK_CELLS
         {
-            let oldest = self.row_table[self.oldest_row];
+            let oldest = self.spans[self.oldest_slot];
             self.used_cells -= oldest.get_len() as usize;
-            self.oldest_row = (self.oldest_row + 1) % SCROLLBACK_ROWS;
+            self.oldest_slot = (self.oldest_slot + 1) % SCROLLBACK_ROWS;
             self.row_count -= 1;
+            self.screen_top -= 1;
         }
     }
 }

@@ -18,7 +18,8 @@ pub fn init_keyboard(slab: &'static SlabAllocator<Page, PageMap>) {
     okprintln!("Initialized Keyboard at {:p}", buffer_address);
 }
 
-/// Starts keeping the rows that scroll off the screen.
+/// Starts keeping finished rows, so the arrow keys can scroll through
+/// them.
 ///
 /// This allocates before it locks the console, so nothing below the
 /// allocator can deadlock by printing.
