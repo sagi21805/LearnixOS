@@ -10,6 +10,7 @@
 pub mod ansi;
 pub mod color_code;
 pub mod console;
+mod row_history;
 pub mod screen_char;
 pub mod scrollback;
 mod vga_memory;
@@ -17,6 +18,7 @@ mod vga_memory;
 use core::fmt;
 
 use console::{CONSOLE, Console, SCREEN};
+use row_history::{NoHistory, RowHistory};
 pub use scrollback::Scrollback;
 
 /// Prints on the screen, which is what `libk`'s print macros reach at link
@@ -24,7 +26,12 @@ pub use scrollback::Scrollback;
 #[unsafe(no_mangle)]
 pub fn kprint(args: fmt::Arguments<'_>) {
     let mut screen = SCREEN.lock();
-    Console::new(&mut screen, &mut CONSOLE.lock()).print(args);
+    match &mut *CONSOLE.lock() {
+        Some(scrollback) => {
+            Console::new(&mut screen, scrollback).print(args)
+        }
+        None => Console::new(&mut screen, &mut NoHistory).print(args),
+    }
 }
 
 /// Starts keeping finished rows, beginning with those above the cursor.
@@ -39,13 +46,17 @@ pub fn attach_scrollback(mut scrollback: Scrollback) {
 /// Moves the scrollback's view `lines` rows up.
 pub fn scroll_view_up(lines: usize) {
     let mut screen = SCREEN.lock();
-    Console::new(&mut screen, &mut CONSOLE.lock()).scroll_view_up(lines);
+    if let Some(scrollback) = &mut *CONSOLE.lock() {
+        Console::new(&mut screen, scrollback).scroll_view_up(lines);
+    }
 }
 
 /// Moves the scrollback's view `lines` rows down.
 pub fn scroll_view_down(lines: usize) {
     let mut screen = SCREEN.lock();
-    Console::new(&mut screen, &mut CONSOLE.lock()).scroll_view_down(lines);
+    if let Some(scrollback) = &mut *CONSOLE.lock() {
+        Console::new(&mut screen, scrollback).scroll_view_down(lines);
+    }
 }
 
 /// Prints a panic message, whatever state the panic left the console in.
@@ -60,5 +71,11 @@ pub unsafe fn print_panic_message(message: fmt::Arguments<'_>) {
         CONSOLE.force_unlock();
     }
     let mut screen = SCREEN.lock();
-    Console::new(&mut screen, &mut CONSOLE.lock()).panic_message(message);
+    match &mut *CONSOLE.lock() {
+        Some(scrollback) => {
+            Console::new(&mut screen, scrollback).panic_message(message)
+        }
+        None => Console::new(&mut screen, &mut NoHistory)
+            .panic_message(message),
+    }
 }
