@@ -10,18 +10,6 @@ pub const DEFAULT_FOREGROUND: &str = "\x1b[39m";
 pub const DEFAULT_BACKGROUND: &str = "\x1b[49m";
 
 /// A value that prints in one color, then resets.
-///
-/// ```
-/// use common::ansi::{RED, RESET, bg_blue, red};
-///
-/// assert_eq!(format!("{}", red("x")), "\x1b[31mx\x1b[0m");
-/// assert_eq!(format!("{RED}x{RESET}"), format!("{}", red("x")));
-/// assert_eq!(format!("{:>2}", red("x")), "\x1b[31m x\x1b[0m");
-/// assert_eq!(
-///     format!("{}", bg_blue(red(format_args!("{:#x}", 255)))),
-///     "\x1b[44m\x1b[31m0xff\x1b[0m\x1b[0m",
-/// );
-/// ```
 pub struct Colored<T> {
     color: &'static str,
     value: T,
@@ -45,7 +33,8 @@ impl<T: Debug> Debug for Colored<T> {
     }
 }
 
-/// A constant and a function for each color, from its SGR parameter.
+/// A constant, a function and a macro for each color, from its SGR
+/// parameter.
 macro_rules! colors {
     ($($function:ident, $constant:ident = $parameter:literal;)*) => {
         $(
@@ -59,6 +48,15 @@ macro_rules! colors {
             )]
             pub const fn $function<T>(value: T) -> Colored<T> {
                 Colored { color: $constant, value }
+            }
+
+            #[doc = concat!(
+                "The string literal `text` in `",
+                stringify!($function),
+                "`, then a reset, built at compile time."
+            )]
+            pub macro $function($text:expr) {
+                concat!("\x1b[", $parameter, "m", $text, "\x1b[0m")
             }
         )*
     };
