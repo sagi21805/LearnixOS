@@ -134,7 +134,10 @@ impl Console {
     }
 
     /// Blanks the cell before the cursor and moves back onto it.
-    fn erase_previous_cell(&mut self) {}
+    fn erase_previous_cell(&mut self) {
+        self.cursor -= 1;
+        self.vga.cells()[self.cursor] = ScreenChar::default();
+    }
 
     /// Moves the cursor, storing the row it finished if `position` starts
     /// a new one, and scrolling if `position` is past the last cell.
