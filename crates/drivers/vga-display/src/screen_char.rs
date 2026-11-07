@@ -1,31 +1,43 @@
-use ::core::ascii::Char;
+use core::ascii::Char;
 
-use super::ColorCode;
+use crate::color_code::ColorCode;
 
+/// One cell of VGA text memory.
+///
+/// `glyph` is an index into the font, and any byte is a valid index, so
+/// reading a cell back from VGA memory is always sound.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ScreenChar {
-    pub char: Char,
+    pub glyph: u8,
     pub color_code: ColorCode,
 }
 
 impl ScreenChar {
-    /// Create a new instance with the given char and
+    /// Create a new instance with the given glyph and
     /// [`ColorCode`]
-    pub const fn new(char: Char, color: ColorCode) -> Self {
+    pub const fn new(glyph: u8, color: ColorCode) -> Self {
         Self {
-            char,
+            glyph,
             color_code: color,
         }
+    }
+
+    /// Whether this cell looks like an empty one. A space on another
+    /// color isn't blank, because its color shows.
+    pub fn is_blank(&self) -> bool {
+        let empty = Self::default();
+        self.glyph == empty.glyph
+            && u8::from(self.color_code) == u8::from(empty.color_code)
     }
 }
 
 const impl Default for ScreenChar {
-    /// Create a default Screen char with Space as char
-    /// value, and with the default [`ColorCode`]
+    /// Create a default Screen char with a space as its glyph, and with
+    /// the default [`ColorCode`]
     fn default() -> Self {
         Self {
-            char: Char::Space,
+            glyph: Char::Space.to_u8(),
             color_code: ColorCode::default(),
         }
     }

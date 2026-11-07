@@ -1,13 +1,11 @@
 use alloc::boxed::Box;
 use common::enums::PS2ScanCode;
 use keyboard::{KEYBOARD, KEYBOARD_BUFFER, ps2_keyboard::Keyboard};
+use libk::{okprintln, print};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
-use vga_display::{
-    ADVANCED_WRITER, WRITER, advanced_writer::AdvancedWriter, okprintln,
-    print,
-};
+use vga_display::{CONSOLE, Scrollback};
 use x86::instructions::interrupts;
 
 /// Publishes the keyboard and its scan code buffer.
@@ -20,16 +18,14 @@ pub fn init_keyboard(slab: &'static SlabAllocator<Page, PageMap>) {
     okprintln!("Initialized Keyboard at {:p}", buffer_address);
 }
 
-/// Switches printing to the advanced writer.
-pub fn use_advanced_writer() {
-    // SAFETY: this is the only `leak` of the writer, and it stays locked.
-    let writer = unsafe {
-        ADVANCED_WRITER
-            .init(SpinMutex::new_locked(AdvancedWriter::default()))
-            .leak()
-    };
-    WRITER.lock().set_writer(writer);
-    okprintln!("Set advanced writer");
+/// Starts keeping the rows that scroll off the screen.
+///
+/// This allocates before it locks the console, so nothing below the
+/// allocator can deadlock by printing.
+pub fn attach_scrollback() {
+    let scrollback = Scrollback::default();
+    CONSOLE.lock().attach_scrollback(scrollback);
+    okprintln!("Attached scrollback");
 }
 
 /// Prints what the user types and scrolls on the arrow keys, forever.
@@ -55,10 +51,10 @@ fn read_input() -> Result<&'static str, PS2ScanCode> {
 /// Scrolls one line on up and down, and 24 lines on left and right.
 fn scroll(key: PS2ScanCode) {
     match key {
-        PS2ScanCode::UpArrow => WRITER.lock().inner.scroll_up(1),
-        PS2ScanCode::DownArrow => WRITER.lock().inner.scroll_down(1),
-        PS2ScanCode::LeftArrow => WRITER.lock().inner.scroll_up(24),
-        PS2ScanCode::RightArrow => WRITER.lock().inner.scroll_down(24),
+        PS2ScanCode::UpArrow => CONSOLE.lock().scroll_view_up(1),
+        PS2ScanCode::DownArrow => CONSOLE.lock().scroll_view_down(1),
+        PS2ScanCode::LeftArrow => CONSOLE.lock().scroll_view_up(24),
+        PS2ScanCode::RightArrow => CONSOLE.lock().scroll_view_down(24),
         _ => {}
     }
 }
