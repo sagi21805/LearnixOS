@@ -9,6 +9,7 @@ use x86::instructions::port::PortExt;
 
 use crate::{
     ansi::{AnsiDecoder, Decoded},
+    row_history::RowHistory,
     screen_char::ScreenChar,
     scrollback::Scrollback,
     vga_memory::VgaMemory,
@@ -56,19 +57,16 @@ impl Screen {
     }
 }
 
-/// The screen and the scrollback, as a writer that understands ANSI
-/// colors, for the length of one operation.
-pub(crate) struct Console<'a> {
+/// The screen and whatever keeps its rows, as a writer that understands
+/// ANSI colors, for the length of one operation.
+pub(crate) struct Console<'a, H: RowHistory> {
     screen: &'a mut Screen,
-    scrollback: &'a mut Option<Scrollback>,
+    history: &'a mut H,
 }
 
-impl<'a> Console<'a> {
-    pub(crate) fn new(
-        screen: &'a mut Screen,
-        scrollback: &'a mut Option<Scrollback>,
-    ) -> Self {
-        Self { screen, scrollback }
+impl<'a, H: RowHistory> Console<'a, H> {
+    pub(crate) fn new(screen: &'a mut Screen, history: &'a mut H) -> Self {
+        Self { screen, history }
     }
 
     /// Prints `args` and moves the hardware cursor after them.
@@ -78,29 +76,11 @@ impl<'a> Console<'a> {
         io::Write::flush(self).expect("flushing the console can't fail");
     }
 
-    /// Moves the scrollback's view `lines` rows up.
-    pub(crate) fn scroll_view_up(&mut self, lines: usize) {
-        if let Some(scrollback) = &mut self.scrollback {
-            scrollback.scroll_view_up(
-                &mut self.screen.vga,
-                self.screen.cursor / WIDTH,
-                lines,
-            );
-        }
-    }
-
-    /// Moves the scrollback's view `lines` rows down.
-    pub(crate) fn scroll_view_down(&mut self, lines: usize) {
-        if let Some(scrollback) = &mut self.scrollback {
-            scrollback.scroll_view_down(&mut self.screen.vga, lines);
-        }
-    }
-
     /// Prints a failure message in color, from any state the panic left
     /// this console in.
     pub(crate) fn panic_message(&mut self, message: fmt::Arguments<'_>) {
         self.screen.decoder = AnsiDecoder::default();
-        self.scroll_view_down(usize::MAX);
+        self.history.leave_view(&mut self.screen.vga);
         // Nothing can report a failure to print while panicking.
         let _ = io::Write::write_fmt(
             self,
@@ -143,8 +123,7 @@ impl<'a> Console<'a> {
     /// makes that row unfinished again.
     ///
     /// A full row wrapped without a line break, so this deletes its last
-    /// character instead. Before the scrollback exists no row is kept, so
-    /// this does nothing.
+    /// character instead. When no row was kept, this does nothing.
     fn reopen_previous_row(&mut self) {
         self.scroll_contents_down();
         let Some(previous_row) =
@@ -152,10 +131,10 @@ impl<'a> Console<'a> {
         else {
             return;
         };
-        let Some(scrollback) = &mut self.scrollback else {
+        let Some(span) = self.history.pop_row() else {
             return;
         };
-        let text_end = scrollback.pop_row().columns().end;
+        let text_end = span.columns().end;
         self.screen.cursor = previous_row * WIDTH + text_end;
         if text_end == WIDTH {
             self.erase_previous_cell();
@@ -173,11 +152,9 @@ impl<'a> Console<'a> {
     /// a new one, and scrolling if `position` is past the last cell.
     fn move_cursor_to(&mut self, position: usize) {
         self.screen.cursor = position;
-        if position.is_multiple_of(WIDTH)
-            && let Some(scrollback) = &mut self.scrollback
-        {
-            scrollback
-                .push_row(&self.screen.vga.rows()[position / WIDTH - 1]);
+        if position.is_multiple_of(WIDTH) {
+            let finished_row = position / WIDTH - 1;
+            self.history.push_row(&self.screen.vga.rows()[finished_row]);
         }
         if position == CELLS {
             self.scroll_contents_up();
@@ -186,9 +163,7 @@ impl<'a> Console<'a> {
 
     /// Moves every row up by one and blanks the last row.
     fn scroll_contents_up(&mut self) {
-        if let Some(scrollback) = &mut self.scrollback {
-            scrollback.advance_screen_top();
-        }
+        self.history.advance_screen_top();
         self.screen.vga.cells().copy_within(WIDTH.., 0);
         self.blank_cells(CELLS - WIDTH..);
         self.screen.cursor -= WIDTH;
@@ -197,11 +172,9 @@ impl<'a> Console<'a> {
     /// Moves every row down by one and brings back the row above the
     /// screen, if there is one.
     fn scroll_contents_down(&mut self) {
-        if let Some(scrollback) = &mut self.scrollback
-            && scrollback.has_rows_above_screen()
-        {
+        if self.history.has_rows_above_screen() {
             self.screen.vga.cells().copy_within(..CELLS - WIDTH, WIDTH);
-            scrollback
+            self.history
                 .restore_row_above_screen(&mut self.screen.vga.rows()[0]);
             self.screen.cursor += WIDTH;
         }
@@ -226,20 +199,36 @@ impl<'a> Console<'a> {
     /// Blanks the whole screen, and moves the cursor to its start.
     #[expect(dead_code, reason = "nothing clears the screen yet")]
     pub(crate) fn clear(&mut self) {
-        self.scroll_view_down(usize::MAX);
+        self.history.leave_view(&mut self.screen.vga);
         self.blank_cells(0..);
         self.screen.cursor = 0;
-        if let Some(scrollback) = &mut self.scrollback {
-            scrollback.start_new_screen();
-        }
+        self.history.start_new_screen();
     }
 }
 
-impl io::Write for Console<'_> {
-    /// New text always goes to the live screen, so this leaves the
-    /// scrollback's view first.
+// Only the console with a scrollback can scroll its view.
+impl Console<'_, Scrollback> {
+    /// Moves the view `lines` rows up.
+    pub(crate) fn scroll_view_up(&mut self, lines: usize) {
+        let cursor_row = self.screen.cursor / WIDTH;
+        self.history.scroll_view_up(
+            &mut self.screen.vga,
+            cursor_row,
+            lines,
+        );
+    }
+
+    /// Moves the view `lines` rows down.
+    pub(crate) fn scroll_view_down(&mut self, lines: usize) {
+        self.history.scroll_view_down(&mut self.screen.vga, lines);
+    }
+}
+
+impl<H: RowHistory> io::Write for Console<'_, H> {
+    /// New text always goes to the live screen, so this leaves the view
+    /// first.
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.scroll_view_down(usize::MAX);
+        self.history.leave_view(&mut self.screen.vga);
         for &byte in bytes {
             match self.screen.decoder.advance(byte) {
                 Some(Decoded::Print(ascii)) => self.put(ascii),
