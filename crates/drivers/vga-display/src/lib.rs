@@ -6,6 +6,7 @@
 #![feature(const_default)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
+#![feature(slice_range)]
 pub mod ansi;
 pub mod color_code;
 pub mod console;
