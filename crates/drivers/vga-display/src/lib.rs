@@ -17,45 +17,63 @@ mod vga_memory;
 
 use core::fmt;
 
-use console::{CONSOLE, Console, SCREEN};
+use console::{Console, SCREEN};
 use row_history::{NoHistory, RowHistory};
 pub use scrollback::Scrollback;
+use sync::{mutex::SpinMutex, once::Once};
+
+/// The scrollback, empty until the heap exists.
+static HISTORY: Once<SpinMutex<Scrollback>> = Once::uninit();
 
 /// Prints on the screen, which is what `libk`'s print macros reach at link
 /// time.
 #[unsafe(no_mangle)]
 pub fn kprint(args: fmt::Arguments<'_>) {
     let mut screen = SCREEN.lock();
-    match &mut *CONSOLE.lock() {
+    match HISTORY.get() {
         Some(scrollback) => {
-            Console::new(&mut screen, scrollback).print(args)
+            Console::new(&mut screen, &mut *scrollback.lock()).print(args)
         }
         None => Console::new(&mut screen, &mut NoHistory).print(args),
     }
 }
 
 /// Starts keeping finished rows, beginning with those above the cursor.
-pub fn attach_scrollback(mut scrollback: Scrollback) {
+///
+/// # Panics
+///
+/// When a scrollback is already attached.
+pub fn attach_scrollback(mut scrollback: Scrollback) -> ScrollControl {
     let mut screen = SCREEN.lock();
     for row in screen.finished_rows() {
         scrollback.push_row(row);
     }
-    *CONSOLE.lock() = Some(scrollback);
-}
-
-/// Moves the scrollback's view `lines` rows up.
-pub fn scroll_view_up(lines: usize) {
-    let mut screen = SCREEN.lock();
-    if let Some(scrollback) = &mut *CONSOLE.lock() {
-        Console::new(&mut screen, scrollback).scroll_view_up(lines);
+    ScrollControl {
+        scrollback: HISTORY.init(SpinMutex::new(scrollback)),
     }
 }
 
-/// Moves the scrollback's view `lines` rows down.
-pub fn scroll_view_down(lines: usize) {
-    let mut screen = SCREEN.lock();
-    if let Some(scrollback) = &mut *CONSOLE.lock() {
-        Console::new(&mut screen, scrollback).scroll_view_down(lines);
+/// Scrolls the console's view, which only [`attach_scrollback`] can hand
+/// out.
+#[derive(Clone, Copy)]
+pub struct ScrollControl {
+    scrollback: &'static SpinMutex<Scrollback>,
+}
+
+impl ScrollControl {
+    /// Moves the view `lines` rows up.
+    pub fn scroll_view_up(self, lines: usize) {
+        let mut screen = SCREEN.lock();
+        let mut scrollback = self.scrollback.lock();
+        Console::new(&mut screen, &mut *scrollback).scroll_view_up(lines);
+    }
+
+    /// Moves the view `lines` rows down.
+    pub fn scroll_view_down(self, lines: usize) {
+        let mut screen = SCREEN.lock();
+        let mut scrollback = self.scrollback.lock();
+        Console::new(&mut screen, &mut *scrollback)
+            .scroll_view_down(lines);
     }
 }
 
@@ -66,14 +84,13 @@ pub fn scroll_view_down(lines: usize) {
 /// Only the panic handler may call this, as it breaks locks that a
 /// panicking holder will never release.
 pub unsafe fn print_panic_message(message: fmt::Arguments<'_>) {
-    unsafe {
-        SCREEN.force_unlock();
-        CONSOLE.force_unlock();
-    }
+    unsafe { SCREEN.force_unlock() };
     let mut screen = SCREEN.lock();
-    match &mut *CONSOLE.lock() {
+    match HISTORY.get() {
         Some(scrollback) => {
-            Console::new(&mut screen, scrollback).panic_message(message)
+            unsafe { scrollback.force_unlock() };
+            Console::new(&mut screen, &mut *scrollback.lock())
+                .panic_message(message)
         }
         None => Console::new(&mut screen, &mut NoHistory)
             .panic_message(message),

@@ -23,14 +23,10 @@ pub(crate) const CELLS: usize = WIDTH * HEIGHT;
 
 /// The only screen, which every [`Console`] borrows.
 ///
-/// Lock this before [`CONSOLE`], whenever taking both.
+/// Lock this before the scrollback, whenever taking both.
 pub(crate) static SCREEN: SpinMutex<Screen> =
     // SAFETY: this is the only `VgaMemory` the kernel creates.
     SpinMutex::new(Screen::new(unsafe { VgaMemory::new() }));
-
-/// The scrollback, empty until the heap exists.
-pub(crate) static CONSOLE: SpinMutex<Option<Scrollback>> =
-    SpinMutex::new(None);
 
 /// The state of the VGA text screen, which outlives every [`Console`].
 ///

@@ -32,7 +32,7 @@ pub unsafe extern "C" fn _start() -> ! {
 
     console::init_keyboard(memory.slab);
 
-    console::attach_scrollback();
+    let scroll_control = console::attach_scrollback();
 
     let pci_devices = pci::scan_pci(memory.slab);
     println!("{}", memory.mmap);
@@ -50,7 +50,7 @@ pub unsafe extern "C" fn _start() -> ! {
         println!("CPU brand: {}", brand.as_str());
     }
 
-    console::run()
+    console::run(scroll_control)
 }
 
 // The AHCI bring-up experiment, which ran after the hardware report and
