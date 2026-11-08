@@ -3,6 +3,7 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
+use common::ansi::{bright_yellow, red};
 use libk::{okprintln, println};
 use x86::instructions::cpuid;
 
@@ -47,7 +48,11 @@ pub unsafe extern "C" fn _start() -> ! {
     let vendor = unsafe { str::from_utf8_unchecked(&vendor) };
     println!("CPU vendor: {}", vendor);
     if let Some(brand) = cpuid::get_brand_string() {
-        println!("CPU brand: {}", brand.as_str());
+        println!(
+            "{} {}",
+            red!("CPU brand:"),
+            bright_yellow(brand.as_str())
+        );
     }
 
     console::run(scroll_control)

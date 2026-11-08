@@ -4,6 +4,7 @@
 #![feature(const_trait_impl)]
 #![feature(ptr_alignment_type)]
 #![feature(pattern_types, pattern_type_macro)]
+#![feature(decl_macro)]
 #![expect(
     internal_features,
     reason = "`PageIndex` is a pattern type, which is an internal feature"
