@@ -3,6 +3,7 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
+use alloc::boxed::Box;
 use common::ansi::{bright_yellow, red};
 use libk::{okprintln, println};
 use x86::instructions::cpuid;
@@ -33,7 +34,10 @@ pub unsafe extern "C" fn _start() -> ! {
 
     console::init_keyboard(memory.slab);
 
-    let scroll_control = console::attach_scrollback();
+    // The `Box` is built before `attach_scrollback` locks the screen, so
+    // the allocator can print without deadlocking.
+    vga_display::attach_scrollback(Box::default());
+    okprintln!("Attached scrollback");
 
     let pci_devices = pci::scan_pci(memory.slab);
     println!("{}", memory.mmap);
@@ -55,7 +59,7 @@ pub unsafe extern "C" fn _start() -> ! {
         );
     }
 
-    console::run(scroll_control)
+    console::run()
 }
 
 // The AHCI bring-up experiment, which ran after the hardware report and

@@ -33,26 +33,19 @@ pub fn kprint(args: fmt::Arguments<'_>) {
 /// Starts keeping finished rows, beginning with those above the cursor.
 ///
 /// A second call drops the rows the first scrollback kept.
-pub fn attach_scrollback(scrollback: Box<Scrollback>) -> ScrollControl {
+pub fn attach_scrollback(scrollback: Box<Scrollback>) {
     SCREEN.lock().attach_scrollback(Box::leak(scrollback));
-    ScrollControl
 }
 
-/// Scrolls the console's view, which only [`attach_scrollback`] can hand
-/// out.
-#[derive(Clone, Copy)]
-pub struct ScrollControl;
+/// Moves the view `lines` rows up. Until [`attach_scrollback`], no rows
+/// are kept, so this does nothing.
+pub fn scroll_view_up(lines: usize) {
+    Console::new(&mut SCREEN.lock()).scroll_view_up(lines);
+}
 
-impl ScrollControl {
-    /// Moves the view `lines` rows up.
-    pub fn scroll_view_up(self, lines: usize) {
-        Console::new(&mut SCREEN.lock()).scroll_view_up(lines);
-    }
-
-    /// Moves the view `lines` rows down.
-    pub fn scroll_view_down(self, lines: usize) {
-        Console::new(&mut SCREEN.lock()).scroll_view_down(lines);
-    }
+/// Moves the view `lines` rows down, stopping at the live screen.
+pub fn scroll_view_down(lines: usize) {
+    Console::new(&mut SCREEN.lock()).scroll_view_down(lines);
 }
 
 /// Prints a panic message, whatever state the panic left the console in.
