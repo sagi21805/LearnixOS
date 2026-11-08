@@ -7,19 +7,24 @@ use crate::{
     screen_char::ScreenChar,
 };
 
-/// The only handle to VGA text memory.
+/// The only path to VGA text memory.
 ///
-/// It isn't `Clone` or `Copy`, and its field is private, so getting a
-/// second one takes `unsafe`.
+/// Two live `&mut` to the same bytes are UB even on one core, so every
+/// reference to the cells borrows from this handle. As its own field of
+/// `Screen`, it also lets the screen lend the cells to its history while
+/// the history is borrowed.
 pub(crate) struct VgaMemory(());
 
 impl VgaMemory {
+    /// The handle, which `SCREEN` creates once.
+    ///
     /// # Safety
     ///
     /// Only one `VgaMemory` may exist, because [`Self::cells`] gives out
     /// exclusive access to the same memory based on it.
     pub(crate) const unsafe fn new() -> Self { Self(()) }
 
+    /// Every cell of the screen, row after row.
     pub(crate) fn cells(&mut self) -> &mut [ScreenChar; CELLS] {
         let cells =
             ptr::with_exposed_provenance_mut(VGA_BUFFER_PTR as usize);
@@ -28,6 +33,7 @@ impl VgaMemory {
         unsafe { &mut *cells }
     }
 
+    /// The cells as rows of [`WIDTH`].
     pub(crate) fn rows(&mut self) -> &mut [[ScreenChar; WIDTH]] {
         self.cells().as_chunks_mut().0
     }
