@@ -11,7 +11,6 @@ use crate::{
     ansi::{AnsiDecoder, Decoded},
     row_history::{NoHistory, RowHistory},
     screen_char::ScreenChar,
-    scrollback::Scrollback,
     vga_memory::VgaMemory,
 };
 
@@ -31,10 +30,10 @@ pub(crate) static SCREEN: SpinMutex<Screen> =
 /// `cursor` always stays inside VGA text memory, because writing past the
 /// last cell scrolls the screen first.
 pub(crate) struct Screen {
-    cursor: usize,
+    pub(crate) cursor: usize,
     decoder: AnsiDecoder,
-    vga: VgaMemory,
-    history: &'static mut dyn RowHistory,
+    pub(crate) vga: VgaMemory,
+    pub(crate) history: &'static mut dyn RowHistory,
 }
 
 impl Screen {
@@ -45,18 +44,6 @@ impl Screen {
             vga,
             history: NoHistory::leaked(),
         }
-    }
-
-    /// Makes `scrollback` this screen's history, starting with the rows
-    /// above the cursor.
-    pub(crate) fn attach_scrollback(
-        &mut self,
-        scrollback: &'static mut Scrollback,
-    ) {
-        for row in &self.vga.rows()[..self.cursor / WIDTH] {
-            scrollback.push_row(row);
-        }
-        self.history = scrollback;
     }
 }
 
@@ -80,7 +67,7 @@ impl<'a> Console<'a> {
     /// this console in.
     pub(crate) fn panic_message(&mut self, message: fmt::Arguments<'_>) {
         self.screen.decoder = AnsiDecoder::default();
-        self.leave_view();
+        self.scroll_view_down(usize::MAX);
         // Nothing can report a failure to print while panicking.
         let _ = io::Write::write_fmt(
             self,
@@ -196,13 +183,6 @@ impl<'a> Console<'a> {
         }
     }
 
-    /// Draws the live screen again if a view of older rows is showing.
-    fn leave_view(&mut self) {
-        self.screen
-            .history
-            .scroll_view_down(&mut self.screen.vga, usize::MAX);
-    }
-
     fn blank_cells<R: RangeBounds<usize>>(&mut self, cells: R) {
         let range = core::slice::range(cells, ..CELLS);
         self.screen.vga.cells()[range].fill(ScreenChar::default());
@@ -224,7 +204,7 @@ impl io::Write for Console<'_> {
     /// New text always goes to the live screen, so this leaves the view
     /// first.
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.leave_view();
+        self.scroll_view_down(usize::MAX);
         for &byte in bytes {
             match self.screen.decoder.advance(byte) {
                 Some(Decoded::Print(ascii)) => self.put(ascii),
