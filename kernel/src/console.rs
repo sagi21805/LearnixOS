@@ -5,7 +5,7 @@ use libk::{okprintln, print};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
-use vga_display::{ScrollControl, Scrollback};
+use vga_display::ScrollControl;
 use x86::instructions::interrupts;
 
 /// Publishes the keyboard and its scan code buffer.
@@ -24,7 +24,7 @@ pub fn init_keyboard(slab: &'static SlabAllocator<Page, PageMap>) {
 /// This allocates before it locks the console, so nothing below the
 /// allocator can deadlock by printing.
 pub fn attach_scrollback() -> ScrollControl {
-    let control = vga_display::attach_scrollback(Scrollback::default());
+    let control = vga_display::attach_scrollback(Box::default());
     okprintln!("Attached scrollback");
     control
 }

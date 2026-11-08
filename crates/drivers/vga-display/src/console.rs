@@ -9,8 +9,9 @@ use x86::instructions::port::PortExt;
 
 use crate::{
     ansi::{AnsiDecoder, Decoded},
-    row_history::RowHistory,
+    row_history::{NoHistory, RowHistory},
     screen_char::ScreenChar,
+    scrollback::Scrollback,
     vga_memory::VgaMemory,
 };
 
@@ -21,8 +22,6 @@ pub const HEIGHT: usize = 25;
 pub(crate) const CELLS: usize = WIDTH * HEIGHT;
 
 /// The only screen, which every [`Console`] borrows.
-///
-/// Lock this before the scrollback, whenever taking both.
 pub(crate) static SCREEN: SpinMutex<Screen> =
     // SAFETY: this is the only `VgaMemory` the kernel creates.
     SpinMutex::new(Screen::new(unsafe { VgaMemory::new() }));
@@ -35,6 +34,7 @@ pub(crate) struct Screen {
     cursor: usize,
     decoder: AnsiDecoder,
     vga: VgaMemory,
+    history: &'static mut dyn RowHistory,
 }
 
 impl Screen {
@@ -43,26 +43,31 @@ impl Screen {
             cursor: 0,
             decoder: AnsiDecoder::default(),
             vga,
+            history: NoHistory::leaked(),
         }
     }
 
-    /// The rows above the cursor.
-    pub(crate) fn finished_rows(&mut self) -> &[[ScreenChar; WIDTH]] {
-        &self.vga.rows()[..self.cursor / WIDTH]
+    /// Makes `scrollback` this screen's history, starting with the rows
+    /// above the cursor.
+    pub(crate) fn attach_scrollback(
+        &mut self,
+        scrollback: &'static mut Scrollback,
+    ) {
+        for row in &self.vga.rows()[..self.cursor / WIDTH] {
+            scrollback.push_row(row);
+        }
+        self.history = scrollback;
     }
 }
 
-/// The screen and whatever keeps its rows, as a writer that understands
-/// ANSI colors, for the length of one operation.
-pub(crate) struct Console<'a, H: RowHistory> {
+/// The screen as a writer that understands ANSI colors, for the length of
+/// one operation.
+pub(crate) struct Console<'a> {
     screen: &'a mut Screen,
-    history: &'a mut H,
 }
 
-impl<'a, H: RowHistory> Console<'a, H> {
-    pub(crate) fn new(screen: &'a mut Screen, history: &'a mut H) -> Self {
-        Self { screen, history }
-    }
+impl<'a> Console<'a> {
+    pub(crate) fn new(screen: &'a mut Screen) -> Self { Self { screen } }
 
     /// Prints `args` and moves the hardware cursor after them.
     pub(crate) fn print(&mut self, args: fmt::Arguments<'_>) {
@@ -85,6 +90,23 @@ impl<'a, H: RowHistory> Console<'a, H> {
             ),
         );
         self.move_hardware_cursor();
+    }
+
+    /// Moves the view `lines` rows up.
+    pub(crate) fn scroll_view_up(&mut self, lines: usize) {
+        let cursor_row = self.screen.cursor / WIDTH;
+        self.screen.history.scroll_view_up(
+            &mut self.screen.vga,
+            cursor_row,
+            lines,
+        );
+    }
+
+    /// Moves the view `lines` rows down.
+    pub(crate) fn scroll_view_down(&mut self, lines: usize) {
+        self.screen
+            .history
+            .scroll_view_down(&mut self.screen.vga, lines);
     }
 
     /// Writes one character in the current color.
@@ -126,7 +148,7 @@ impl<'a, H: RowHistory> Console<'a, H> {
         else {
             return;
         };
-        let Some(span) = self.history.pop_row() else {
+        let Some(span) = self.screen.history.pop_row() else {
             return;
         };
         let text_end = span.columns().end;
@@ -149,7 +171,9 @@ impl<'a, H: RowHistory> Console<'a, H> {
         self.screen.cursor = position;
         if position.is_multiple_of(WIDTH) {
             let finished_row = position / WIDTH - 1;
-            self.history.push_row(&self.screen.vga.rows()[finished_row]);
+            self.screen
+                .history
+                .push_row(&self.screen.vga.rows()[finished_row]);
         }
         if position == CELLS {
             self.scroll_contents_up();
@@ -158,7 +182,7 @@ impl<'a, H: RowHistory> Console<'a, H> {
 
     /// Moves every row up by one and blanks the last row.
     fn scroll_contents_up(&mut self) {
-        self.history.advance_screen_top();
+        self.screen.history.advance_screen_top();
         self.screen.vga.cells().copy_within(WIDTH.., 0);
         self.blank_cells(CELLS - WIDTH..);
         self.screen.cursor -= WIDTH;
@@ -167,14 +191,15 @@ impl<'a, H: RowHistory> Console<'a, H> {
     /// Moves every row down by one and brings back the row above the
     /// screen, if there is one.
     fn scroll_contents_down(&mut self) {
-        if self.history.scroll_screen_down(&mut self.screen.vga) {
+        if self.screen.history.scroll_screen_down(&mut self.screen.vga) {
             self.screen.cursor += WIDTH;
         }
     }
 
     /// Draws the live screen again if a view of older rows is showing.
     fn leave_view(&mut self) {
-        self.history
+        self.screen
+            .history
             .scroll_view_down(&mut self.screen.vga, usize::MAX);
     }
 
@@ -195,24 +220,7 @@ impl<'a, H: RowHistory> Console<'a, H> {
     }
 }
 
-impl<H: RowHistory> Console<'_, H> {
-    /// Moves the view `lines` rows up.
-    pub(crate) fn scroll_view_up(&mut self, lines: usize) {
-        let cursor_row = self.screen.cursor / WIDTH;
-        self.history.scroll_view_up(
-            &mut self.screen.vga,
-            cursor_row,
-            lines,
-        );
-    }
-
-    /// Moves the view `lines` rows down.
-    pub(crate) fn scroll_view_down(&mut self, lines: usize) {
-        self.history.scroll_view_down(&mut self.screen.vga, lines);
-    }
-}
-
-impl<H: RowHistory> io::Write for Console<'_, H> {
+impl io::Write for Console<'_> {
     /// New text always goes to the live screen, so this leaves the view
     /// first.
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {

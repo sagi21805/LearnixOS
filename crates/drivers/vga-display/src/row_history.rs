@@ -1,10 +1,12 @@
+use core::ptr::NonNull;
+
 use crate::{
     console::WIDTH, screen_char::ScreenChar, scrollback::RowSpan,
     vga_memory::VgaMemory,
 };
 
 /// What the console tells whoever keeps its finished rows.
-pub(crate) trait RowHistory {
+pub(crate) trait RowHistory: Send {
     /// Keeps `row` as the newest row.
     fn push_row(&mut self, row: &[ScreenChar; WIDTH]);
     /// Removes the newest row, and returns its span if one was kept.
@@ -27,6 +29,15 @@ pub(crate) trait RowHistory {
 
 /// Keeps nothing, for the console before the heap exists.
 pub(crate) struct NoHistory;
+
+impl NoHistory {
+    /// A `&'static mut NoHistory`, built in a `const`.
+    pub(crate) const fn leaked() -> &'static mut NoHistory {
+        // SAFETY: `NoHistory` is zero-sized, so a dangling, aligned
+        // pointer is a valid reference to it that aliases nothing.
+        unsafe { NonNull::dangling().as_mut() }
+    }
+}
 
 impl RowHistory for NoHistory {
     fn push_row(&mut self, _row: &[ScreenChar; WIDTH]) {}
