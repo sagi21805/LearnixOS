@@ -61,6 +61,7 @@ impl AnsiDecoder {
     /// Takes the next byte, and returns the action it completes.
     ///
     /// A non-ASCII byte reads as `?`.
+    #[inline]
     pub fn advance(&mut self, byte: u8) -> Option<Decoded> {
         let ascii = byte.as_ascii().unwrap_or(Char::QuestionMark);
         match self.state {
