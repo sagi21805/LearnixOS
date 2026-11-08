@@ -11,11 +11,11 @@ pub(crate) trait RowHistory: Send {
     fn push_row(&mut self, row: &[ScreenChar; WIDTH]);
     /// Removes the newest row, and returns its span if one was kept.
     fn pop_row(&mut self) -> Option<RowSpan>;
-    /// The live screen moved one row down the kept rows.
-    fn advance_screen_top(&mut self);
-    /// Moves the screen's rows down one and draws the kept row above them
-    /// on top, or returns `false` if no kept row is above the screen.
-    fn scroll_screen_down(&mut self, vga: &mut VgaMemory) -> bool;
+    /// The output area's first row moved one row toward newer rows.
+    fn advance_base_y(&mut self);
+    /// Moves the output area one row toward older rows and draws the kept
+    /// row at its new top, or returns `false` if no kept row is above it.
+    fn scroll_output_down(&mut self, vga: &mut VgaMemory) -> bool;
     /// Moves the view `lines` rows up, toward older rows.
     fn scroll_view_up(
         &mut self,
@@ -23,7 +23,7 @@ pub(crate) trait RowHistory: Send {
         cursor_row: usize,
         lines: usize,
     );
-    /// Moves the view `lines` rows down, toward the live screen.
+    /// Moves the view `lines` rows down, toward the output area.
     fn scroll_view_down(&mut self, vga: &mut VgaMemory, lines: usize);
 }
 
@@ -44,9 +44,9 @@ impl RowHistory for NoHistory {
 
     fn pop_row(&mut self) -> Option<RowSpan> { None }
 
-    fn advance_screen_top(&mut self) {}
+    fn advance_base_y(&mut self) {}
 
-    fn scroll_screen_down(&mut self, _vga: &mut VgaMemory) -> bool {
+    fn scroll_output_down(&mut self, _vga: &mut VgaMemory) -> bool {
         false
     }
 

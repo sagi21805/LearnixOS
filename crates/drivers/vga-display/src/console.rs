@@ -130,21 +130,21 @@ impl<'a> Console<'a> {
     /// character instead. When no row was kept, this does nothing.
     fn reopen_previous_row(&mut self) {
         self.scroll_contents_down();
-        let Some(previous_row) =
-            (self.screen.cursor / WIDTH).checked_sub(1)
-        else {
+        let (Some(prev_row), Some(span)) = (
+            (self.screen.cursor / WIDTH).checked_sub(1),
+            self.screen.history.pop_row(),
+        ) else {
             return;
         };
-        let Some(span) = self.screen.history.pop_row() else {
-            return;
-        };
+
         let text_end = span.columns().end;
-        self.screen.cursor = previous_row * WIDTH + text_end;
+        self.screen.cursor = prev_row * WIDTH + text_end;
         if text_end == WIDTH {
             self.erase_previous_cell();
         }
     }
 
+    #[inline]
     /// Blanks the cell before the cursor and moves back onto it.
     fn erase_previous_cell(&mut self) {
         self.screen.cursor -= 1;
@@ -169,7 +169,7 @@ impl<'a> Console<'a> {
 
     /// Moves every row up by one and blanks the last row.
     fn scroll_contents_up(&mut self) {
-        self.screen.history.advance_screen_top();
+        self.screen.history.advance_base_y();
         self.screen.vga.cells().copy_within(WIDTH.., 0);
         self.blank_cells(CELLS - WIDTH..);
         self.screen.cursor -= WIDTH;
@@ -178,7 +178,7 @@ impl<'a> Console<'a> {
     /// Moves every row down by one and brings back the row above the
     /// screen, if there is one.
     fn scroll_contents_down(&mut self) {
-        if self.screen.history.scroll_screen_down(&mut self.screen.vga) {
+        if self.screen.history.scroll_output_down(&mut self.screen.vga) {
             self.screen.cursor += WIDTH;
         }
     }
@@ -201,8 +201,8 @@ impl<'a> Console<'a> {
 }
 
 impl io::Write for Console<'_> {
-    /// New text always goes to the live screen, so this leaves the view
-    /// first.
+    /// New text always goes to the output area, so this moves the view
+    /// back to it first.
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         self.scroll_view_down(usize::MAX);
         for &byte in bytes {
