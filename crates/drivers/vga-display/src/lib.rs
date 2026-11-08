@@ -50,7 +50,7 @@ pub fn scroll_view_up(lines: usize) {
     Console::new(&mut SCREEN.lock()).scroll_view_up(lines);
 }
 
-/// Moves the view `lines` rows down, stopping at the live screen.
+/// Moves the view `lines` rows down, stopping at the output area.
 pub fn scroll_view_down(lines: usize) {
     Console::new(&mut SCREEN.lock()).scroll_view_down(lines);
 }
