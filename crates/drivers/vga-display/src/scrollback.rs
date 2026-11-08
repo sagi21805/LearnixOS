@@ -7,7 +7,9 @@ use bitfields::bitfields;
 use common::constants::REGULAR_PAGE_SIZE;
 
 use crate::{
-    console::WIDTH, row_history::RowHistory, screen_char::ScreenChar,
+    console::{CELLS, WIDTH},
+    row_history::RowHistory,
+    screen_char::ScreenChar,
     vga_memory::VgaMemory,
 };
 
@@ -82,46 +84,6 @@ impl Default for Scrollback {
 }
 
 impl Scrollback {
-    /// Moves the view `lines` rows up, stopping at the oldest row.
-    ///
-    /// Leaving the live screen pushes the cursor's unfinished row, because
-    /// drawing the view overwrites the only copy of it.
-    pub(crate) fn scroll_view_up(
-        &mut self,
-        vga: &mut VgaMemory,
-        cursor_row: usize,
-        lines: usize,
-    ) {
-        if lines == 0 || !self.has_rows_above_screen() {
-            return;
-        }
-        if !self.is_viewing_history() {
-            self.push_row(&vga.rows()[cursor_row]);
-        }
-        self.view_offset =
-            self.view_offset.saturating_add(lines).min(self.screen_top);
-        self.draw_view(vga);
-    }
-
-    /// Moves the view `lines` rows down, stopping at the live screen.
-    ///
-    /// Reaching the live screen pops the row [`Self::scroll_view_up`]
-    /// pushed, as the screen holds it again.
-    pub(crate) fn scroll_view_down(
-        &mut self,
-        vga: &mut VgaMemory,
-        lines: usize,
-    ) {
-        if !self.is_viewing_history() {
-            return;
-        }
-        self.view_offset = self.view_offset.saturating_sub(lines);
-        self.draw_view(vga);
-        if !self.is_viewing_history() {
-            self.pop_row();
-        }
-    }
-
     fn is_viewing_history(&self) -> bool { self.view_offset > 0 }
 
     /// Draws the rows from the top of the view, and blanks the screen past
@@ -206,18 +168,50 @@ impl RowHistory for Scrollback {
 
     fn advance_screen_top(&mut self) { self.screen_top += 1; }
 
-    fn has_rows_above_screen(&self) -> bool { self.screen_top > 0 }
-
-    fn restore_row_above_screen(
-        &mut self,
-        top_row: &mut [ScreenChar; WIDTH],
-    ) {
-        self.screen_top -= 1;
-        self.draw_row(self.screen_top, top_row);
+    fn scroll_screen_down(&mut self, vga: &mut VgaMemory) -> bool {
+        let Some(row_above) = self.screen_top.checked_sub(1) else {
+            return false;
+        };
+        vga.cells().copy_within(..CELLS - WIDTH, WIDTH);
+        self.draw_row(row_above, &mut vga.rows()[0]);
+        self.screen_top = row_above;
+        true
     }
 
-    fn leave_view(&mut self, vga: &mut VgaMemory) {
-        self.scroll_view_down(vga, usize::MAX);
+    /// Moves the view `lines` rows up, stopping at the oldest row.
+    ///
+    /// Leaving the live screen pushes the cursor's unfinished row, because
+    /// drawing the view overwrites the only copy of it.
+    fn scroll_view_up(
+        &mut self,
+        vga: &mut VgaMemory,
+        cursor_row: usize,
+        lines: usize,
+    ) {
+        if lines == 0 || self.screen_top == 0 {
+            return;
+        }
+        if !self.is_viewing_history() {
+            self.push_row(&vga.rows()[cursor_row]);
+        }
+        self.view_offset =
+            self.view_offset.saturating_add(lines).min(self.screen_top);
+        self.draw_view(vga);
+    }
+
+    /// Moves the view `lines` rows down, stopping at the live screen.
+    ///
+    /// Reaching the live screen pops the row `scroll_view_up` pushed, as
+    /// the screen holds it again.
+    fn scroll_view_down(&mut self, vga: &mut VgaMemory, lines: usize) {
+        if !self.is_viewing_history() {
+            return;
+        }
+        self.view_offset = self.view_offset.saturating_sub(lines);
+        self.draw_view(vga);
+        if !self.is_viewing_history() {
+            self.pop_row();
+        }
     }
 }
 
