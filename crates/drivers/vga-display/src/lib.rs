@@ -20,7 +20,8 @@ mod vga_memory;
 use alloc::boxed::Box;
 use core::fmt;
 
-use console::{Console, SCREEN};
+use console::{Console, SCREEN, WIDTH};
+use row_history::RowHistory;
 pub use scrollback::Scrollback;
 
 /// Prints on the screen, which is what `libk`'s print macros reach at link
@@ -34,7 +35,13 @@ pub fn kprint(args: fmt::Arguments<'_>) {
 ///
 /// A second call drops the rows the first scrollback kept.
 pub fn attach_scrollback(scrollback: Box<Scrollback>) {
-    SCREEN.lock().attach_scrollback(Box::leak(scrollback));
+    let scrollback = Box::leak(scrollback);
+    let mut screen = SCREEN.lock();
+    let cursor_row = screen.cursor / WIDTH;
+    for row in &screen.vga.rows()[..cursor_row] {
+        scrollback.push_row(row);
+    }
+    screen.history = scrollback;
 }
 
 /// Moves the view `lines` rows up. Until [`attach_scrollback`], no rows
