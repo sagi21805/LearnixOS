@@ -11,16 +11,18 @@ pub(crate) trait RowHistory {
     fn pop_row(&mut self) -> Option<RowSpan>;
     /// The live screen moved one row down the kept rows.
     fn advance_screen_top(&mut self);
-    /// Whether a kept row sits above the live screen.
-    fn has_rows_above_screen(&self) -> bool;
-    /// Moves the live screen one row up the kept rows, and draws the row
-    /// it reached onto `top_row`.
-    fn restore_row_above_screen(
+    /// Moves the screen's rows down one and draws the kept row above them
+    /// on top, or returns `false` if no kept row is above the screen.
+    fn scroll_screen_down(&mut self, vga: &mut VgaMemory) -> bool;
+    /// Moves the view `lines` rows up, toward older rows.
+    fn scroll_view_up(
         &mut self,
-        top_row: &mut [ScreenChar; WIDTH],
+        vga: &mut VgaMemory,
+        cursor_row: usize,
+        lines: usize,
     );
-    /// Draws the live screen again if a view of older rows is showing.
-    fn leave_view(&mut self, vga: &mut VgaMemory);
+    /// Moves the view `lines` rows down, toward the live screen.
+    fn scroll_view_down(&mut self, vga: &mut VgaMemory, lines: usize);
 }
 
 /// Keeps nothing, for the console before the heap exists.
@@ -33,13 +35,17 @@ impl RowHistory for NoHistory {
 
     fn advance_screen_top(&mut self) {}
 
-    fn has_rows_above_screen(&self) -> bool { false }
+    fn scroll_screen_down(&mut self, _vga: &mut VgaMemory) -> bool {
+        false
+    }
 
-    fn restore_row_above_screen(
+    fn scroll_view_up(
         &mut self,
-        _top_row: &mut [ScreenChar; WIDTH],
+        _vga: &mut VgaMemory,
+        _cursor_row: usize,
+        _lines: usize,
     ) {
     }
 
-    fn leave_view(&mut self, _vga: &mut VgaMemory) {}
+    fn scroll_view_down(&mut self, _vga: &mut VgaMemory, _lines: usize) {}
 }

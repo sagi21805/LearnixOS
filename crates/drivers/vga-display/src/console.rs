@@ -11,7 +11,6 @@ use crate::{
     ansi::{AnsiDecoder, Decoded},
     row_history::RowHistory,
     screen_char::ScreenChar,
-    scrollback::Scrollback,
     vga_memory::VgaMemory,
 };
 
@@ -76,7 +75,7 @@ impl<'a, H: RowHistory> Console<'a, H> {
     /// this console in.
     pub(crate) fn panic_message(&mut self, message: fmt::Arguments<'_>) {
         self.screen.decoder = AnsiDecoder::default();
-        self.history.leave_view(&mut self.screen.vga);
+        self.leave_view();
         // Nothing can report a failure to print while panicking.
         let _ = io::Write::write_fmt(
             self,
@@ -168,12 +167,15 @@ impl<'a, H: RowHistory> Console<'a, H> {
     /// Moves every row down by one and brings back the row above the
     /// screen, if there is one.
     fn scroll_contents_down(&mut self) {
-        if self.history.has_rows_above_screen() {
-            self.screen.vga.cells().copy_within(..CELLS - WIDTH, WIDTH);
-            self.history
-                .restore_row_above_screen(&mut self.screen.vga.rows()[0]);
+        if self.history.scroll_screen_down(&mut self.screen.vga) {
             self.screen.cursor += WIDTH;
         }
+    }
+
+    /// Draws the live screen again if a view of older rows is showing.
+    fn leave_view(&mut self) {
+        self.history
+            .scroll_view_down(&mut self.screen.vga, usize::MAX);
     }
 
     fn blank_cells<R: RangeBounds<usize>>(&mut self, cells: R) {
@@ -193,8 +195,7 @@ impl<'a, H: RowHistory> Console<'a, H> {
     }
 }
 
-// Only the console with a scrollback can scroll its view.
-impl Console<'_, Scrollback> {
+impl<H: RowHistory> Console<'_, H> {
     /// Moves the view `lines` rows up.
     pub(crate) fn scroll_view_up(&mut self, lines: usize) {
         let cursor_row = self.screen.cursor / WIDTH;
@@ -215,7 +216,7 @@ impl<H: RowHistory> io::Write for Console<'_, H> {
     /// New text always goes to the live screen, so this leaves the view
     /// first.
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.history.leave_view(&mut self.screen.vga);
+        self.leave_view();
         for &byte in bytes {
             match self.screen.decoder.advance(byte) {
                 Some(Decoded::Print(ascii)) => self.put(ascii),
