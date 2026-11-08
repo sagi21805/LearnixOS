@@ -5,7 +5,6 @@ use libk::{okprintln, print};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
-use vga_display::ScrollControl;
 use x86::instructions::interrupts;
 
 /// Publishes the keyboard and its scan code buffer.
@@ -18,23 +17,22 @@ pub fn init_keyboard(slab: &'static SlabAllocator<Page, PageMap>) {
     okprintln!("Initialized Keyboard at {:p}", buffer_address);
 }
 
-/// Starts keeping finished rows, so the arrow keys can scroll through
-/// them.
-///
-/// This allocates before it locks the console, so nothing below the
-/// allocator can deadlock by printing.
-pub fn attach_scrollback() -> ScrollControl {
-    let control = vga_display::attach_scrollback(Box::default());
-    okprintln!("Attached scrollback");
-    control
-}
-
 /// Prints what the user types and scrolls on the arrow keys, forever.
-pub fn run(control: ScrollControl) -> ! {
+///
+/// Up and down scroll one line, left and right scroll 24.
+pub fn run() -> ! {
     loop {
         match read_input() {
             Ok(text) => print!("{}", text),
-            Err(key) => scroll(control, key),
+            Err(PS2ScanCode::UpArrow) => vga_display::scroll_view_up(1),
+            Err(PS2ScanCode::DownArrow) => {
+                vga_display::scroll_view_down(1)
+            }
+            Err(PS2ScanCode::LeftArrow) => vga_display::scroll_view_up(24),
+            Err(PS2ScanCode::RightArrow) => {
+                vga_display::scroll_view_down(24)
+            }
+            Err(_) => {}
         }
     }
 }
@@ -47,15 +45,4 @@ fn read_input() -> Result<&'static str, PS2ScanCode> {
     let input = KEYBOARD.lock().read_char();
     unsafe { interrupts::enable() };
     input
-}
-
-/// Scrolls one line on up and down, and 24 lines on left and right.
-fn scroll(control: ScrollControl, key: PS2ScanCode) {
-    match key {
-        PS2ScanCode::UpArrow => control.scroll_view_up(1),
-        PS2ScanCode::DownArrow => control.scroll_view_down(1),
-        PS2ScanCode::LeftArrow => control.scroll_view_up(24),
-        PS2ScanCode::RightArrow => control.scroll_view_down(24),
-        _ => {}
-    }
 }
