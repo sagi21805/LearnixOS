@@ -216,8 +216,6 @@ impl RowHistory for Scrollback {
         self.draw_row(self.screen_top, top_row);
     }
 
-    fn start_new_screen(&mut self) { self.screen_top = self.row_count; }
-
     fn leave_view(&mut self, vga: &mut VgaMemory) {
         self.scroll_view_down(vga, usize::MAX);
     }

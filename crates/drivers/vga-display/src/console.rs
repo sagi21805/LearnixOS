@@ -191,15 +191,6 @@ impl<'a, H: RowHistory> Console<'a, H> {
             Port::VgaData.outb(((self.screen.cursor >> 8) & 0xff) as u8);
         }
     }
-
-    /// Blanks the whole screen, and moves the cursor to its start.
-    #[expect(dead_code, reason = "nothing clears the screen yet")]
-    pub(crate) fn clear(&mut self) {
-        self.history.leave_view(&mut self.screen.vga);
-        self.blank_cells(0..);
-        self.screen.cursor = 0;
-        self.history.start_new_screen();
-    }
 }
 
 // Only the console with a scrollback can scroll its view.

@@ -19,8 +19,6 @@ pub(crate) trait RowHistory {
         &mut self,
         top_row: &mut [ScreenChar; WIDTH],
     );
-    /// The live screen starts over, below every kept row.
-    fn start_new_screen(&mut self);
     /// Draws the live screen again if a view of older rows is showing.
     fn leave_view(&mut self, vga: &mut VgaMemory);
 }
@@ -42,8 +40,6 @@ impl RowHistory for NoHistory {
         _top_row: &mut [ScreenChar; WIDTH],
     ) {
     }
-
-    fn start_new_screen(&mut self) {}
 
     fn leave_view(&mut self, _vga: &mut VgaMemory) {}
 }
