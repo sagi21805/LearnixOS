@@ -11,7 +11,6 @@ use common::{
     page_index::PageIndex,
 };
 
-use libk::println;
 use x86::memory_map::MemoryMap;
 
 use buddy::{
@@ -43,7 +42,6 @@ impl BuddyArena<Page> for PageMap {
 
         let last_address = (last.base_address + last.length) as usize;
         let total_pages = last_address / REGULAR_PAGE_SIZE;
-        println!("Total pages: {}", total_pages);
         assert!(
             u32::try_from(total_pages - 1)
                 .ok()
@@ -73,7 +71,6 @@ impl BuddyArena<Page> for PageMap {
                 total_pages,
             )
         };
-        println!("Last Memory Address: {:?}", page_map.as_ptr_range());
         for page in page_map.iter_mut() {
             page.write(Page::new(
                 BlockFlagBits::new().order(BuddyOrder::Order0),
