@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use core::{cmp::Ordering, ops::Range};
+use core::{cmp::Ordering, mem, ops::Range};
 
 use bitfields::bitfields;
 
@@ -77,26 +77,26 @@ impl Scrollback {
     /// area while `base_y > 0`, which keeps the cursor on the bottom
     /// screen row, and `scroll_view_up` pushes that row too.
     fn move_view_to(&mut self, vga: &mut VgaMemory, view_offset: usize) {
-        let from = self.view_y();
-        self.view_offset = view_offset;
-        let to = self.view_y();
+        let old_offset = mem::replace(&mut self.view_offset, view_offset);
 
-        let fresh = match to.cmp(&from) {
+        let fresh = match view_offset.cmp(&old_offset) {
             Ordering::Equal => return,
-            Ordering::Less => {
-                let moved = (from - to).min(HEIGHT);
+            // Scrolling backwards.
+            Ordering::Greater => {
+                let moved = (view_offset - old_offset).min(HEIGHT);
                 vga.cells()
                     .copy_within(..CELLS - moved * WIDTH, moved * WIDTH);
                 0..moved
             }
-            Ordering::Greater => {
-                let moved = (to - from).min(HEIGHT);
+            // Scrolling forwards.
+            Ordering::Less => {
+                let moved = (old_offset - view_offset).min(HEIGHT);
                 vga.cells().copy_within(moved * WIDTH.., 0);
                 HEIGHT - moved..HEIGHT
             }
         };
         for (y, screen_row) in
-            (to + fresh.start..).zip(&mut vga.rows()[fresh])
+            (self.view_y() + fresh.start..).zip(&mut vga.rows()[fresh])
         {
             self.draw_row(y, screen_row);
         }
@@ -129,13 +129,16 @@ impl RowHistory for Scrollback {
         Some(span)
     }
 
-    fn advance_base_y(&mut self) { self.base_y += 1; }
+    fn scroll_output_up(&mut self, vga: &mut VgaMemory) {
+        vga.shift_rows_up();
+        self.base_y += 1;
+    }
 
     fn scroll_output_down(&mut self, vga: &mut VgaMemory) -> bool {
         let Some(y_above) = self.base_y.checked_sub(1) else {
             return false;
         };
-        vga.cells().copy_within(..CELLS - WIDTH, WIDTH);
+        vga.shift_rows_down();
         self.draw_row(y_above, &mut vga.rows()[0]);
         self.base_y = y_above;
         true

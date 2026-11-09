@@ -11,8 +11,9 @@ pub(crate) trait RowHistory: Send {
     fn push_row(&mut self, row: &[ScreenChar; WIDTH]);
     /// Removes the newest row, and returns its span if one was kept.
     fn pop_row(&mut self) -> Option<RowSpan>;
-    /// The output area's first row moved one row toward newer rows.
-    fn advance_base_y(&mut self);
+    /// Moves the output area one row toward newer rows, which shifts every
+    /// screen row up and blanks the last one.
+    fn scroll_output_up(&mut self, vga: &mut VgaMemory);
     /// Moves the output area one row toward older rows and draws the kept
     /// row at its new top, or returns `false` if no kept row is above it.
     fn scroll_output_down(&mut self, vga: &mut VgaMemory) -> bool;
@@ -44,7 +45,9 @@ impl RowHistory for NoHistory {
 
     fn pop_row(&mut self) -> Option<RowSpan> { None }
 
-    fn advance_base_y(&mut self) {}
+    fn scroll_output_up(&mut self, vga: &mut VgaMemory) {
+        vga.shift_rows_up();
+    }
 
     fn scroll_output_down(&mut self, _vga: &mut VgaMemory) -> bool {
         false
