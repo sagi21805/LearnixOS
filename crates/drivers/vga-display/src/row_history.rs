@@ -5,26 +5,27 @@ use crate::{
     vga_memory::VgaMemory,
 };
 
-/// What the console tells whoever keeps its finished rows.
+/// Keeps the rows the console finishes, so text that left the screen can
+/// be read again and backspace can reopen a finished row.
 pub(crate) trait RowHistory: Send {
-    /// Keeps `row` as the newest row.
+    /// Saves a row the cursor just finished.
     fn push_row(&mut self, row: &[ScreenChar; WIDTH]);
-    /// Removes the newest row, and returns its span if one was kept.
+    /// Hands the newest kept row back
     fn pop_row(&mut self) -> Option<RowSpan>;
-    /// Moves the output area one row toward newer rows, which shifts every
-    /// screen row up and blanks the last one.
-    fn scroll_output_up(&mut self, vga: &mut VgaMemory);
-    /// Moves the output area one row toward older rows and draws the kept
-    /// row at its new top, or returns `false` if no kept row is above it.
-    fn scroll_output_down(&mut self, vga: &mut VgaMemory) -> bool;
-    /// Moves the view `lines` rows up, toward older rows.
+    /// Makes room for a new row once the cursor runs past the last cell.
+    fn shift_output_up(&mut self, vga: &mut VgaMemory);
+    /// Bring back the kept row before the output area. Returns `false` if
+    /// there is none.
+    fn shift_output_down(&mut self, vga: &mut VgaMemory) -> bool;
+    /// Shows older text, for reading what left the screen. Writing isn't
+    /// affected, as the output area and the cursor stay where they are.
     fn scroll_view_up(
         &mut self,
         vga: &mut VgaMemory,
         cursor_row: usize,
         lines: usize,
     );
-    /// Moves the view `lines` rows down, toward the output area.
+    /// Shows newer text, on the way back from reading history.
     fn scroll_view_down(&mut self, vga: &mut VgaMemory, lines: usize);
 }
 
@@ -45,13 +46,11 @@ impl RowHistory for NoHistory {
 
     fn pop_row(&mut self) -> Option<RowSpan> { None }
 
-    fn scroll_output_up(&mut self, vga: &mut VgaMemory) {
+    fn shift_output_up(&mut self, vga: &mut VgaMemory) {
         vga.shift_rows_up();
     }
 
-    fn scroll_output_down(&mut self, _vga: &mut VgaMemory) -> bool {
-        false
-    }
+    fn shift_output_down(&mut self, _vga: &mut VgaMemory) -> bool { false }
 
     fn scroll_view_up(
         &mut self,

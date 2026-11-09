@@ -3,9 +3,6 @@ use core::ascii::Char;
 use crate::color_code::ColorCode;
 
 /// One cell of VGA text memory.
-///
-/// `glyph` is an index into the font, and any byte is a valid index, so
-/// reading a cell back from VGA memory is always sound.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ScreenChar {
@@ -14,8 +11,6 @@ pub struct ScreenChar {
 }
 
 impl ScreenChar {
-    /// Create a new instance with the given glyph and
-    /// [`ColorCode`]
     pub const fn new(char: u8, color: ColorCode) -> Self {
         Self {
             char,
@@ -23,8 +18,7 @@ impl ScreenChar {
         }
     }
 
-    /// Whether this cell looks like an empty one. A space on another
-    /// color isn't blank, because its color shows.
+    /// Checks if a cell is a space with black background, i.e blank.
     pub fn is_blank(&self) -> bool {
         let empty = Self::default();
         self.char == empty.char

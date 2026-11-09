@@ -18,10 +18,9 @@ pub mod scrollback;
 mod vga_memory;
 
 use alloc::boxed::Box;
-use core::fmt;
+use core::{alloc::Allocator, fmt};
 
-use console::{Console, SCREEN, WIDTH};
-use row_history::RowHistory;
+use console::{Console, SCREEN};
 pub use scrollback::Scrollback;
 
 /// Prints on the screen, which is what `libk`'s print macros reach at link
@@ -34,23 +33,19 @@ pub fn kprint(args: fmt::Arguments<'_>) {
 /// Starts keeping finished rows, beginning with those above the cursor.
 ///
 /// A second call drops the rows the first scrollback kept.
-pub fn attach_scrollback(scrollback: Box<Scrollback>) {
-    let scrollback = Box::leak(scrollback);
-    let mut screen = SCREEN.lock();
-    let cursor_row = screen.cursor / WIDTH;
-    for row in &screen.vga.rows()[..cursor_row] {
-        scrollback.push_row(row);
-    }
-    screen.history = scrollback;
+pub fn attach_scrollback<A: Allocator + 'static>(
+    scrollback: Box<Scrollback, A>,
+) {
+    SCREEN.lock().attach_scrollback(scrollback);
 }
 
-/// Moves the view `lines` rows up. Until [`attach_scrollback`], no rows
-/// are kept, so this does nothing.
+/// Shows older text, for reading what left the screen. Until
+/// [`attach_scrollback`], no rows are kept, so this does nothing.
 pub fn scroll_view_up(lines: usize) {
     Console::new(&mut SCREEN.lock()).scroll_view_up(lines);
 }
 
-/// Moves the view `lines` rows down, stopping at the output area.
+/// Shows newer text, on the way back from reading history.
 pub fn scroll_view_down(lines: usize) {
     Console::new(&mut SCREEN.lock()).scroll_view_down(lines);
 }
