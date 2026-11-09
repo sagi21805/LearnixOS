@@ -3,7 +3,7 @@ use core::ptr;
 use common::constants::VGA_BUFFER_PTR;
 
 use crate::{
-    console::{CELLS, WIDTH},
+    console::{CELLS, HEIGHT, WIDTH},
     screen_char::ScreenChar,
 };
 
@@ -36,5 +36,16 @@ impl VgaMemory {
     /// The cells as rows of [`WIDTH`].
     pub(crate) fn rows(&mut self) -> &mut [[ScreenChar; WIDTH]] {
         self.cells().as_chunks_mut().0
+    }
+
+    /// Moves every row up by one and blanks the last row.
+    pub(crate) fn shift_rows_up(&mut self) {
+        self.cells().copy_within(WIDTH.., 0);
+        self.rows()[HEIGHT - 1].fill(ScreenChar::default());
+    }
+
+    /// Moves every row down by one, leaving the first row as it was.
+    pub(crate) fn shift_rows_down(&mut self) {
+        self.cells().copy_within(..CELLS - WIDTH, WIDTH);
     }
 }

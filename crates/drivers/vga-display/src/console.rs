@@ -157,7 +157,7 @@ impl<'a> Console<'a> {
     fn move_cursor_to(&mut self, position: usize) {
         self.screen.cursor = position;
         if position.is_multiple_of(WIDTH) {
-            let finished_row = position / WIDTH - 1;
+            let finished_row = (position / WIDTH) - 1;
             self.screen
                 .history
                 .push_row(&self.screen.vga.rows()[finished_row]);
@@ -169,9 +169,7 @@ impl<'a> Console<'a> {
 
     /// Moves every row up by one and blanks the last row.
     fn scroll_contents_up(&mut self) {
-        self.screen.history.advance_base_y();
-        self.screen.vga.cells().copy_within(WIDTH.., 0);
-        self.blank_cells(CELLS - WIDTH..);
+        self.screen.history.scroll_output_up(&mut self.screen.vga);
         self.screen.cursor -= WIDTH;
     }
 
