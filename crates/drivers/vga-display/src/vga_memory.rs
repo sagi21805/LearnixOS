@@ -1,4 +1,4 @@
-use core::ptr;
+use core::{ops::RangeBounds, ptr, slice};
 
 use common::constants::VGA_BUFFER_PTR;
 
@@ -33,18 +33,25 @@ impl VgaMemory {
         unsafe { &mut *cells }
     }
 
-    /// The cells as rows of [`WIDTH`].
+    /// The cells as screen rows of [`WIDTH`] cells.
     pub(crate) fn rows(&mut self) -> &mut [[ScreenChar; WIDTH]] {
         self.cells().as_chunks_mut().0
     }
 
-    /// Moves every row up by one and blanks the last row.
+    /// Blanks the given range of cells.
+    pub(crate) fn blank_cells<R: RangeBounds<usize>>(&mut self, cells: R) {
+        let range = slice::range(cells, ..CELLS);
+        self.cells()[range].fill(ScreenChar::default());
+    }
+
+    /// Makes room for a new row at the bottom of the screen.
     pub(crate) fn shift_rows_up(&mut self) {
         self.cells().copy_within(WIDTH.., 0);
         self.rows()[HEIGHT - 1].fill(ScreenChar::default());
     }
 
-    /// Moves every row down by one, leaving the first row as it was.
+    /// Makes room for an older row at the top of the screen, which the
+    /// caller draws.
     pub(crate) fn shift_rows_down(&mut self) {
         self.cells().copy_within(..CELLS - WIDTH, WIDTH);
     }

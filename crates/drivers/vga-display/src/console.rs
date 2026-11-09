@@ -1,4 +1,5 @@
-use core::{ascii::Char, fmt, io, ops::RangeBounds};
+use alloc::boxed::Box;
+use core::{alloc::Allocator, ascii::Char, fmt, io};
 
 use common::{
     ansi::{BRIGHT_YELLOW, RED, RESET},
@@ -11,6 +12,7 @@ use crate::{
     ansi::{AnsiDecoder, Decoded},
     row_history::{NoHistory, RowHistory},
     screen_char::ScreenChar,
+    scrollback::Scrollback,
     vga_memory::VgaMemory,
 };
 
@@ -27,8 +29,8 @@ pub(crate) static SCREEN: SpinMutex<Screen> =
 
 /// The state of the VGA text screen, which outlives every [`Console`].
 ///
-/// `cursor` always stays inside VGA text memory, because writing past the
-/// last cell scrolls the screen first.
+/// `cursor` always stays inside VGA text memory, because moving past the
+/// last cell shifts the text up first.
 pub(crate) struct Screen {
     pub(crate) cursor: usize,
     decoder: AnsiDecoder,
@@ -44,6 +46,20 @@ impl Screen {
             vga,
             history: NoHistory::leaked(),
         }
+    }
+
+    /// Starts keeping finished rows in `scrollback`, beginning with those
+    /// above the cursor.
+    pub(crate) fn attach_scrollback<A: Allocator + 'static>(
+        &mut self,
+        scrollback: Box<Scrollback, A>,
+    ) {
+        let scrollback = Box::leak(scrollback);
+        let cursor_row = self.cursor / WIDTH;
+        for row in &self.vga.rows()[..cursor_row] {
+            scrollback.push_row(row);
+        }
+        self.history = scrollback;
     }
 }
 
@@ -79,7 +95,7 @@ impl<'a> Console<'a> {
         self.move_hardware_cursor();
     }
 
-    /// Moves the view `lines` rows up.
+    /// Shows older text, for the scroll keys.
     pub(crate) fn scroll_view_up(&mut self, lines: usize) {
         let cursor_row = self.screen.cursor / WIDTH;
         self.screen.history.scroll_view_up(
@@ -89,7 +105,7 @@ impl<'a> Console<'a> {
         );
     }
 
-    /// Moves the view `lines` rows down.
+    /// Shows newer text, for the scroll keys.
     pub(crate) fn scroll_view_down(&mut self, lines: usize) {
         self.screen
             .history
@@ -105,16 +121,16 @@ impl<'a> Console<'a> {
         self.move_cursor_to(position + 1);
     }
 
-    /// Blanks the rest of the row and starts the next one.
+    /// Ends the line, so the next text starts on a new row.
     fn line_feed(&mut self) {
         let position = self.screen.cursor;
         let next_row = (position / WIDTH + 1) * WIDTH;
-        self.blank_cells(position..next_row);
+        self.screen.vga.blank_cells(position..next_row);
         self.move_cursor_to(next_row);
     }
 
     /// Deletes the character before the cursor, or the line break if the
-    /// cursor is at the start of a row.
+    /// cursor is at the start of a screen row.
     fn backspace(&mut self) {
         if self.screen.cursor.is_multiple_of(WIDTH) {
             self.reopen_previous_row();
@@ -123,13 +139,10 @@ impl<'a> Console<'a> {
         }
     }
 
-    /// Moves the cursor back to the end of the previous row's text, which
-    /// makes that row unfinished again.
-    ///
-    /// A full row wrapped without a line break, so this deletes its last
-    /// character instead. When no row was kept, this does nothing.
+    /// Undoes a line break, so backspace can go on deleting the previous
+    /// row.
     fn reopen_previous_row(&mut self) {
-        self.scroll_contents_down();
+        self.shift_output_down();
         let (Some(prev_row), Some(span)) = (
             (self.screen.cursor / WIDTH).checked_sub(1),
             self.screen.history.pop_row(),
@@ -137,23 +150,23 @@ impl<'a> Console<'a> {
             return;
         };
 
-        let text_end = span.columns().end;
-        self.screen.cursor = prev_row * WIDTH + text_end;
-        if text_end == WIDTH {
-            self.erase_previous_cell();
-        }
+        let column = span.columns().end.min(WIDTH - 1);
+        self.screen.cursor = prev_row * WIDTH + column;
+        self.screen.vga.cells()[self.screen.cursor] =
+            ScreenChar::default();
     }
 
     #[inline]
-    /// Blanks the cell before the cursor and moves back onto it.
+    /// Deletes the character before the cursor.
     fn erase_previous_cell(&mut self) {
         self.screen.cursor -= 1;
         self.screen.vga.cells()[self.screen.cursor] =
             ScreenChar::default();
     }
 
-    /// Moves the cursor, storing the row it finished if `position` starts
-    /// a new one, and scrolling if `position` is past the last cell.
+    /// Move the cursor into a given position. If the position is the start
+    /// of a new row, it saves the previous row. If the position is the end
+    /// of the screen, then it shifts it content up.
     fn move_cursor_to(&mut self, position: usize) {
         self.screen.cursor = position;
         if position.is_multiple_of(WIDTH) {
@@ -161,32 +174,28 @@ impl<'a> Console<'a> {
             self.screen
                 .history
                 .push_row(&self.screen.vga.rows()[finished_row]);
-        }
-        if position == CELLS {
-            self.scroll_contents_up();
+            if position == CELLS {
+                self.shift_output_up();
+            }
         }
     }
 
-    /// Moves every row up by one and blanks the last row.
-    fn scroll_contents_up(&mut self) {
-        self.screen.history.scroll_output_up(&mut self.screen.vga);
+    /// Makes room for a new row once the screen is full.
+    fn shift_output_up(&mut self) {
+        self.screen.history.shift_output_up(&mut self.screen.vga);
         self.screen.cursor -= WIDTH;
     }
 
-    /// Moves every row down by one and brings back the row above the
-    /// screen, if there is one.
-    fn scroll_contents_down(&mut self) {
-        if self.screen.history.scroll_output_down(&mut self.screen.vga) {
+    /// Keeps the screen full when backspace reopens a previous row, if a
+    /// kept row can fill it.
+    fn shift_output_down(&mut self) {
+        if self.screen.history.shift_output_down(&mut self.screen.vga) {
             self.screen.cursor += WIDTH;
         }
     }
 
-    fn blank_cells<R: RangeBounds<usize>>(&mut self, cells: R) {
-        let range = core::slice::range(cells, ..CELLS);
-        self.screen.vga.cells()[range].fill(ScreenChar::default());
-    }
-
-    /// Moves the blinking cursor, through CRTC registers `0xE` and `0xF`.
+    /// Shows the blinking cursor where the next character goes, through
+    /// CRTC registers `0xE` and `0xF`.
     fn move_hardware_cursor(&self) {
         // SAFETY: these registers only select where the cursor shows.
         unsafe {
