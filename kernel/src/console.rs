@@ -1,13 +1,11 @@
 use alloc::boxed::Box;
 use common::enums::PS2ScanCode;
 use keyboard::{KEYBOARD, KEYBOARD_BUFFER, ps2_keyboard::Keyboard};
+use libk::{okprintln, print};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
-use vga_display::{
-    ADVANCED_WRITER, WRITER, advanced_writer::AdvancedWriter, okprintln,
-    print,
-};
+use vga_display::SCREEN;
 use x86::instructions::interrupts;
 
 /// Publishes the keyboard and its scan code buffer.
@@ -20,24 +18,24 @@ pub fn init_keyboard(slab: &'static SlabAllocator<Page, PageMap>) {
     okprintln!("Initialized Keyboard at {:p}", buffer_address);
 }
 
-/// Switches printing to the advanced writer.
-pub fn use_advanced_writer() {
-    // SAFETY: this is the only `leak` of the writer, and it stays locked.
-    let writer = unsafe {
-        ADVANCED_WRITER
-            .init(SpinMutex::new_locked(AdvancedWriter::default()))
-            .leak()
-    };
-    WRITER.lock().set_writer(writer);
-    okprintln!("Set advanced writer");
-}
-
 /// Prints what the user types and scrolls on the arrow keys, forever.
+///
+/// Up and down scroll one line, left and right scroll 24.
 pub fn run() -> ! {
     loop {
         match read_input() {
             Ok(text) => print!("{}", text),
-            Err(key) => scroll(key),
+            Err(PS2ScanCode::UpArrow) => SCREEN.lock().scroll_view_up(1),
+            Err(PS2ScanCode::DownArrow) => {
+                SCREEN.lock().scroll_view_down(1)
+            }
+            Err(PS2ScanCode::LeftArrow) => {
+                SCREEN.lock().scroll_view_up(24)
+            }
+            Err(PS2ScanCode::RightArrow) => {
+                SCREEN.lock().scroll_view_down(24)
+            }
+            Err(_) => {}
         }
     }
 }
@@ -50,15 +48,4 @@ fn read_input() -> Result<&'static str, PS2ScanCode> {
     let input = KEYBOARD.lock().read_char();
     unsafe { interrupts::enable() };
     input
-}
-
-/// Scrolls one line on up and down, and 24 lines on left and right.
-fn scroll(key: PS2ScanCode) {
-    match key {
-        PS2ScanCode::UpArrow => WRITER.lock().inner.scroll_up(1),
-        PS2ScanCode::DownArrow => WRITER.lock().inner.scroll_down(1),
-        PS2ScanCode::LeftArrow => WRITER.lock().inner.scroll_up(24),
-        PS2ScanCode::RightArrow => WRITER.lock().inner.scroll_down(24),
-        _ => {}
-    }
 }

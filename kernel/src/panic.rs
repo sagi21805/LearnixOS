@@ -1,18 +1,11 @@
 use core::panic::PanicInfo;
 
-use vga_display::{SCREEN, SIMPLE_WRITER};
+use vga_display::print_panic_message;
 
 /// This function is called on panic.
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    unsafe {
-        if let Some(screen) = SCREEN.get() {
-            screen.force_unlock();
-        }
-        SIMPLE_WRITER.force_unlock();
-    };
-    SIMPLE_WRITER
-        .lock()
-        .panic_message(format_args!("{}", _info));
+fn panic(info: &PanicInfo) -> ! {
+    // SAFETY: this is the panic handler.
+    unsafe { print_panic_message(format_args!("{}", info)) };
     loop {}
 }

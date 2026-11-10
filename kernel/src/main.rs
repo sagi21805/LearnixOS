@@ -3,7 +3,10 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
-use vga_display::{okprintln, println, vga_init};
+use alloc::boxed::Box;
+use common::ansi::{bright_yellow, red};
+use libk::{okprintln, println};
+use vga_display::{SCREEN, Scrollback};
 use x86::instructions::cpuid;
 
 mod console;
@@ -21,8 +24,6 @@ mod timer;
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".start")]
 pub unsafe extern "C" fn _start() -> ! {
-    vga_init();
-
     okprintln!("Entered Protected Mode");
     okprintln!("Enabled Paging");
     okprintln!("Entered Long Mode");
@@ -34,7 +35,11 @@ pub unsafe extern "C" fn _start() -> ! {
 
     console::init_keyboard(memory.slab);
 
-    console::use_advanced_writer();
+    SCREEN.lock().attach_scrollback(Box::new_in(
+        Scrollback::default(),
+        memory.slab,
+    ));
+    okprintln!("Attached scrollback");
 
     let pci_devices = pci::scan_pci(memory.slab);
     println!("{}", memory.mmap);
@@ -49,7 +54,11 @@ pub unsafe extern "C" fn _start() -> ! {
     let vendor = unsafe { str::from_utf8_unchecked(&vendor) };
     println!("CPU vendor: {}", vendor);
     if let Some(brand) = cpuid::get_brand_string() {
-        println!("CPU brand: {}", brand.as_str());
+        println!(
+            "{} {}",
+            red!("CPU brand:"),
+            bright_yellow(brand.as_str())
+        );
     }
 
     console::run()
