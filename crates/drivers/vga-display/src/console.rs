@@ -73,9 +73,13 @@ impl Screen {
 
     /// Prints a failure message in color, from any state the panic left
     /// the screen in.
+    ///
+    /// It stops keeping rows first, so printing never allocates. The panic
+    /// may have come from the allocator.
     pub(crate) fn panic_message(&mut self, message: fmt::Arguments<'_>) {
         self.decoder = AnsiDecoder::default();
         self.scroll_view_down(usize::MAX);
+        self.history = NoHistory::leaked();
         // Nothing can report a failure to print while panicking.
         let _ = io::Write::write_fmt(
             self,
