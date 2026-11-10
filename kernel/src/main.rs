@@ -6,6 +6,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use common::ansi::{bright_yellow, red};
 use libk::{okprintln, println};
+use vga_display::{SCREEN, Scrollback};
 use x86::instructions::cpuid;
 
 mod console;
@@ -34,9 +35,10 @@ pub unsafe extern "C" fn _start() -> ! {
 
     console::init_keyboard(memory.slab);
 
-    // The `Box` is built before `attach_scrollback` locks the screen, so
-    // the allocator can print without deadlocking.
-    vga_display::attach_scrollback(Box::default());
+    SCREEN.lock().attach_scrollback(Box::new_in(
+        Scrollback::default(),
+        memory.slab,
+    ));
     okprintln!("Attached scrollback");
 
     let pci_devices = pci::scan_pci(memory.slab);
