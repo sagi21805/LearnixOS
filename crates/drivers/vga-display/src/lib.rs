@@ -27,6 +27,17 @@ pub use scrollback::Scrollback;
 #[unsafe(no_mangle)]
 pub fn kprint(args: fmt::Arguments<'_>) { SCREEN.lock().print(args); }
 
+/// Prints on the screen unless something already holds it, for handlers
+/// that may run while the screen is locked.
+///
+/// Returns whether it printed.
+pub fn try_kprint(args: fmt::Arguments<'_>) -> bool {
+    SCREEN
+        .try_lock()
+        .map(|mut screen| screen.print(args))
+        .is_some()
+}
+
 /// Prints a panic message, whatever state the panic left the console in.
 ///
 /// # Safety
