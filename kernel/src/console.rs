@@ -5,6 +5,7 @@ use libk::{okprintln, print};
 use page::{Page, arena::PageMap};
 use slab::SlabAllocator;
 use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
+use vga_display::SCREEN;
 use x86::instructions::interrupts;
 
 /// Publishes the keyboard and its scan code buffer.
@@ -24,13 +25,15 @@ pub fn run() -> ! {
     loop {
         match read_input() {
             Ok(text) => print!("{}", text),
-            Err(PS2ScanCode::UpArrow) => vga_display::scroll_view_up(1),
+            Err(PS2ScanCode::UpArrow) => SCREEN.lock().scroll_view_up(1),
             Err(PS2ScanCode::DownArrow) => {
-                vga_display::scroll_view_down(1)
+                SCREEN.lock().scroll_view_down(1)
             }
-            Err(PS2ScanCode::LeftArrow) => vga_display::scroll_view_up(24),
+            Err(PS2ScanCode::LeftArrow) => {
+                SCREEN.lock().scroll_view_up(24)
+            }
             Err(PS2ScanCode::RightArrow) => {
-                vga_display::scroll_view_down(24)
+                SCREEN.lock().scroll_view_down(24)
             }
             Err(_) => {}
         }
