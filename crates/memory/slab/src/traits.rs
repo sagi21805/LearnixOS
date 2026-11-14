@@ -12,9 +12,16 @@ use crate::{
 
 /// A type allocated from its own slab cache, the one at `SLAB_POSITION`
 /// in [`SlabCaches`](crate::cache::SlabCaches).
-pub trait Slab:
-    SlabGeometry + SlabFamily + sealed::Sealed + 'static
-{
+///
+/// Declare slab types with [`declare_slabs!`](crate::declare_slabs),
+/// which numbers them.
+///
+/// # Safety
+///
+/// No other slab type of the program may have the same `SLAB_POSITION`,
+/// because [`SlabCaches::cache`](crate::cache::SlabCaches::cache) casts
+/// the cache at that position to this type's.
+pub unsafe trait Slab: SlabGeometry + SlabFamily + 'static {
     /// The index of this type's cache, which no other type shares.
     const SLAB_POSITION: usize;
 }
@@ -24,7 +31,9 @@ pub trait Slab:
 #[state]
 pub struct Unknown;
 
-impl Slab for Unknown {
+// SAFETY: no declared type reaches `usize::MAX`, as the cache table is
+// far smaller.
+unsafe impl Slab for Unknown {
     const SLAB_POSITION: usize = usize::MAX;
 }
 
@@ -33,19 +42,10 @@ impl SlabGeometry for Unknown {
         <Unknown as SlabGeometry>::OBJECTS_PER_SLAB];
 }
 
-impl sealed::Sealed for Unknown {}
-
 #[group(UnknownSlabs)]
 impl SlabFamily for (Unknown,) {
     const PFLAGS: PageEntryFlags = PageEntryFlags::regular_page_flags();
     const PSIZE: PageSize = PageSize::Regular;
-}
-
-/// Keeps [`Slab`] to the types `define_slab_system!` numbers, as
-/// [`SlabCaches::cache`](crate::cache::SlabCaches::cache) trusts that no
-/// two of them share a position.
-pub(crate) mod sealed {
-    pub trait Sealed {}
 }
 
 /// The sizes of a slab of `Self`, all derived from the size of its slot

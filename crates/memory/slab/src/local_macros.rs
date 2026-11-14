@@ -39,10 +39,16 @@ macro_rules! define_generics {
 
         pub use generic_family::Generic;
 
-        /// `number_slab_types!` with the generic sizes first.
+        /// `number_slab_types!` with the generic sizes first, which
+        /// defines `BUILTIN_SLAB_COUNT`.
         macro_rules! number_generic_slabs {
             ($$($$t:ty),* $$(,)?) => {
-                $crate::number_slab_types!($($name,)* $$($$t),*);
+                // SAFETY: the built-in types start the table at 0, and
+                // programs number theirs from `BUILTIN_SLAB_COUNT`.
+                $crate::number_slab_types!(
+                    unsafe pub BUILTIN_SLAB_COUNT = 0;
+                    $($name,)* $$($$t),*
+                );
             };
         }
 
@@ -124,11 +130,22 @@ macro_rules! define_dma_generics {
     };
 }
 
-/// Numbers the slab types in order, giving each its position in
-/// [`SlabCaches`](crate::cache::SlabCaches) and its `PreAllocatedArray`.
+/// Numbers the slab types in order from `$first`, giving each its
+/// position in [`SlabCaches`](crate::cache::SlabCaches) and its
+/// `PreAllocatedArray`. A build whose types don't fit the table fails.
+///
+/// The `pub $count = ..` form also names the position after the last
+/// type. It numbers by recursion, not `${index()}`, so the crates that
+/// call it through [`declare_slabs!`] need no `macro_metavar_expr`.
+///
+/// # Safety
+///
+/// No other slab type of the program may have a position from `$first`
+/// to the last one this call gives out, because the generated `Slab`
+/// impls promise that their positions are unique.
 ///
 /// ```ignore
-/// number_slab_types!(Generic8, Generic16);
+/// number_slab_types!(unsafe pub SLAB_COUNT = 0; Generic8, Generic16);
 ///
 /// assert_eq!(Generic8::SLAB_POSITION, 0);
 /// assert_eq!(Generic16::SLAB_POSITION, 1);
@@ -137,23 +154,92 @@ macro_rules! define_dma_generics {
 /// ```
 #[macro_export]
 macro_rules! number_slab_types {
-    ($($t:ty),* $(,)?) => {
-        $(
-            impl $crate::traits::sealed::Sealed for $t {}
+    (unsafe pub $count:ident = $first:expr; $($t:ty),* $(,)?) => {
+        $crate::number_slab_types!(unsafe $first; $($t),*);
 
-            impl $crate::traits::SlabGeometry for $t {
-                type PreAllocatedArray = [
-                    $crate::preallocated::PreAllocated<$t>;
-                    <$t as $crate::traits::SlabGeometry>::OBJECTS_PER_SLAB
-                ];
+        /// The position after the last slab type this crate numbers.
+        pub const $count: usize = $first + [$(stringify!($t)),*].len();
+    };
+    (unsafe $position:expr; $t:ty $(, $rest:ty)* $(,)?) => {
+        impl $crate::traits::SlabGeometry for $t {
+            type PreAllocatedArray = [
+                $crate::preallocated::PreAllocated<$t>;
+                <$t as $crate::traits::SlabGeometry>::OBJECTS_PER_SLAB
+            ];
+        }
+
+        // SAFETY: the caller gave this call the positions from `$first`
+        // on, and each type takes the one after the type before it.
+        unsafe impl $crate::traits::Slab for $t {
+            const SLAB_POSITION: usize = $position;
+        }
+
+        const _: () = assert!(
+            $position < $crate::MAX_SLAB_TYPES,
+            "the slab types fit the cache table"
+        );
+
+        $crate::number_slab_types!(unsafe $position + 1; $($rest),*);
+    };
+    (unsafe $end:expr;) => {};
+}
+
+/// Declares a program's own slab types, in the family group `$group`,
+/// numbered after the slab crate's types, on types marked
+/// `#[typestate_groups::state]`.
+///
+/// It must be called at the crate root, and a second call in the same
+/// crate fails to build, so a crate declares its slab types in one place.
+///
+/// # Safety
+///
+/// Only one crate of the program may call it. Each call numbers from
+/// `BUILTIN_SLAB_COUNT`, so the types of two crates would share cache
+/// positions, and the build can't catch that across crates.
+///
+/// ```ignore
+/// #[typestate_groups::state]
+/// struct Inode { .. }
+///
+/// // SAFETY: the kernel is the only crate that declares slab types.
+/// declare_slabs!(unsafe KernelObjects: Inode, Pcb);
+///
+/// assert_eq!(Inode::SLAB_POSITION, BUILTIN_SLAB_COUNT);
+/// assert_eq!(Pcb::SLAB_POSITION, BUILTIN_SLAB_COUNT + 1);
+/// ```
+#[macro_export]
+#[expect(
+    clippy::crate_in_macro_def,
+    reason = "the root check names the calling crate's root"
+)]
+macro_rules! declare_slabs {
+    (unsafe $group:ident: $($t:ident),+ $(,)?) => {
+        /// Its name is the rule that the errors of a call outside the
+        /// crate root, or of a second call, point to.
+        #[doc(hidden)]
+        struct DeclareSlabsAtCrateRootOnce;
+
+        // Only builds when this call's struct is the crate root's.
+        const _: crate::DeclareSlabsAtCrateRootOnce =
+            self::DeclareSlabsAtCrateRootOnce;
+
+        mod slab_family {
+            use super::{$($t),+};
+            use $crate::traits::{SlabFamily, SlabFamilyGroupMarker};
+
+            #[::typestate_groups::group($group)]
+            impl SlabFamily for ($($t,)+) {
+                const PFLAGS: ::x86::structures::paging::PageEntryFlags =
+                    ::x86::structures::paging::PageEntryFlags::regular_page_flags();
+                const PSIZE: ::common::enums::PageSize =
+                    ::common::enums::PageSize::Regular;
             }
+        }
 
-            impl $crate::traits::Slab for $t {
-                const SLAB_POSITION: usize = ${index()};
-            }
-        )*
-
-        /// The number of slab types.
-        const SLAB_COUNT: usize = ${count($t)};
+        // SAFETY: the caller is the only crate that declares slab types,
+        // and the built-in ones end at `BUILTIN_SLAB_COUNT`.
+        $crate::number_slab_types!(
+            unsafe $crate::BUILTIN_SLAB_COUNT; $($t),+
+        );
     };
 }
