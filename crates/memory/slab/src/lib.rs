@@ -31,7 +31,8 @@ pub mod traits;
 
 pub use arena::{SlabArena, SlabFlags};
 pub use static_allocator::{
-    GlobalSlab, SlabBox, SlabBoxNew, StaticCacheAllocator,
+    GlobalSlab, SlabArc, SlabBox, SlabBoxNew, SlabRc, SlabVec,
+    SlabVecDeque, StaticCacheAllocator, StaticSlabAllocator,
 };
 
 use crate::{

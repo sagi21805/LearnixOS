@@ -6,8 +6,12 @@ extern crate alloc;
 use alloc::boxed::Box;
 use common::ansi::{bright_yellow, red};
 use libk::{okprintln, println};
+use pci::PciDevice;
+use slab::StaticSlabAllocator;
 use vga_display::{SCREEN, Scrollback};
 use x86::instructions::cpuid;
+
+use crate::memory::SlabVec;
 
 mod console;
 mod idt;
@@ -41,7 +45,9 @@ pub unsafe extern "C" fn _start() -> ! {
     ));
     okprintln!("Attached scrollback");
 
-    let pci_devices = pci::scan_pci(memory.slab);
+    let pci_devices: SlabVec<PciDevice> =
+        pci::scan_pci(StaticSlabAllocator::new());
+
     println!("{}", memory.mmap);
 
     for device in pci_devices {

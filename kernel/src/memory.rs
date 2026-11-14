@@ -5,7 +5,7 @@ use common::constants::{
 };
 use libk::{alloc::GlobalAllocator, okprintln};
 use page::{Page, arena::PageMap};
-use slab::{GlobalSlab, SlabAllocator};
+use slab::{SlabAllocator, static_allocator::GlobalSlab};
 use sync::once::Once;
 use x86::memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended};
 
@@ -19,14 +19,12 @@ static BUDDY_ALLOCATOR: Once<BuddyAllocator<PageMap, Page>> =
 
 static SLAB_ALLOCATOR: Once<SlabAllocator<Page, PageMap>> = Once::uninit();
 
+// slab::declare_slabs!(unsafe KernelSlabs: );
+
 /// The kernel's slab allocator, for the zero-sized allocator types.
-#[expect(
-    dead_code,
-    reason = "the kernel declares no slab type of its own yet"
-)]
 pub struct KernelSlab;
 
-impl GlobalSlab for KernelSlab {
+unsafe impl GlobalSlab for KernelSlab {
     type Block = Page;
     type Arena = PageMap;
 
@@ -39,6 +37,21 @@ impl GlobalSlab for KernelSlab {
     reason = "the kernel declares no slab type of its own yet"
 )]
 pub type SlabBox<T> = slab::SlabBox<T, KernelSlab>;
+
+/// A vector whose buffer comes from the slab's generic sizes.
+pub type SlabVec<T> = slab::SlabVec<T, KernelSlab>;
+
+/// A ring buffer whose buffer comes from the slab's generic sizes.
+#[expect(dead_code, reason = "nothing in the kernel uses it yet")]
+pub type SlabVecDeque<T> = slab::SlabVecDeque<T, KernelSlab>;
+
+/// An atomically counted `T` from the slab's generic sizes.
+#[expect(dead_code, reason = "nothing in the kernel uses it yet")]
+pub type SlabArc<T> = slab::SlabArc<T, KernelSlab>;
+
+/// A counted `T` from the slab's generic sizes.
+#[expect(dead_code, reason = "nothing in the kernel uses it yet")]
+pub type SlabRc<T> = slab::SlabRc<T, KernelSlab>;
 
 /// What the later boot steps need from the memory setup.
 pub struct KernelMemory {

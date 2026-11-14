@@ -6,7 +6,9 @@ use core::{
     ptr::NonNull,
 };
 
-use alloc::boxed::Box;
+use alloc::{
+    boxed::Box, collections::VecDeque, rc::Rc, sync::Arc, vec::Vec,
+};
 use buddy::meta::{BuddyArena, BuddyBlock};
 use extend::ext;
 
@@ -17,20 +19,11 @@ use crate::{
 
 /// The one slab allocator of a program, reachable with no reference.
 ///
-/// The program implements it on a marker type of its own, as the slab
-/// crate can't name the program's static.
+/// # Safety
 ///
-/// ```ignore
-/// struct KernelSlab;
-///
-/// impl GlobalSlab for KernelSlab {
-///     type Block = Page;
-///     type Arena = PageMap;
-///
-///     fn slab() -> &'static SlabAllocator<Page, PageMap> { &SLAB }
-/// }
-/// ```
-pub trait GlobalSlab: 'static {
+/// Because this allocator is global, it should be implemented on a static
+/// and that it would be the only allocator.
+pub unsafe trait GlobalSlab: 'static {
     type Block: BuddyBlock + SlabBlock + 'static;
     type Arena: BuddyArena<Self::Block> + SlabArena + 'static;
 
@@ -91,3 +84,61 @@ pub impl<T: Slab, G: GlobalSlab> SlabBox<T, G> {
         Box::try_new_in(value, StaticCacheAllocator::new())
     }
 }
+
+/// Allocates by layout from the generic sizes of the slab of `G`, as
+/// [`SlabAllocator`](crate::SlabAllocator) does.
+///
+/// A collection allocates layouts other than its element's, so it can't
+/// use the element's own cache. A `Vec<T>` asks for arrays of `T`, and an
+/// `Arc<T>` for a `T` behind its two counters.
+///
+/// It is zero-sized, so a collection that uses it is as wide as one on
+/// the global allocator.
+pub struct StaticSlabAllocator<G: GlobalSlab>(PhantomData<fn() -> G>);
+
+impl<G: GlobalSlab> StaticSlabAllocator<G> {
+    pub const fn new() -> Self { Self(PhantomData) }
+}
+
+impl<G: GlobalSlab> Default for StaticSlabAllocator<G> {
+    fn default() -> Self { Self::new() }
+}
+
+impl<G: GlobalSlab> Clone for StaticSlabAllocator<G> {
+    fn clone(&self) -> Self { *self }
+}
+
+impl<G: GlobalSlab> Copy for StaticSlabAllocator<G> {}
+
+// SAFETY: every handle forwards to the one allocator of `G`.
+unsafe impl<G: GlobalSlab> Allocator for StaticSlabAllocator<G> {
+    fn allocate(
+        &self,
+        layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        G::slab().allocate(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        // SAFETY: the caller's contract carries over to the slab.
+        unsafe { G::slab().deallocate(ptr, layout) }
+    }
+}
+
+/// A vector whose buffer comes from the generic sizes of the slab of `G`.
+///
+/// ```ignore
+/// let mut ids = SlabVec::<u32, KernelSlab>::new_in(Default::default());
+/// ids.push(7);
+/// ```
+pub type SlabVec<T, G> = Vec<T, StaticSlabAllocator<G>>;
+
+/// A ring buffer whose buffer comes from the generic sizes of the slab of
+/// `G`.
+pub type SlabVecDeque<T, G> = VecDeque<T, StaticSlabAllocator<G>>;
+
+/// An atomically counted `T` from the generic sizes of the slab of `G`.
+pub type SlabArc<T, G> = Arc<T, StaticSlabAllocator<G>>;
+
+/// A counted `T` from the generic sizes of the slab of `G`.
+pub type SlabRc<T, G> = Rc<T, StaticSlabAllocator<G>>;

@@ -1,3 +1,6 @@
 [toolchain]
-channel = "nightly"
+# Pinned, because later nightlies spell `offset_of!` as `k#offset_of`,
+# which rust-analyzer can't expand yet, and they move `pattern_type!` to
+# `core::pat`.
+channel = "nightly-2026-11-03"
 components = ["rust-src", "llvm-tools-preview"]
