@@ -33,6 +33,7 @@ pub use arena::{SlabArena, SlabFlags};
 pub use static_allocator::{
     GlobalSlab, SlabArc, SlabBox, SlabBoxNew, SlabRc, SlabVec,
     SlabVecDeque, StaticCacheAllocator, StaticSlabAllocator,
+    StaticSlabDmaAllocator,
 };
 
 use crate::{
