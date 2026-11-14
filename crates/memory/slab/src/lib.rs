@@ -1,5 +1,6 @@
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![feature(allocator_ext)]
 #![feature(ptr_alignment_type)]
 #![feature(const_trait_impl)]
 #![feature(const_cmp)]
@@ -25,9 +26,13 @@ pub mod local_macros;
 pub mod object_index;
 pub mod preallocated;
 pub mod slab_objects;
+pub mod static_allocator;
 pub mod traits;
 
 pub use arena::{SlabArena, SlabFlags};
+pub use static_allocator::{
+    GlobalSlab, SlabBox, SlabBoxNew, StaticCacheAllocator,
+};
 
 use crate::{
     cache::SlabCaches,
