@@ -2,7 +2,6 @@ use common::{
     address_types::{Address, VirtualAddress},
     enums::interrupts::GateType,
 };
-use libk::println;
 use x86::{
     registers::cr2,
     structures::interrupt_descriptor_table::{
@@ -141,8 +140,11 @@ panicking_handler_with_error_code!(
 extern "x86-interrupt" fn breakpoint_handler(
     stack_frame: InterruptStackFrame,
 ) {
-    println!("Interrupt: Breakpoint");
-    println!("Stack frame: {:#?}", stack_frame);
+    // The breakpoint may come from code that holds the screen, so this
+    // skips printing instead of spinning on a lock nobody will release.
+    let _ = vga_display::try_kprint(format_args!(
+        "Interrupt: Breakpoint\nStack frame: {stack_frame:#?}\n"
+    ));
 }
 
 extern "x86-interrupt" fn page_fault_handler(

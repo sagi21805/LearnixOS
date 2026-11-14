@@ -12,9 +12,7 @@ use x86::{
     },
 };
 
-use crate::{
-    interrupts::exceptions::ExceptionHandlers, timer::timer_handler,
-};
+use crate::{idt::exceptions::ExceptionHandlers, timer::timer_handler};
 
 mod exceptions;
 

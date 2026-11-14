@@ -10,7 +10,7 @@ use vga_display::{SCREEN, Scrollback};
 use x86::instructions::cpuid;
 
 mod console;
-mod interrupts;
+mod idt;
 mod memory;
 mod panic;
 mod timer;
@@ -31,7 +31,7 @@ pub unsafe extern "C" fn _start() -> ! {
     let memory = unsafe { memory::init() };
 
     // SAFETY: the second stage's GDT is still loaded.
-    unsafe { interrupts::init() };
+    unsafe { idt::init() };
 
     console::init_keyboard(memory.slab);
 
@@ -52,7 +52,7 @@ pub unsafe extern "C" fn _start() -> ! {
     let vendor = cpuid::get_vendor_string();
     // SAFETY: the vendor string is ASCII, so it is valid UTF-8.
     let vendor = unsafe { str::from_utf8_unchecked(&vendor) };
-    println!("CPU vendor: {}", vendor);
+    println!("{}{}", red!("CPU Vendor: "), bright_yellow(vendor));
     if let Some(brand) = cpuid::get_brand_string() {
         println!(
             "{} {}",

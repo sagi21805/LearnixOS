@@ -23,10 +23,6 @@ macro_rules! print {
 }
 
 /// Same as [`print!`], with a newline at the end.
-///
-/// The format string can't be joined with `"\n"` by `concat!`, because
-/// `format_args!` can't capture names like `{RED}` from an expanded
-/// string.
 #[macro_export]
 macro_rules! println {
     () => {
