@@ -73,12 +73,16 @@ define_dma_generics!(
 
 define_slab_system!();
 
+/// The most slab types a program can declare, built-in ones included. A
+/// cache is 12 bytes, so the whole table is 768.
+pub const MAX_SLAB_TYPES: usize = 64;
+
 pub struct SlabAllocator<Block, Arena>
 where
     Block: BuddyBlock + SlabBlock + 'static,
     Arena: BuddyArena<Block> + SlabArena + 'static,
 {
-    caches: SpinMutex<SlabCaches<SLAB_COUNT>>,
+    caches: SpinMutex<SlabCaches<MAX_SLAB_TYPES>>,
     buddy: &'static BuddyAllocator<Arena, Block>,
 }
 

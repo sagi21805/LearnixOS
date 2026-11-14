@@ -42,7 +42,7 @@ impl<const N: usize> SlabCaches<N> {
     /// The cache of `T`.
     pub fn cache<T: Slab>(&mut self) -> &mut SlabCache<T> {
         let cache = NonNull::from_mut(&mut self.0[T::SLAB_POSITION]);
-        // SAFETY: `Slab` is sealed and each type has its own position, so
+        // SAFETY: the `Slab` contract gives each type its own position, so
         // only `T` reaches this slot. `repr(C)` keeps the layouts equal.
         unsafe { cache.cast::<SlabCache<T>>().as_mut() }
     }

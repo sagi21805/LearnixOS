@@ -39,10 +39,14 @@ macro_rules! define_generics {
 
         pub use generic_family::Generic;
 
-        /// `number_slab_types!` with the generic sizes first.
+        /// `number_slab_types!` with the generic sizes first, which
+        /// defines `BUILTIN_SLAB_COUNT`.
         macro_rules! number_generic_slabs {
             ($$($$t:ty),* $$(,)?) => {
-                $crate::number_slab_types!($($name,)* $$($$t),*);
+                $crate::number_slab_types!(
+                    pub BUILTIN_SLAB_COUNT = 0;
+                    $($name,)* $$($$t),*
+                );
             };
         }
 
@@ -124,11 +128,16 @@ macro_rules! define_dma_generics {
     };
 }
 
-/// Numbers the slab types in order, giving each its position in
-/// [`SlabCaches`](crate::cache::SlabCaches) and its `PreAllocatedArray`.
+/// Numbers the slab types in order from `$first`, giving each its
+/// position in [`SlabCaches`](crate::cache::SlabCaches) and its
+/// `PreAllocatedArray`. A build whose types don't fit the table fails.
+///
+/// The `pub $count = ..` form also names the position after the last
+/// type. It numbers by recursion, not `${index()}`, so the crates that
+/// call it through [`declare_slabs!`] need no `macro_metavar_expr`.
 ///
 /// ```ignore
-/// number_slab_types!(Generic8, Generic16);
+/// number_slab_types!(pub SLAB_COUNT = 0; Generic8, Generic16);
 ///
 /// assert_eq!(Generic8::SLAB_POSITION, 0);
 /// assert_eq!(Generic16::SLAB_POSITION, 1);
@@ -137,23 +146,65 @@ macro_rules! define_dma_generics {
 /// ```
 #[macro_export]
 macro_rules! number_slab_types {
-    ($($t:ty),* $(,)?) => {
-        $(
-            impl $crate::traits::sealed::Sealed for $t {}
+    (pub $count:ident = $first:expr; $($t:ty),* $(,)?) => {
+        $crate::number_slab_types!($first; $($t),*);
 
-            impl $crate::traits::SlabGeometry for $t {
-                type PreAllocatedArray = [
-                    $crate::preallocated::PreAllocated<$t>;
-                    <$t as $crate::traits::SlabGeometry>::OBJECTS_PER_SLAB
-                ];
+        /// The position after the last slab type this crate numbers.
+        pub const $count: usize = $first + [$(stringify!($t)),*].len();
+    };
+    ($position:expr; $t:ty $(, $rest:ty)* $(,)?) => {
+        impl $crate::traits::SlabGeometry for $t {
+            type PreAllocatedArray = [
+                $crate::preallocated::PreAllocated<$t>;
+                <$t as $crate::traits::SlabGeometry>::OBJECTS_PER_SLAB
+            ];
+        }
+
+        // SAFETY: each type takes the position after the one before it,
+        // and every caller numbers from where the last one stopped.
+        unsafe impl $crate::traits::Slab for $t {
+            const SLAB_POSITION: usize = $position;
+        }
+
+        const _: () = assert!(
+            $position < $crate::MAX_SLAB_TYPES,
+            "the slab types fit the cache table"
+        );
+
+        $crate::number_slab_types!($position + 1; $($rest),*);
+    };
+    ($end:expr;) => {};
+}
+
+/// Declares a program's own slab types, in the family group `$group`,
+/// numbered after the slab crate's types. Call it once per program, on
+/// types marked `#[typestate_groups::state]`.
+///
+/// ```ignore
+/// #[typestate_groups::state]
+/// struct Inode { .. }
+///
+/// declare_slabs!(KernelObjects: Inode, Pcb);
+///
+/// assert_eq!(Inode::SLAB_POSITION, BUILTIN_SLAB_COUNT);
+/// assert_eq!(Pcb::SLAB_POSITION, BUILTIN_SLAB_COUNT + 1);
+/// ```
+#[macro_export]
+macro_rules! declare_slabs {
+    ($group:ident: $($t:ident),+ $(,)?) => {
+        mod slab_family {
+            use super::{$($t),+};
+            use $crate::traits::{SlabFamily, SlabFamilyGroupMarker};
+
+            #[::typestate_groups::group($group)]
+            impl SlabFamily for ($($t,)+) {
+                const PFLAGS: ::x86::structures::paging::PageEntryFlags =
+                    ::x86::structures::paging::PageEntryFlags::regular_page_flags();
+                const PSIZE: ::common::enums::PageSize =
+                    ::common::enums::PageSize::Regular;
             }
+        }
 
-            impl $crate::traits::Slab for $t {
-                const SLAB_POSITION: usize = ${index()};
-            }
-        )*
-
-        /// The number of slab types.
-        const SLAB_COUNT: usize = ${count($t)};
+        $crate::number_slab_types!($crate::BUILTIN_SLAB_COUNT; $($t),+);
     };
 }
