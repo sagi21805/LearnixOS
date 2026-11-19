@@ -84,27 +84,28 @@ define_slab_system!();
 /// cache is 12 bytes, so the whole table is 768.
 pub const MAX_SLAB_TYPES: usize = 64;
 
-pub struct SlabAllocator<Block, Arena>
-where
-    Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + SlabArena + 'static,
-{
-    caches: SpinMutex<SlabCaches<MAX_SLAB_TYPES>>,
-    buddy: &'static BuddyAllocator<Arena, Block>,
+/// The types one slab allocator works with, which always travel
+/// together.
+pub trait SlabSystem: Sized + 'static {
+    /// The buddy block, which holds the descriptor of a slab.
+    type Block: BuddyBlock + SlabBlock + 'static;
+    /// The buddy arena the pages of the slabs come from.
+    type Arena: BuddyArena<Self::Block> + SlabArena + 'static;
 }
 
-impl<Block, Arena> SlabAllocator<Block, Arena>
-where
-    Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + SlabArena + 'static,
-{
+pub struct SlabAllocator<S: SlabSystem> {
+    caches: SpinMutex<SlabCaches<MAX_SLAB_TYPES>>,
+    buddy: &'static BuddyAllocator<S::Arena, S::Block>,
+}
+
+impl<S: SlabSystem> SlabAllocator<S> {
     /// A slab allocator with empty caches, which takes its pages from
     /// `buddy`.
     ///
     /// No descriptor points back into the caches, so unlike the buddy
     /// allocator it needs no pinning.
     pub const fn new(
-        buddy: &'static BuddyAllocator<Arena, Block>,
+        buddy: &'static BuddyAllocator<S::Arena, S::Block>,
     ) -> Self {
         Self {
             caches: SpinMutex::new(SlabCaches::new()),
@@ -113,9 +114,7 @@ where
     }
 
     /// The allocator for `T`s, from `T`'s slab cache.
-    pub const fn cache<T: Slab>(
-        &self,
-    ) -> CacheAllocator<'_, T, Block, Arena> {
+    pub const fn cache<T: Slab>(&self) -> CacheAllocator<'_, T, S> {
         CacheAllocator::new(self)
     }
 
@@ -198,11 +197,7 @@ where
 
 // SAFETY: a layout always picks the same generic size, so a block returns
 // to the cache it came from.
-unsafe impl<Block, Arena> Allocator for SlabAllocator<Block, Arena>
-where
-    Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + SlabArena + 'static,
-{
+unsafe impl<S: SlabSystem> Allocator for SlabAllocator<S> {
     /// Serves `layout` from the smallest generic size that fits it.
     fn allocate(
         &self,

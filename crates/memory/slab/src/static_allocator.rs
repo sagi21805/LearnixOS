@@ -9,25 +9,19 @@ use core::{
 use alloc::{
     boxed::Box, collections::VecDeque, rc::Rc, sync::Arc, vec::Vec,
 };
-use buddy::meta::{BuddyArena, BuddyBlock};
 use extend::ext;
 
-use crate::{
-    SlabAllocator, SlabArena,
-    traits::{Slab, SlabBlock},
-};
+use crate::{SlabAllocator, SlabSystem, traits::Slab};
 
-/// The one slab allocator of a program, reachable with no reference.
+/// A slab system whose allocator is a static, reachable with no
+/// reference.
 ///
 /// # Safety
 ///
-/// Because this allocator is global, it should be implemented on a static
-/// and that it would be the only allocator.
-pub unsafe trait GlobalSlab: 'static {
-    type Block: BuddyBlock + SlabBlock + 'static;
-    type Arena: BuddyArena<Self::Block> + SlabArena + 'static;
-
-    fn slab() -> &'static SlabAllocator<Self::Block, Self::Arena>;
+/// `slab` must return the same allocator on every call, as a block goes
+/// back to the allocator it came from.
+pub unsafe trait GlobalSlab: SlabSystem {
+    fn slab() -> &'static SlabAllocator<Self>;
 }
 
 /// Allocates `T`s from their slab cache in the slab of `G`.

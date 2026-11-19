@@ -5,7 +5,7 @@ use common::constants::{
 };
 use libk::{alloc::GlobalAllocator, okprintln};
 use page::{Page, arena::PageMap};
-use slab::{SlabAllocator, static_allocator::GlobalSlab};
+use slab::{SlabAllocator, SlabSystem, static_allocator::GlobalSlab};
 use sync::once::Once;
 use x86::memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended};
 
@@ -17,18 +17,22 @@ static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
 static BUDDY_ALLOCATOR: Once<BuddyAllocator<PageMap, Page>> =
     Once::uninit();
 
-static SLAB_ALLOCATOR: Once<SlabAllocator<Page, PageMap>> = Once::uninit();
+static SLAB_ALLOCATOR: Once<SlabAllocator<KernelSlab>> = Once::uninit();
 
 // slab::declare_slabs!(unsafe KernelSlabs: );
 
-/// The kernel's slab allocator, for the zero-sized allocator types.
+/// The kernel's slab system, for the zero-sized allocator types.
 pub struct KernelSlab;
 
-unsafe impl GlobalSlab for KernelSlab {
+impl SlabSystem for KernelSlab {
     type Block = Page;
     type Arena = PageMap;
+}
 
-    fn slab() -> &'static SlabAllocator<Page, PageMap> { &SLAB_ALLOCATOR }
+// SAFETY: `SLAB_ALLOCATOR` is a static, so every call returns the same
+// allocator.
+unsafe impl GlobalSlab for KernelSlab {
+    fn slab() -> &'static SlabAllocator<KernelSlab> { &SLAB_ALLOCATOR }
 }
 
 /// A box of a `T` from its own slab cache, one pointer wide.
@@ -56,7 +60,7 @@ pub type SlabRc<T> = slab::SlabRc<T, KernelSlab>;
 /// What the later boot steps need from the memory setup.
 pub struct KernelMemory {
     pub mmap: &'static MemoryMap,
-    pub slab: &'static SlabAllocator<Page, PageMap>,
+    pub slab: &'static SlabAllocator<KernelSlab>,
 }
 
 /// Parses the memory map and starts the buddy, global and slab allocators.

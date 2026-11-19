@@ -4,10 +4,8 @@ use core::{
     ptr::NonNull,
 };
 
-use buddy::meta::{BuddyArena, BuddyBlock};
-
 use crate::{
-    SlabAllocator, SlabArena,
+    SlabAllocator, SlabArena, SlabSystem,
     traits::{Slab, SlabBlock},
 };
 
@@ -21,23 +19,13 @@ use crate::{
 /// ```ignore
 /// let inode = Box::new_in(Inode::default(), SLAB.cache::<Inode>());
 /// ```
-pub struct CacheAllocator<'a, T: Slab, Block, Arena>
-where
-    Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + SlabArena + 'static,
-{
-    slab: &'a SlabAllocator<Block, Arena>,
+pub struct CacheAllocator<'a, T: Slab, S: SlabSystem> {
+    slab: &'a SlabAllocator<S>,
     _object: PhantomData<fn() -> T>,
 }
 
-impl<'a, T: Slab, Block, Arena> CacheAllocator<'a, T, Block, Arena>
-where
-    Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + SlabArena + 'static,
-{
-    pub(crate) const fn new(
-        slab: &'a SlabAllocator<Block, Arena>,
-    ) -> Self {
+impl<'a, T: Slab, S: SlabSystem> CacheAllocator<'a, T, S> {
+    pub(crate) const fn new(slab: &'a SlabAllocator<S>) -> Self {
         Self {
             slab,
             _object: PhantomData,
@@ -45,28 +33,16 @@ where
     }
 }
 
-impl<T: Slab, Block, Arena> Clone for CacheAllocator<'_, T, Block, Arena>
-where
-    Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + SlabArena + 'static,
-{
+impl<T: Slab, S: SlabSystem> Clone for CacheAllocator<'_, T, S> {
     fn clone(&self) -> Self { *self }
 }
 
-impl<T: Slab, Block, Arena> Copy for CacheAllocator<'_, T, Block, Arena>
-where
-    Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + SlabArena + 'static,
-{
-}
+impl<T: Slab, S: SlabSystem> Copy for CacheAllocator<'_, T, S> {}
 
 // SAFETY: every handle reaches the same caches, and a slot is never handed
 // out twice.
-unsafe impl<T: Slab, Block, Arena> Allocator
-    for CacheAllocator<'_, T, Block, Arena>
-where
-    Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + SlabArena + 'static,
+unsafe impl<T: Slab, S: SlabSystem> Allocator
+    for CacheAllocator<'_, T, S>
 {
     /// Allocates one object, and returns all of it, so any size up to
     /// `size_of::<T>()` frees it again.
