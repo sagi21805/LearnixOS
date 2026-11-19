@@ -5,8 +5,8 @@ use core::{
 };
 
 use crate::{
-    SlabAllocator, SlabArena, SlabSystem,
-    traits::{Slab, SlabBlock},
+    SlabAllocator, SlabArena, SlabSystem, cache::CachedIn,
+    traits::SlabBlock,
 };
 
 /// Allocates `T`s from their slab cache.
@@ -19,12 +19,12 @@ use crate::{
 /// ```ignore
 /// let inode = Box::new_in(Inode::default(), SLAB.cache::<Inode>());
 /// ```
-pub struct CacheAllocator<'a, T: Slab, S: SlabSystem> {
+pub struct CacheAllocator<'a, T: CachedIn<S::Caches>, S: SlabSystem> {
     slab: &'a SlabAllocator<S>,
     _object: PhantomData<fn() -> T>,
 }
 
-impl<'a, T: Slab, S: SlabSystem> CacheAllocator<'a, T, S> {
+impl<'a, T: CachedIn<S::Caches>, S: SlabSystem> CacheAllocator<'a, T, S> {
     pub(crate) const fn new(slab: &'a SlabAllocator<S>) -> Self {
         Self {
             slab,
@@ -33,15 +33,20 @@ impl<'a, T: Slab, S: SlabSystem> CacheAllocator<'a, T, S> {
     }
 }
 
-impl<T: Slab, S: SlabSystem> Clone for CacheAllocator<'_, T, S> {
+impl<T: CachedIn<S::Caches>, S: SlabSystem> Clone
+    for CacheAllocator<'_, T, S>
+{
     fn clone(&self) -> Self { *self }
 }
 
-impl<T: Slab, S: SlabSystem> Copy for CacheAllocator<'_, T, S> {}
+impl<T: CachedIn<S::Caches>, S: SlabSystem> Copy
+    for CacheAllocator<'_, T, S>
+{
+}
 
 // SAFETY: every handle reaches the same caches, and a slot is never handed
 // out twice.
-unsafe impl<T: Slab, S: SlabSystem> Allocator
+unsafe impl<T: CachedIn<S::Caches>, S: SlabSystem> Allocator
     for CacheAllocator<'_, T, S>
 {
     /// Allocates one object, and returns all of it, so any size up to

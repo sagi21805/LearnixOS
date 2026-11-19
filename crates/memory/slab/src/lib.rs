@@ -37,7 +37,7 @@ pub use static_allocator::{
 };
 
 use crate::{
-    cache::SlabCaches,
+    cache::{CachedIn, ExternalCaches, SlabCaches},
     cache_allocator::CacheAllocator,
     descriptor::{FreeDetached, SlabDescriptor},
     traits::{Slab, SlabBlock},
@@ -78,12 +78,6 @@ define_dma_generics!(
     DmaGeneric8192 = 8192,
 );
 
-define_slab_system!();
-
-/// The most slab types a program can declare, built-in ones included. A
-/// cache is 12 bytes, so the whole table is 768.
-pub const MAX_SLAB_TYPES: usize = 64;
-
 /// The types one slab allocator works with, which always travel
 /// together.
 pub trait SlabSystem: Sized + 'static {
@@ -91,10 +85,12 @@ pub trait SlabSystem: Sized + 'static {
     type Block: BuddyBlock + SlabBlock + 'static;
     /// The buddy arena the pages of the slabs come from.
     type Arena: BuddyArena<Self::Block> + SlabArena + 'static;
+    /// The caches of the program's own slab types.
+    type Caches: ExternalCaches;
 }
 
 pub struct SlabAllocator<S: SlabSystem> {
-    caches: SpinMutex<SlabCaches<MAX_SLAB_TYPES>>,
+    caches: SpinMutex<SlabCaches<S::Caches>>,
     buddy: &'static BuddyAllocator<S::Arena, S::Block>,
 }
 
@@ -114,12 +110,16 @@ impl<S: SlabSystem> SlabAllocator<S> {
     }
 
     /// The allocator for `T`s, from `T`'s slab cache.
-    pub const fn cache<T: Slab>(&self) -> CacheAllocator<'_, T, S> {
+    pub const fn cache<T: CachedIn<S::Caches>>(
+        &self,
+    ) -> CacheAllocator<'_, T, S> {
         CacheAllocator::new(self)
     }
 
     /// Allocates one `T`.
-    pub fn kmalloc<T: Slab>(&self) -> Result<NonNull<T>, AllocError> {
+    pub fn kmalloc<T: CachedIn<S::Caches>>(
+        &self,
+    ) -> Result<NonNull<T>, AllocError> {
         self.cache::<T>()
             .allocate(Layout::new::<T>())
             .map(NonNull::cast)
@@ -130,7 +130,7 @@ impl<S: SlabSystem> SlabAllocator<S> {
     /// # Safety
     ///
     /// `ptr` must come from `kmalloc::<T>` and not be freed since.
-    pub unsafe fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
+    pub unsafe fn kfree<T: CachedIn<S::Caches>>(&self, ptr: NonNull<T>) {
         unsafe {
             self.cache::<T>().deallocate(ptr.cast(), Layout::new::<T>())
         }

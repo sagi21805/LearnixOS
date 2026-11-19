@@ -1,7 +1,7 @@
 use core::ptr::NonNull;
 
 use crate::{
-    Generic64, SlabArena,
+    DmaGenericCaches, Generic64, GenericCaches, SlabArena,
     descriptor::{
         FreeDetached, FreeHead, FullDetached, FullHead, InList, Link,
         ListHead, PartialDetached, PartialHead, SlabDescriptor, SlabState,
@@ -10,11 +10,10 @@ use crate::{
         partial::{Allocated, Deallocated},
     },
     object_index::ObjectIndex,
-    traits::{Slab, Unknown},
+    traits::Slab,
 };
 use typestate_groups::Morphic;
 
-#[repr(C)]
 #[derive(Debug)]
 pub struct SlabCache<T: Slab> {
     pub(crate) free: ListHead<T, FreeHead>,
@@ -29,23 +28,68 @@ unsafe impl<T: Slab> Send for SlabCache<T> {}
 // The cache is three head indices, whatever `T` is.
 const _: () = assert!(size_of::<SlabCache<Generic64>>() == 12);
 
-/// The slab caches, each slab type `T`'s at `T::SLAB_POSITION`, stored as
-/// [`Unknown`] caches so they fit in one array.
-pub struct SlabCaches<const N: usize>([SlabCache<Unknown>; N]);
+/// Every cache of one slab allocator. The slab crate owns the built-in
+/// sizes, and `C` holds the external caches a program adds.
+pub struct SlabCaches<C> {
+    pub(crate) builtin: BuiltinCaches,
+    #[doc(hidden)]
+    pub external: C,
+}
 
-impl<const N: usize> SlabCaches<N> {
+impl<C: ExternalCaches> SlabCaches<C> {
     /// Every cache, empty.
     pub(crate) const fn new() -> Self {
-        Self([const { SlabCache::new() }; N])
+        Self {
+            builtin: BuiltinCaches::EMPTY,
+            external: C::EMPTY,
+        }
     }
 
     /// The cache of `T`.
-    pub fn cache<T: Slab>(&mut self) -> &mut SlabCache<T> {
-        let cache = NonNull::from_mut(&mut self.0[T::SLAB_POSITION]);
-        // SAFETY: the `Slab` contract gives each type its own position, so
-        // only `T` reaches this slot. `repr(C)` keeps the layouts equal.
-        unsafe { cache.cast::<SlabCache<T>>().as_mut() }
+    pub fn cache<T: CachedIn<C>>(&mut self) -> &mut SlabCache<T> {
+        T::cache(self)
     }
+}
+
+/// `Self` has a cache in the caches `C`, which `cache` returns.
+///
+/// The built-in sizes have a cache in every `C`.
+///
+/// # Safety
+///
+/// `cache` must return the same cache on every call, and no other type's
+/// `cache` may return it, because the lists in it hold slabs of `Self`
+/// only.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` has no cache in `{C}`",
+    label = "not listed in `{C}`"
+)]
+pub unsafe trait CachedIn<C>: Slab {
+    fn cache(caches: &mut SlabCaches<C>) -> &mut SlabCache<Self>;
+}
+
+/// The caches a program adds beside the built-in ones.
+pub trait ExternalCaches: 'static {
+    /// Every cache, empty.
+    const EMPTY: Self;
+}
+
+// TODO: remove once the kernel has caches of its own.
+impl ExternalCaches for () {
+    const EMPTY: Self = ();
+}
+
+/// The caches of the generic and DMA sizes, which every program has.
+pub(crate) struct BuiltinCaches {
+    pub(crate) generic: GenericCaches,
+    pub(crate) dma: DmaGenericCaches,
+}
+
+impl BuiltinCaches {
+    const EMPTY: Self = Self {
+        generic: GenericCaches::EMPTY,
+        dma: DmaGenericCaches::EMPTY,
+    };
 }
 
 impl<T: Slab> SlabCache<T> {

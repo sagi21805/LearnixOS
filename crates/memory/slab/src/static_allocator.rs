@@ -11,7 +11,7 @@ use alloc::{
 };
 use extend::ext;
 
-use crate::{SlabAllocator, SlabSystem, traits::Slab};
+use crate::{SlabAllocator, SlabSystem, cache::CachedIn, traits::Slab};
 
 /// A slab system whose allocator is a static, reachable with no
 /// reference.
@@ -46,7 +46,7 @@ impl<T: Slab, G: GlobalSlab> Clone for StaticCacheAllocator<T, G> {
 impl<T: Slab, G: GlobalSlab> Copy for StaticCacheAllocator<T, G> {}
 
 // SAFETY: every handle reaches the same cache of the same allocator.
-unsafe impl<T: Slab, G: GlobalSlab> Allocator
+unsafe impl<T: CachedIn<G::Caches>, G: GlobalSlab> Allocator
     for StaticCacheAllocator<T, G>
 {
     fn allocate(
@@ -72,7 +72,7 @@ unsafe impl<T: Slab, G: GlobalSlab> Allocator
 pub type SlabBox<T, G> = Box<T, StaticCacheAllocator<T, G>>;
 
 #[ext(name = SlabBoxNew)]
-pub impl<T: Slab, G: GlobalSlab> SlabBox<T, G> {
+pub impl<T: CachedIn<G::Caches>, G: GlobalSlab> SlabBox<T, G> {
     /// Moves `value` into a slot of `T`'s cache.
     fn try_new_slab(value: T) -> Result<SlabBox<T, G>, AllocError> {
         Box::try_new_in(value, StaticCacheAllocator::new())

@@ -10,37 +10,17 @@ use crate::{
     preallocated::PreAllocated,
 };
 
-/// A type allocated from its own slab cache, the one at `SLAB_POSITION`
-/// in [`SlabCaches`](crate::cache::SlabCaches).
-///
-/// Declare slab types with [`declare_slabs!`](crate::declare_slabs),
-/// which numbers them.
-///
-/// # Safety
-///
-/// No other slab type of the program may have the same `SLAB_POSITION`,
-/// because [`SlabCaches::cache`](crate::cache::SlabCaches::cache) casts
-/// the cache at that position to this type's.
-pub unsafe trait Slab: SlabGeometry + SlabFamily + 'static {
-    /// The index of this type's cache, which no other type shares.
-    const SLAB_POSITION: usize;
-}
+/// A type that can live in a slab.
+pub trait Slab: SlabGeometry + 'static {}
 
-/// The type of the caches in [`SlabCaches`](crate::cache::SlabCaches)
-/// before one is cast to the slab it holds. It has no cache of its own.
+impl<T: SlabGeometry + 'static> Slab for T {}
+
+/// The type of a slab descriptor before it is cast to the slab it holds.
+/// It has no cache of its own.
 #[state]
 pub struct Unknown;
 
-// SAFETY: no declared type reaches `usize::MAX`, as the cache table is
-// far smaller.
-unsafe impl Slab for Unknown {
-    const SLAB_POSITION: usize = usize::MAX;
-}
-
-impl SlabGeometry for Unknown {
-    type PreAllocatedArray = [PreAllocated<Unknown>;
-        <Unknown as SlabGeometry>::OBJECTS_PER_SLAB];
-}
+crate::slab_geometry!(Unknown);
 
 #[group(UnknownSlabs)]
 impl SlabFamily for (Unknown,) {
@@ -50,7 +30,12 @@ impl SlabFamily for (Unknown,) {
 
 /// The sizes of a slab of `Self`, all derived from the size of its slot
 /// and the page size of its family.
-pub trait SlabGeometry: SlabFamily + Sized {
+///
+/// # Safety
+///
+/// `PreAllocatedArray` must be `[PreAllocated<Self>; OBJECTS_PER_SLAB]`,
+/// because a slab's objects are read as that many slots.
+pub unsafe trait SlabGeometry: SlabFamily + Sized {
     /// The buddy order of one slab, the smallest that fits an object.
     const BUDDY_ORDER: usize = size_of::<PreAllocated<Self>>()
         .div_ceil(Self::PSIZE.size())
