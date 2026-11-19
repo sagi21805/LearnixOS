@@ -85,7 +85,8 @@ pub trait SlabSystem: Sized + 'static {
     type Block: BuddyBlock + SlabBlock + 'static;
     /// The buddy arena the pages of the slabs come from.
     type Arena: BuddyArena<Self::Block> + SlabArena + 'static;
-    /// The caches of the program's own slab types.
+    /// The caches of the program's own slab types, from
+    /// [`slab_caches!`].
     type Caches: ExternalCaches;
 }
 

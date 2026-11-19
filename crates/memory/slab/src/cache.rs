@@ -53,7 +53,8 @@ impl<C: ExternalCaches> SlabCaches<C> {
 
 /// `Self` has a cache in the caches `C`, which `cache` returns.
 ///
-/// The built-in sizes have a cache in every `C`.
+/// [`slab_caches!`](crate::slab_caches) implements it for the types it
+/// lists, and the built-in sizes have a cache in every `C`.
 ///
 /// # Safety
 ///
@@ -62,21 +63,18 @@ impl<C: ExternalCaches> SlabCaches<C> {
 /// only.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` has no cache in `{C}`",
-    label = "not listed in `{C}`"
+    label = "not listed in `{C}`",
+    note = "list `{Self}` in the `slab_caches!` call that defines `{C}`"
 )]
 pub unsafe trait CachedIn<C>: Slab {
     fn cache(caches: &mut SlabCaches<C>) -> &mut SlabCache<Self>;
 }
 
-/// The caches a program adds beside the built-in ones.
+/// The caches a program adds beside the built-in ones, which
+/// [`slab_caches!`](crate::slab_caches) defines.
 pub trait ExternalCaches: 'static {
     /// Every cache, empty.
     const EMPTY: Self;
-}
-
-// TODO: remove once the kernel has caches of its own.
-impl ExternalCaches for () {
-    const EMPTY: Self = ();
 }
 
 /// The caches of the generic and DMA sizes, which every program has.
@@ -94,7 +92,8 @@ impl BuiltinCaches {
 
 impl<T: Slab> SlabCache<T> {
     /// An empty cache.
-    pub(crate) const fn new() -> SlabCache<T> {
+    #[doc(hidden)]
+    pub const fn new() -> SlabCache<T> {
         SlabCache {
             free: ListHead::empty(),
             partial: ListHead::empty(),

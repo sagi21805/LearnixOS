@@ -19,13 +19,18 @@ static BUDDY_ALLOCATOR: Once<BuddyAllocator<PageMap, Page>> =
 
 static SLAB_ALLOCATOR: Once<SlabAllocator<KernelSlab>> = Once::uninit();
 
+slab::slab_caches! {
+    /// The caches of the kernel's own slab types.
+    pub struct KernelCaches {}
+}
+
 /// The kernel's slab system, for the zero-sized allocator types.
 pub struct KernelSlab;
 
 impl SlabSystem for KernelSlab {
     type Block = Page;
     type Arena = PageMap;
-    type Caches = ();
+    type Caches = KernelCaches;
 }
 
 // SAFETY: `SLAB_ALLOCATOR` is a static, so every call returns the same

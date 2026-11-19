@@ -136,6 +136,66 @@ macro_rules! slab_family {
     };
 }
 
+/// Defines the caches `$name` of a program's own slab types, one field
+/// per type, grouped under the family each type is in. A type listed
+/// under a family it isn't in fails to build.
+///
+/// ```ignore
+/// slab::slab_caches! {
+///     /// The caches of the kernel's own slab types.
+///     pub struct KernelCaches {
+///         KernelObjects { inode: Inode, pcb: Pcb }
+///         pci::PciObjects { device: pci::PciDevice }
+///     }
+/// }
+///
+/// let inode = SlabBox::<Inode, KernelSlab>::try_new_slab(Inode::new())?;
+///
+/// // Doesn't compile, because `Task` isn't listed.
+/// let task = SlabBox::<Task, KernelSlab>::try_new_slab(Task::new())?;
+/// ```
+#[macro_export]
+macro_rules! slab_caches {
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $name:ident {
+            $( $family:path { $( $field:ident: $t:ty ),* $(,)? } )*
+        }
+    ) => {
+        $(#[$meta])*
+        $vis struct $name {
+            $($( $field: $crate::cache::SlabCache<$t>, )*)*
+        }
+
+        impl $crate::cache::ExternalCaches for $name {
+            const EMPTY: Self = Self {
+                $($( $field: $crate::cache::SlabCache::new(), )*)*
+            };
+        }
+
+        $($(
+            const _: () = {
+                const fn listed_under_its_family<T>()
+                where
+                    T: $crate::traits::SlabFamilyGroupMember<$family>,
+                {
+                }
+                listed_under_its_family::<$t>()
+            };
+
+            // SAFETY: field `$field` holds the cache of `$t`, and no other
+            // type reaches it.
+            unsafe impl $crate::cache::CachedIn<$name> for $t {
+                fn cache(
+                    caches: &mut $crate::cache::SlabCaches<$name>,
+                ) -> &mut $crate::cache::SlabCache<Self> {
+                    &mut caches.external.$field
+                }
+            }
+        )*)*
+    };
+}
+
 /// The tuple struct `$caches` with one cache per built-in size, and
 /// `CachedIn` for each size in the caches of every program, through field
 /// `$field` of [`BuiltinCaches`](crate::cache::BuiltinCaches).
