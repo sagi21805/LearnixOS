@@ -24,20 +24,13 @@ macro_rules! define_generics {
             pub struct $name(pub [usize; $size / 8]);
         )*
 
-        mod generic_family {
-            use super::{$($name),*};
-            use $crate::traits::{SlabFamily, SlabFamilyGroupMarker};
-
-            #[::typestate_groups::group(Generic)]
-            impl SlabFamily for ($($name,)*) {
-                const PFLAGS: ::x86::structures::paging::PageEntryFlags =
-                    ::x86::structures::paging::PageEntryFlags::regular_page_flags();
-                const PSIZE: ::common::enums::PageSize =
-                    ::common::enums::PageSize::Regular;
-            }
+        #[::typestate_groups::group(Generic)]
+        impl $crate::traits::SlabFamily for ($($name,)*) {
+            const PFLAGS: ::x86::structures::paging::PageEntryFlags =
+                ::x86::structures::paging::PageEntryFlags::regular_page_flags();
+            const PSIZE: ::common::enums::PageSize =
+                ::common::enums::PageSize::Regular;
         }
-
-        pub use generic_family::Generic;
 
         $crate::slab_geometry!($($name),*);
         $crate::define_builtin_caches!(GenericCaches, generic: $($name),*);
@@ -84,21 +77,14 @@ macro_rules! define_dma_generics {
             pub struct $name(pub [usize; $size / 8]);
         )*
 
-        mod dma_generic_family {
-            use super::{$($name),*};
-            use $crate::traits::{SlabFamily, SlabFamilyGroupMarker};
-
-            /// Mapped uncached, so a device and the CPU see the same bytes.
-            #[::typestate_groups::group(DmaGeneric)]
-            impl SlabFamily for ($($name,)*) {
-                const PFLAGS: ::x86::structures::paging::PageEntryFlags =
-                    ::x86::structures::paging::PageEntryFlags::regular_io_page_flags();
-                const PSIZE: ::common::enums::PageSize =
-                    ::common::enums::PageSize::Regular;
-            }
+        /// Mapped uncached, so a device and the CPU see the same bytes.
+        #[::typestate_groups::group(DmaGeneric)]
+        impl $crate::traits::SlabFamily for ($($name,)*) {
+            const PFLAGS: ::x86::structures::paging::PageEntryFlags =
+                ::x86::structures::paging::PageEntryFlags::regular_io_page_flags();
+            const PSIZE: ::common::enums::PageSize =
+                ::common::enums::PageSize::Regular;
         }
-
-        pub use dma_generic_family::DmaGeneric;
 
         $crate::slab_geometry!($($name),*);
         $crate::define_builtin_caches!(DmaGenericCaches, dma: $($name),*);
@@ -116,6 +102,37 @@ macro_rules! define_dma_generics {
                 }
             };
         }
+    };
+}
+
+/// Declares the slab family `$family` of the types `$t`, whose slabs are
+/// mapped as regular pages, and gives each type its slab geometry.
+///
+/// Call it in the crate that defines the types, which marks them
+/// `#[typestate_groups::state]` and depends on `typestate-groups`, `x86`
+/// and `common`. A type in two families fails to build.
+///
+/// ```ignore
+/// #[typestate_groups::state]
+/// pub struct Inode { .. }
+///
+/// slab::slab_family!(KernelObjects: Inode, Pcb);
+///
+/// // <Inode as SlabFamily>::Marker = KernelObjects
+/// // Inode::PreAllocatedArray = [PreAllocated<Inode>; Inode::OBJECTS_PER_SLAB]
+/// ```
+#[macro_export]
+macro_rules! slab_family {
+    ($family:ident: $($t:ident),+ $(,)?) => {
+        #[::typestate_groups::group($family)]
+        impl $crate::traits::SlabFamily for ($($t,)+) {
+            const PFLAGS: ::x86::structures::paging::PageEntryFlags =
+                ::x86::structures::paging::PageEntryFlags::regular_page_flags();
+            const PSIZE: ::common::enums::PageSize =
+                ::common::enums::PageSize::Regular;
+        }
+
+        $crate::slab_geometry!($($t),+);
     };
 }
 
