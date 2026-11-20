@@ -1,9 +1,14 @@
+use alloc::alloc::StaticAllocator;
 use buddy::BuddyAllocator;
 use common::constants::{
     MEMORY_MAP_LENGTH, MEMORY_MAP_OFFSET, PARSED_MEMORY_MAP,
     REGULAR_PAGE_SIZE,
 };
-use libk::{alloc::GlobalAllocator, okprintln};
+use core::{
+    alloc::{AllocError, Allocator, Layout},
+    ptr::NonNull,
+};
+use libk::okprintln;
 use page::{Page, arena::PageMap};
 use slab::{SlabAllocator, SlabSystem, static_allocator::GlobalSlab};
 use sync::once::Once;
@@ -12,7 +17,7 @@ use x86::memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended};
 static MMAP: Once<MemoryMap> = Once::uninit();
 
 #[global_allocator]
-static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
+static GLOBAL_ALLOCATOR: KernelAllocator = KernelAllocator;
 
 static BUDDY_ALLOCATOR: Once<BuddyAllocator<PageMap, Page>> =
     Once::uninit();
@@ -38,6 +43,51 @@ impl SlabSystem for KernelSlab {
 unsafe impl GlobalSlab for KernelSlab {
     fn slab() -> &'static SlabAllocator<KernelSlab> { &SLAB_ALLOCATOR }
 }
+
+/// The kernel's global allocator. A layout that a generic size holds goes
+/// to the slab, and every other layout to buddy.
+///
+/// It is zero-sized, and reaches both allocators through their statics,
+/// so it works once [`init`] returns.
+///
+/// ```ignore
+/// let small = Box::new(0u64); // a slot of `Generic8`
+/// let large = Box::new([0u8; 8192]); // two pages from buddy
+/// ```
+pub struct KernelAllocator;
+
+// SAFETY: both methods route a layout the same way, so a block returns to
+// the allocator it came from.
+unsafe impl Allocator for KernelAllocator {
+    fn allocate(
+        &self,
+        layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        if SLAB_ALLOCATOR.serves(layout) {
+            SLAB_ALLOCATOR.allocate(layout)
+        } else {
+            BUDDY_ALLOCATOR.allocate(layout)
+        }
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        if SLAB_ALLOCATOR.serves(layout) {
+            // SAFETY: `allocate` sent this layout to the slab too.
+            unsafe { SLAB_ALLOCATOR.deallocate(ptr, layout) }
+        } else {
+            // SAFETY: `allocate` sent this layout to buddy too.
+            unsafe { BUDDY_ALLOCATOR.deallocate(ptr, layout) }
+        }
+    }
+}
+
+// SAFETY: blocks are invalidated only by `deallocate`, and the two
+// statics never change once set.
+unsafe impl StaticAllocator for KernelAllocator {}
+
+// SAFETY: the slab takes its pages from buddy directly and buddy from its
+// arena, so a call never recurses into the global allocator.
+unsafe impl core::alloc::GlobalAllocator for KernelAllocator {}
 
 /// A box of a `T` from its own slab cache, one pointer wide.
 #[expect(
@@ -67,7 +117,8 @@ pub struct KernelMemory {
     pub slab: &'static SlabAllocator<KernelSlab>,
 }
 
-/// Parses the memory map and starts the buddy, global and slab allocators.
+/// Parses the memory map and starts the buddy and slab allocators. The
+/// global allocator works once this returns.
 ///
 /// # Safety
 ///
@@ -79,8 +130,6 @@ pub unsafe fn init() -> KernelMemory {
         .init_with(BuddyAllocator::<PageMap, Page>::new(mmap), |buddy| {
             buddy.get_mut().initialize(mmap)
         });
-    // SAFETY: the buddy allocator takes pages only from its own arena.
-    unsafe { GLOBAL_ALLOCATOR.set(buddy) };
     okprintln!("Initialized Buddy Allocator");
 
     let slab = SLAB_ALLOCATOR.init(SlabAllocator::new(buddy));
