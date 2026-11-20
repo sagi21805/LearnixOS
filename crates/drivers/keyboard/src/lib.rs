@@ -7,8 +7,7 @@
 use common::enums::{CascadedPicInterruptLine, Port};
 use sync::once::Once;
 use x86::{
-    instructions::{interrupts, port::PortExt},
-    interrupt_safe_mutex::InterruptSafeMutex,
+    instructions::port::PortExt, interrupt_safe_mutex::InterruptSafeMutex,
     pic8259::PIC,
     structures::interrupt_descriptor_table::InterruptStackFrame,
 };
@@ -23,7 +22,6 @@ pub static KEYBOARD: Once<InterruptSafeMutex<Keyboard>> = Once::uninit();
 pub extern "x86-interrupt" fn keyboard_handler(
     _stack_frame: InterruptStackFrame,
 ) {
-    unsafe { interrupts::disable() };
     // The controller holds its next byte until this read, so it always
     // runs.
     let scan_code = unsafe { Port::KeyboardData.inb() };
@@ -32,5 +30,4 @@ pub extern "x86-interrupt" fn keyboard_handler(
     }
     PIC.lock()
         .end_of_interrupt(CascadedPicInterruptLine::Keyboard);
-    unsafe { interrupts::enable() };
 }
