@@ -6,6 +6,7 @@ LearnixOS is a hobby operating system written from scratch in Rust. I build it t
 - I'd rather understand a smaller change than receive a large one I can't follow. Keep diffs focused, and ask before restructuring code I didn't ask you to touch.
 - When I ask how to do something, point me in the right direction first. Write the full implementation only when I ask for it.
 - If a hand-rolled solution would teach more than a crate dependency, say so before reaching for the crate.
+- When helping with a hardware-related problem, always list where the information came from: the manual and section, the page URL, or the command you ran. Prefer primary sources like vendor manuals and datasheets, and say plainly when a claim comes from memory or you couldn't check it.
 
 ## Skills
 
