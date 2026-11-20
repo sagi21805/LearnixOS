@@ -16,6 +16,7 @@ buddy.workspace = true
 sync.workspace = true
 page.workspace = true
 slab.workspace = true
+typestate-groups.workspace = true
 
 [lints]
 workspace = true
