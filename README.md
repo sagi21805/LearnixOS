@@ -8,6 +8,20 @@ This repository contains the source code of the LearnixOS kernel — an educatio
 
 This operating system is built from scratch and explained in detail in the [LearnixOS Book](https://www.learnix-os.com/) which aims to explain the subject of operating system while implementing one.
 
+# Getting the source
+
+The repository uses git submodules, and the build fails without them. Clone with `--recurse-submodules` to fetch them along with the main repository:
+
+```bash
+git clone --recurse-submodules https://github.com/sagi21805/LearnixOS.git
+```
+
+If you already cloned without it, fetch the submodules from inside the repository:
+
+```bash
+git submodule update --init --recursive
+```
+
 # Running the project
 
 This projects uses QEMU as the virtualization layer to run the kernel locally.
