@@ -117,6 +117,17 @@ impl<S: SlabSystem> SlabAllocator<S> {
         CacheAllocator::new(self)
     }
 
+    /// Whether a generic size holds `layout`, so `allocate` serves it.
+    ///
+    /// ```ignore
+    /// assert!(slab.serves(Layout::new::<u64>()));
+    /// assert!(!slab.serves(Layout::new::<[u8; 1 << 20]>()));
+    /// ```
+    pub fn serves(&self, layout: Layout) -> bool {
+        layout.pad_to_align().size().max(layout.align())
+            <= LARGEST_GENERIC_SIZE
+    }
+
     /// Allocates one `T`.
     pub fn kmalloc<T: CachedIn<S::Caches>>(
         &self,
