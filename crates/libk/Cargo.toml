@@ -6,7 +6,6 @@ edition.workspace = true
 [dependencies]
 common.workspace = true
 x86.workspace = true
-sync.workspace = true
 extend.workspace = true
 
 [lints]

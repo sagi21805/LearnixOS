@@ -5,7 +5,7 @@
 
 extern crate alloc;
 
-use alloc::{alloc::Allocator, vec::Vec};
+use alloc::vec::Vec;
 use bitfields::bitfields;
 use common::enums::{
     HeaderType, PciDeviceType, Port, VendorDevice, VendorID,
@@ -21,12 +21,11 @@ const DEVICES_PER_BUS: u8 = 32;
 const FUNCTIONS_PER_DEVICE: u8 = 8;
 const HEADER_DWORDS: usize = 16;
 
-/// Reads every PCI function on every bus into a `Vec` in `allocator`,
-/// ordered by address.
+/// Reads every PCI function on every bus, ordered by address.
 ///
-/// `scan_pci(allocator) -> [00:00.0, 00:01.0, 00:1f.0, 00:1f.2, ..]`
-pub fn scan_pci<A: Allocator>(allocator: A) -> Vec<PciDevice, A> {
-    let mut devices = Vec::new_in(allocator);
+/// `scan_pci() -> [00:00.0, 00:01.0, 00:1f.0, 00:1f.2, ..]`
+pub fn scan_pci() -> Vec<PciDevice> {
+    let mut devices = Vec::new();
     for bus in 0..=u8::MAX {
         for device in 0..DEVICES_PER_BUS {
             let Some(first) = PciDevice::read(PciAddress {

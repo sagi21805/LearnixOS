@@ -1,6 +1,6 @@
 /// Declares the generic allocation sizes, smallest first, in the
-/// [`Generic`] group, along with their caches in `GenericCaches` and
-/// `match_generic!` over them.
+/// [`Generic`] group, along with their caches in `GenericCaches`,
+/// `LARGEST_GENERIC_SIZE` and `match_generic!` over them.
 ///
 /// ```ignore
 /// define_generics!(Generic8 = 8, Generic16 = 16);
@@ -34,6 +34,12 @@ macro_rules! define_generics {
 
         $crate::slab_geometry!($($name),*);
         $crate::define_builtin_caches!(GenericCaches, generic: $($name),*);
+
+        /// The largest generic size. The slab serves no layout above it.
+        pub const LARGEST_GENERIC_SIZE: usize = {
+            let sizes = [$($size),*];
+            sizes[sizes.len() - 1]
+        };
 
         /// Runs `$body` with `$t` as the smallest generic size that holds
         /// `$size` bytes.

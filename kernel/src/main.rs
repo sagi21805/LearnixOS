@@ -1,17 +1,16 @@
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
+#![feature(allocator_ext)]
 extern crate alloc;
 
 use alloc::boxed::Box;
 use common::ansi::{bright_yellow, red};
 use libk::{okprintln, println};
-use pci::PciDevice;
-use slab::StaticSlabAllocator;
 use vga_display::{SCREEN, Scrollback};
 use x86::instructions::cpuid;
 
-use crate::memory::SlabVec;
+use crate::memory::MMAP;
 
 mod console;
 mod idt;
@@ -32,23 +31,21 @@ pub unsafe extern "C" fn _start() -> ! {
     okprintln!("Enabled Paging");
     okprintln!("Entered Long Mode");
     // SAFETY: the second stage stored the memory map before jumping here.
-    let memory = unsafe { memory::init() };
+    unsafe { memory::init() };
 
     // SAFETY: the second stage's GDT is still loaded.
     unsafe { idt::init() };
 
-    console::init_keyboard(memory.slab);
+    console::init_keyboard();
 
-    SCREEN.lock().attach_scrollback(Box::new_in(
-        Scrollback::default(),
-        memory.slab,
-    ));
+    SCREEN
+        .lock()
+        .attach_scrollback(Box::new(Scrollback::default()));
     okprintln!("Attached scrollback");
 
-    let pci_devices: SlabVec<PciDevice> =
-        pci::scan_pci(StaticSlabAllocator::new());
+    let pci_devices = pci::scan_pci();
 
-    println!("{}", memory.mmap);
+    println!("{}", MMAP.get().unwrap());
 
     for device in pci_devices {
         println!("{}", device);

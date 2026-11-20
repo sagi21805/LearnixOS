@@ -2,110 +2,18 @@ extern crate alloc;
 
 use core::{alloc::Layout, ptr::NonNull};
 
-use alloc::alloc::{AllocError, Allocator, StaticAllocator, alloc_zeroed};
+use alloc::alloc::{AllocError, alloc_zeroed};
 
 use common::{
     address_types::{PhysicalAddress, VirtualAddress},
     enums::{PageSize, PageTableLevel},
     error::{EntryError, MappingError},
 };
-use sync::once::Once;
 use x86::structures::paging::{
     PageEntryFlags, PageTable, PageTableEntry, VirtualAddressExt,
 };
 
 use crate::println;
-
-/// The allocator behind [`GlobalAllocator`].
-pub type DynAllocator = dyn Allocator + Send + Sync;
-
-pub struct GlobalAllocator<'a> {
-    allocator: Once<&'a DynAllocator>,
-}
-
-impl<'a> GlobalAllocator<'a> {
-    /// Routes every allocation and free to `allocator`.
-    ///
-    /// # Safety
-    ///
-    /// `allocator` must not allocate through the global allocator while it
-    /// allocates, frees or resizes.
-    ///
-    /// # Panics
-    ///
-    /// When an allocator was already set.
-    pub unsafe fn set(&self, allocator: &'a DynAllocator) {
-        self.allocator.init(allocator);
-    }
-
-    pub const fn uninit() -> Self {
-        Self {
-            allocator: Once::uninit(),
-        }
-    }
-}
-
-// SAFETY: each method forwards to the one allocator `set` installs, so a
-// block stays valid until it is freed.
-unsafe impl Allocator for GlobalAllocator<'_> {
-    fn allocate(
-        &self,
-        layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        self.allocator.allocate(layout)
-    }
-
-    fn allocate_zeroed(
-        &self,
-        layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        self.allocator.allocate_zeroed(layout)
-    }
-
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        // SAFETY: the caller's guarantees carry over.
-        unsafe { self.allocator.deallocate(ptr, layout) }
-    }
-
-    unsafe fn grow(
-        &self,
-        ptr: NonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        // SAFETY: the caller's guarantees carry over.
-        unsafe { self.allocator.grow(ptr, old_layout, new_layout) }
-    }
-
-    unsafe fn grow_zeroed(
-        &self,
-        ptr: NonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        // SAFETY: the caller's guarantees carry over.
-        unsafe { self.allocator.grow_zeroed(ptr, old_layout, new_layout) }
-    }
-
-    unsafe fn shrink(
-        &self,
-        ptr: NonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        // SAFETY: the caller's guarantees carry over.
-        unsafe { self.allocator.shrink(ptr, old_layout, new_layout) }
-    }
-}
-
-// SAFETY: blocks are invalidated only by `deallocate`. Dropping the
-// wrapper frees nothing, and the allocator is set once, so it never
-// changes under a live block.
-unsafe impl StaticAllocator for GlobalAllocator<'static> {}
-
-// SAFETY: `set` requires an allocator that never allocates through the
-// global allocator, so a call never recurses into it.
-unsafe impl core::alloc::GlobalAllocator for GlobalAllocator<'static> {}
 
 /// Allocates a zeroed table, and points `entry` at its physical address.
 pub fn alloc_table(
