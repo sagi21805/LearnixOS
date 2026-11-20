@@ -96,9 +96,6 @@ unsafe impl core::alloc::GlobalAllocator for KernelAllocator {}
 )]
 pub type SlabBox<T> = slab::SlabBox<T, KernelSlab>;
 
-/// A vector whose buffer comes from the slab's generic sizes.
-pub type SlabVec<T> = slab::SlabVec<T, KernelSlab>;
-
 /// A ring buffer whose buffer comes from the slab's generic sizes.
 #[expect(dead_code, reason = "nothing in the kernel uses it yet")]
 pub type SlabVecDeque<T> = slab::SlabVecDeque<T, KernelSlab>;

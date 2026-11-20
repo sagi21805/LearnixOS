@@ -7,12 +7,8 @@ extern crate alloc;
 use alloc::boxed::Box;
 use common::ansi::{bright_yellow, red};
 use libk::{okprintln, println};
-use pci::PciDevice;
-use slab::StaticSlabAllocator;
 use vga_display::{SCREEN, Scrollback};
 use x86::instructions::cpuid;
-
-use crate::memory::SlabVec;
 
 mod console;
 mod idt;
@@ -38,7 +34,7 @@ pub unsafe extern "C" fn _start() -> ! {
     // SAFETY: the second stage's GDT is still loaded.
     unsafe { idt::init() };
 
-    console::init_keyboard(memory.slab);
+    console::init_keyboard();
 
     SCREEN.lock().attach_scrollback(Box::new_in(
         Scrollback::default(),
@@ -46,8 +42,7 @@ pub unsafe extern "C" fn _start() -> ! {
     ));
     okprintln!("Attached scrollback");
 
-    let pci_devices: SlabVec<PciDevice> =
-        pci::scan_pci(StaticSlabAllocator::new());
+    let pci_devices = pci::scan_pci();
 
     println!("{}", memory.mmap);
 
