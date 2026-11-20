@@ -14,7 +14,7 @@ use slab::{SlabAllocator, SlabSystem, static_allocator::GlobalSlab};
 use sync::once::Once;
 use x86::memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended};
 
-static MMAP: Once<MemoryMap> = Once::uninit();
+pub static MMAP: Once<MemoryMap> = Once::uninit();
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: KernelAllocator = KernelAllocator;
@@ -96,19 +96,13 @@ unsafe impl core::alloc::GlobalAllocator for KernelAllocator {}
 )]
 pub type SlabBox<T> = slab::SlabBox<T, KernelSlab>;
 
-/// What the later boot steps need from the memory setup.
-pub struct KernelMemory {
-    pub mmap: &'static MemoryMap,
-    pub slab: &'static SlabAllocator<KernelSlab>,
-}
-
 /// Parses the memory map and starts the buddy and slab allocators. The
 /// global allocator works once this returns.
 ///
 /// # Safety
 ///
 /// The contract of [`read_memory_map`] applies.
-pub unsafe fn init() -> KernelMemory {
+pub unsafe fn init() {
     let mmap = MMAP.init(unsafe { read_memory_map() });
 
     let buddy = BUDDY_ALLOCATOR
@@ -117,10 +111,8 @@ pub unsafe fn init() -> KernelMemory {
         });
     okprintln!("Initialized Buddy Allocator");
 
-    let slab = SLAB_ALLOCATOR.init(SlabAllocator::new(buddy));
+    let _ = SLAB_ALLOCATOR.init(SlabAllocator::new(buddy));
     okprintln!("Initialized Slab Allocator");
-
-    KernelMemory { mmap, slab }
 }
 
 /// Parses the raw map the second stage stored into [`PARSED_MEMORY_MAP`].
