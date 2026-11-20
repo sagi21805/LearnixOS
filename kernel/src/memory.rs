@@ -96,18 +96,6 @@ unsafe impl core::alloc::GlobalAllocator for KernelAllocator {}
 )]
 pub type SlabBox<T> = slab::SlabBox<T, KernelSlab>;
 
-/// A ring buffer whose buffer comes from the slab's generic sizes.
-#[expect(dead_code, reason = "nothing in the kernel uses it yet")]
-pub type SlabVecDeque<T> = slab::SlabVecDeque<T, KernelSlab>;
-
-/// An atomically counted `T` from the slab's generic sizes.
-#[expect(dead_code, reason = "nothing in the kernel uses it yet")]
-pub type SlabArc<T> = slab::SlabArc<T, KernelSlab>;
-
-/// A counted `T` from the slab's generic sizes.
-#[expect(dead_code, reason = "nothing in the kernel uses it yet")]
-pub type SlabRc<T> = slab::SlabRc<T, KernelSlab>;
-
 /// What the later boot steps need from the memory setup.
 pub struct KernelMemory {
     pub mmap: &'static MemoryMap,
