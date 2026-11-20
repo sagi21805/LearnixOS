@@ -1,5 +1,6 @@
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![feature(allocator_ext)]
 #![feature(ptr_alignment_type)]
 #![feature(const_trait_impl)]
 #![feature(const_cmp)]
@@ -25,12 +26,18 @@ pub mod local_macros;
 pub mod object_index;
 pub mod preallocated;
 pub mod slab_objects;
+pub mod static_allocator;
 pub mod traits;
 
 pub use arena::{SlabArena, SlabFlags};
+pub use static_allocator::{
+    GlobalSlab, SlabArc, SlabBox, SlabBoxNew, SlabRc, SlabVec,
+    SlabVecDeque, StaticCacheAllocator, StaticSlabAllocator,
+    StaticSlabDmaAllocator,
+};
 
 use crate::{
-    cache::SlabCaches,
+    cache::{CachedIn, ExternalCaches, SlabCaches},
     cache_allocator::CacheAllocator,
     descriptor::{FreeDetached, SlabDescriptor},
     traits::{Slab, SlabBlock},
@@ -71,29 +78,31 @@ define_dma_generics!(
     DmaGeneric8192 = 8192,
 );
 
-define_slab_system!();
-
-pub struct SlabAllocator<Block, Arena>
-where
-    Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + SlabArena + 'static,
-{
-    caches: SpinMutex<SlabCaches<SLAB_COUNT>>,
-    buddy: &'static BuddyAllocator<Arena, Block>,
+/// The types one slab allocator works with, which always travel
+/// together.
+pub trait SlabSystem: Sized + 'static {
+    /// The buddy block, which holds the descriptor of a slab.
+    type Block: BuddyBlock + SlabBlock + 'static;
+    /// The buddy arena the pages of the slabs come from.
+    type Arena: BuddyArena<Self::Block> + SlabArena + 'static;
+    /// The caches of the program's own slab types, from
+    /// [`slab_caches!`].
+    type Caches: ExternalCaches;
 }
 
-impl<Block, Arena> SlabAllocator<Block, Arena>
-where
-    Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + SlabArena + 'static,
-{
+pub struct SlabAllocator<S: SlabSystem> {
+    caches: SpinMutex<SlabCaches<S::Caches>>,
+    buddy: &'static BuddyAllocator<S::Arena, S::Block>,
+}
+
+impl<S: SlabSystem> SlabAllocator<S> {
     /// A slab allocator with empty caches, which takes its pages from
     /// `buddy`.
     ///
     /// No descriptor points back into the caches, so unlike the buddy
     /// allocator it needs no pinning.
     pub const fn new(
-        buddy: &'static BuddyAllocator<Arena, Block>,
+        buddy: &'static BuddyAllocator<S::Arena, S::Block>,
     ) -> Self {
         Self {
             caches: SpinMutex::new(SlabCaches::new()),
@@ -102,14 +111,16 @@ where
     }
 
     /// The allocator for `T`s, from `T`'s slab cache.
-    pub const fn cache<T: Slab>(
+    pub const fn cache<T: CachedIn<S::Caches>>(
         &self,
-    ) -> CacheAllocator<'_, T, Block, Arena> {
+    ) -> CacheAllocator<'_, T, S> {
         CacheAllocator::new(self)
     }
 
     /// Allocates one `T`.
-    pub fn kmalloc<T: Slab>(&self) -> Result<NonNull<T>, AllocError> {
+    pub fn kmalloc<T: CachedIn<S::Caches>>(
+        &self,
+    ) -> Result<NonNull<T>, AllocError> {
         self.cache::<T>()
             .allocate(Layout::new::<T>())
             .map(NonNull::cast)
@@ -120,7 +131,7 @@ where
     /// # Safety
     ///
     /// `ptr` must come from `kmalloc::<T>` and not be freed since.
-    pub unsafe fn kfree<T: Slab>(&self, ptr: NonNull<T>) {
+    pub unsafe fn kfree<T: CachedIn<S::Caches>>(&self, ptr: NonNull<T>) {
         unsafe {
             self.cache::<T>().deallocate(ptr.cast(), Layout::new::<T>())
         }
@@ -187,11 +198,7 @@ where
 
 // SAFETY: a layout always picks the same generic size, so a block returns
 // to the cache it came from.
-unsafe impl<Block, Arena> Allocator for SlabAllocator<Block, Arena>
-where
-    Block: BuddyBlock + SlabBlock + 'static,
-    Arena: BuddyArena<Block> + SlabArena + 'static,
-{
+unsafe impl<S: SlabSystem> Allocator for SlabAllocator<S> {
     /// Serves `layout` from the smallest generic size that fits it.
     fn allocate(
         &self,

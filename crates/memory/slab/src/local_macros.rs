@@ -1,5 +1,5 @@
 /// Declares the generic allocation sizes, smallest first, in the
-/// [`Generic`] group, along with `number_generic_slabs!` and
+/// [`Generic`] group, along with their caches in `GenericCaches` and
 /// `match_generic!` over them.
 ///
 /// ```ignore
@@ -24,27 +24,16 @@ macro_rules! define_generics {
             pub struct $name(pub [usize; $size / 8]);
         )*
 
-        mod generic_family {
-            use super::{$($name),*};
-            use $crate::traits::{SlabFamily, SlabFamilyGroupMarker};
-
-            #[::typestate_groups::group(Generic)]
-            impl SlabFamily for ($($name,)*) {
-                const PFLAGS: ::x86::structures::paging::PageEntryFlags =
-                    ::x86::structures::paging::PageEntryFlags::regular_page_flags();
-                const PSIZE: ::common::enums::PageSize =
-                    ::common::enums::PageSize::Regular;
-            }
+        #[::typestate_groups::group(Generic)]
+        impl $crate::traits::SlabFamily for ($($name,)*) {
+            const PFLAGS: ::x86::structures::paging::PageEntryFlags =
+                ::x86::structures::paging::PageEntryFlags::regular_page_flags();
+            const PSIZE: ::common::enums::PageSize =
+                ::common::enums::PageSize::Regular;
         }
 
-        pub use generic_family::Generic;
-
-        /// `number_slab_types!` with the generic sizes first.
-        macro_rules! number_generic_slabs {
-            ($$($$t:ty),* $$(,)?) => {
-                $crate::number_slab_types!($($name,)* $$($$t),*);
-            };
-        }
+        $crate::slab_geometry!($($name),*);
+        $crate::define_builtin_caches!(GenericCaches, generic: $($name),*);
 
         /// Runs `$body` with `$t` as the smallest generic size that holds
         /// `$size` bytes.
@@ -64,15 +53,18 @@ macro_rules! define_generics {
 }
 
 /// Declares the DMA allocation sizes, smallest first, in the
-/// [`DmaGeneric`] group, along with `define_slab_system!` and
-/// `match_dma_generic!` over them. Call it after `define_generics!`.
+/// [`DmaGeneric`] group, along with their caches in `DmaGenericCaches`
+/// and `match_dma_generic!` over them.
 ///
 /// ```ignore
 /// define_dma_generics!(DmaGeneric512 = 512);
 ///
-/// define_slab_system!(Pcb);
+/// match_dma_generic!(size, T => { body }, _ => fallback)
 /// // expands to
-/// number_generic_slabs!(DmaGeneric512, Pcb);
+/// match size {
+///     ..=512 => { type T = DmaGeneric512; body }
+///     _ => fallback,
+/// }
 /// ```
 ///
 /// [`DmaGeneric`]: crate::DmaGeneric
@@ -85,28 +77,17 @@ macro_rules! define_dma_generics {
             pub struct $name(pub [usize; $size / 8]);
         )*
 
-        mod dma_generic_family {
-            use super::{$($name),*};
-            use $crate::traits::{SlabFamily, SlabFamilyGroupMarker};
-
-            /// Mapped uncached, so a device and the CPU see the same bytes.
-            #[::typestate_groups::group(DmaGeneric)]
-            impl SlabFamily for ($($name,)*) {
-                const PFLAGS: ::x86::structures::paging::PageEntryFlags =
-                    ::x86::structures::paging::PageEntryFlags::regular_io_page_flags();
-                const PSIZE: ::common::enums::PageSize =
-                    ::common::enums::PageSize::Regular;
-            }
+        /// Mapped uncached, so a device and the CPU see the same bytes.
+        #[::typestate_groups::group(DmaGeneric)]
+        impl $crate::traits::SlabFamily for ($($name,)*) {
+            const PFLAGS: ::x86::structures::paging::PageEntryFlags =
+                ::x86::structures::paging::PageEntryFlags::regular_io_page_flags();
+            const PSIZE: ::common::enums::PageSize =
+                ::common::enums::PageSize::Regular;
         }
 
-        pub use dma_generic_family::DmaGeneric;
-
-        /// `number_generic_slabs!` with the DMA sizes first.
-        macro_rules! define_slab_system {
-            ($$($$t:ty),* $$(,)?) => {
-                number_generic_slabs!($($name,)* $$($$t),*);
-            };
-        }
+        $crate::slab_geometry!($($name),*);
+        $crate::define_builtin_caches!(DmaGenericCaches, dma: $($name),*);
 
         /// `match_generic!` over the DMA sizes.
         macro_rules! match_dma_generic {
@@ -124,36 +105,158 @@ macro_rules! define_dma_generics {
     };
 }
 
-/// Numbers the slab types in order, giving each its position in
-/// [`SlabCaches`](crate::cache::SlabCaches) and its `PreAllocatedArray`.
+/// Declares the slab family `$family` of the types `$t`, whose slabs are
+/// mapped as regular pages, and gives each type its slab geometry.
+///
+/// Call it in the crate that defines the types, which marks them
+/// `#[typestate_groups::state]` and depends on `typestate-groups`, `x86`
+/// and `common`. A type in two families fails to build.
 ///
 /// ```ignore
-/// number_slab_types!(Generic8, Generic16);
+/// #[typestate_groups::state]
+/// pub struct Inode { .. }
 ///
-/// assert_eq!(Generic8::SLAB_POSITION, 0);
-/// assert_eq!(Generic16::SLAB_POSITION, 1);
-/// assert_eq!(SLAB_COUNT, 2);
-/// // Generic8::PreAllocatedArray = [PreAllocated<Generic8>; 512]
+/// slab::slab_family!(KernelObjects: Inode, Pcb);
+///
+/// // <Inode as SlabFamily>::Marker = KernelObjects
+/// // Inode::PreAllocatedArray = [PreAllocated<Inode>; Inode::OBJECTS_PER_SLAB]
 /// ```
 #[macro_export]
-macro_rules! number_slab_types {
+macro_rules! slab_family {
+    ($family:ident: $($t:ident),+ $(,)?) => {
+        #[::typestate_groups::group($family)]
+        impl $crate::traits::SlabFamily for ($($t,)+) {
+            const PFLAGS: ::x86::structures::paging::PageEntryFlags =
+                ::x86::structures::paging::PageEntryFlags::regular_page_flags();
+            const PSIZE: ::common::enums::PageSize =
+                ::common::enums::PageSize::Regular;
+        }
+
+        $crate::slab_geometry!($($t),+);
+    };
+}
+
+/// Defines the caches `$name` of a program's own slab types, one field
+/// per type, grouped under the family each type is in. A type listed
+/// under a family it isn't in fails to build.
+///
+/// ```ignore
+/// slab::slab_caches! {
+///     /// The caches of the kernel's own slab types.
+///     pub struct KernelCaches {
+///         KernelObjects { inode: Inode, pcb: Pcb }
+///         pci::PciObjects { device: pci::PciDevice }
+///     }
+/// }
+///
+/// let inode = SlabBox::<Inode, KernelSlab>::try_new_slab(Inode::new())?;
+///
+/// // Doesn't compile, because `Task` isn't listed.
+/// let task = SlabBox::<Task, KernelSlab>::try_new_slab(Task::new())?;
+/// ```
+#[macro_export]
+macro_rules! slab_caches {
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $name:ident {
+            $( $family:path { $( $field:ident: $t:ty ),* $(,)? } )*
+        }
+    ) => {
+        $(#[$meta])*
+        $vis struct $name {
+            $($( $field: $crate::cache::SlabCache<$t>, )*)*
+        }
+
+        impl $crate::cache::ExternalCaches for $name {
+            const EMPTY: Self = Self {
+                $($( $field: $crate::cache::SlabCache::new(), )*)*
+            };
+        }
+
+        $($(
+            const _: () = {
+                const fn listed_under_its_family<T>()
+                where
+                    T: $crate::traits::SlabFamilyGroupMember<$family>,
+                {
+                }
+                listed_under_its_family::<$t>()
+            };
+
+            // SAFETY: field `$field` holds the cache of `$t`, and no other
+            // type reaches it.
+            unsafe impl $crate::cache::CachedIn<$name> for $t {
+                fn cache(
+                    caches: &mut $crate::cache::SlabCaches<$name>,
+                ) -> &mut $crate::cache::SlabCache<Self> {
+                    &mut caches.external.$field
+                }
+            }
+        )*)*
+    };
+}
+
+/// The tuple struct `$caches` with one cache per built-in size, and
+/// `CachedIn` for each size in the caches of every program, through field
+/// `$field` of [`BuiltinCaches`](crate::cache::BuiltinCaches).
+///
+/// ```ignore
+/// define_builtin_caches!(GenericCaches, generic: Generic8, Generic16);
+/// // expands to
+/// pub(crate) struct GenericCaches(SlabCache<Generic8>, SlabCache<Generic16>);
+/// unsafe impl<C> CachedIn<C> for Generic8 { .. caches.builtin.generic.0 }
+/// unsafe impl<C> CachedIn<C> for Generic16 { .. caches.builtin.generic.1 }
+/// ```
+#[doc(hidden)]
+#[macro_export]
+macro_rules! define_builtin_caches {
+    ($caches:ident, $field:ident: $($name:ident),*) => {
+        pub(crate) struct $caches($($crate::cache::SlabCache<$name>),*);
+
+        impl $caches {
+            /// Every cache, empty.
+            pub(crate) const EMPTY: Self = Self(
+                $({ stringify!($name); $crate::cache::SlabCache::new() }),*
+            );
+        }
+
+        $(
+            // SAFETY: field `${index()}` of the built-in caches holds the
+            // cache of `$name`, and no other type reaches it.
+            unsafe impl<C> $crate::cache::CachedIn<C> for $name {
+                fn cache(
+                    caches: &mut $crate::cache::SlabCaches<C>,
+                ) -> &mut $crate::cache::SlabCache<Self> {
+                    &mut caches.builtin.$field.${index()}
+                }
+            }
+        )*
+    };
+}
+
+/// [`SlabGeometry`](crate::traits::SlabGeometry) for each of the types
+/// `$t`.
+///
+/// ```ignore
+/// slab_geometry!(Inode);
+/// // expands to
+/// unsafe impl SlabGeometry for Inode {
+///     type PreAllocatedArray =
+///         [PreAllocated<Inode>; Inode::OBJECTS_PER_SLAB];
+/// }
+/// ```
+#[doc(hidden)]
+#[macro_export]
+macro_rules! slab_geometry {
     ($($t:ty),* $(,)?) => {
         $(
-            impl $crate::traits::sealed::Sealed for $t {}
-
-            impl $crate::traits::SlabGeometry for $t {
+            // SAFETY: the array holds `OBJECTS_PER_SLAB` slots of `$t`.
+            unsafe impl $crate::traits::SlabGeometry for $t {
                 type PreAllocatedArray = [
                     $crate::preallocated::PreAllocated<$t>;
                     <$t as $crate::traits::SlabGeometry>::OBJECTS_PER_SLAB
                 ];
             }
-
-            impl $crate::traits::Slab for $t {
-                const SLAB_POSITION: usize = ${index()};
-            }
         )*
-
-        /// The number of slab types.
-        const SLAB_COUNT: usize = ${count($t)};
     };
 }

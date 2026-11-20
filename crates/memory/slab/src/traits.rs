@@ -10,30 +10,17 @@ use crate::{
     preallocated::PreAllocated,
 };
 
-/// A type allocated from its own slab cache, the one at `SLAB_POSITION`
-/// in [`SlabCaches`](crate::cache::SlabCaches).
-pub trait Slab:
-    SlabGeometry + SlabFamily + sealed::Sealed + 'static
-{
-    /// The index of this type's cache, which no other type shares.
-    const SLAB_POSITION: usize;
-}
+/// A type that can live in a slab.
+pub trait Slab: SlabGeometry + 'static {}
 
-/// The type of the caches in [`SlabCaches`](crate::cache::SlabCaches)
-/// before one is cast to the slab it holds. It has no cache of its own.
+impl<T: SlabGeometry + 'static> Slab for T {}
+
+/// The type of a slab descriptor before it is cast to the slab it holds.
+/// It has no cache of its own.
 #[state]
 pub struct Unknown;
 
-impl Slab for Unknown {
-    const SLAB_POSITION: usize = usize::MAX;
-}
-
-impl SlabGeometry for Unknown {
-    type PreAllocatedArray = [PreAllocated<Unknown>;
-        <Unknown as SlabGeometry>::OBJECTS_PER_SLAB];
-}
-
-impl sealed::Sealed for Unknown {}
+crate::slab_geometry!(Unknown);
 
 #[group(UnknownSlabs)]
 impl SlabFamily for (Unknown,) {
@@ -41,16 +28,14 @@ impl SlabFamily for (Unknown,) {
     const PSIZE: PageSize = PageSize::Regular;
 }
 
-/// Keeps [`Slab`] to the types `define_slab_system!` numbers, as
-/// [`SlabCaches::cache`](crate::cache::SlabCaches::cache) trusts that no
-/// two of them share a position.
-pub(crate) mod sealed {
-    pub trait Sealed {}
-}
-
 /// The sizes of a slab of `Self`, all derived from the size of its slot
 /// and the page size of its family.
-pub trait SlabGeometry: SlabFamily + Sized {
+///
+/// # Safety
+///
+/// `PreAllocatedArray` must be `[PreAllocated<Self>; OBJECTS_PER_SLAB]`,
+/// because a slab's objects are read as that many slots.
+pub unsafe trait SlabGeometry: SlabFamily + Sized {
     /// The buddy order of one slab, the smallest that fits an object.
     const BUDDY_ORDER: usize = size_of::<PreAllocated<Self>>()
         .div_ceil(Self::PSIZE.size())

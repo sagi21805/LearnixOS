@@ -5,7 +5,7 @@ use common::constants::{
 };
 use libk::{alloc::GlobalAllocator, okprintln};
 use page::{Page, arena::PageMap};
-use slab::SlabAllocator;
+use slab::{SlabAllocator, SlabSystem, static_allocator::GlobalSlab};
 use sync::once::Once;
 use x86::memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended};
 
@@ -17,12 +17,54 @@ static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::uninit();
 static BUDDY_ALLOCATOR: Once<BuddyAllocator<PageMap, Page>> =
     Once::uninit();
 
-static SLAB_ALLOCATOR: Once<SlabAllocator<Page, PageMap>> = Once::uninit();
+static SLAB_ALLOCATOR: Once<SlabAllocator<KernelSlab>> = Once::uninit();
+
+slab::slab_caches! {
+    /// The caches of the kernel's own slab types.
+    pub struct KernelCaches {}
+}
+
+/// The kernel's slab system, for the zero-sized allocator types.
+pub struct KernelSlab;
+
+impl SlabSystem for KernelSlab {
+    type Block = Page;
+    type Arena = PageMap;
+    type Caches = KernelCaches;
+}
+
+// SAFETY: `SLAB_ALLOCATOR` is a static, so every call returns the same
+// allocator.
+unsafe impl GlobalSlab for KernelSlab {
+    fn slab() -> &'static SlabAllocator<KernelSlab> { &SLAB_ALLOCATOR }
+}
+
+/// A box of a `T` from its own slab cache, one pointer wide.
+#[expect(
+    dead_code,
+    reason = "the kernel declares no slab type of its own yet"
+)]
+pub type SlabBox<T> = slab::SlabBox<T, KernelSlab>;
+
+/// A vector whose buffer comes from the slab's generic sizes.
+pub type SlabVec<T> = slab::SlabVec<T, KernelSlab>;
+
+/// A ring buffer whose buffer comes from the slab's generic sizes.
+#[expect(dead_code, reason = "nothing in the kernel uses it yet")]
+pub type SlabVecDeque<T> = slab::SlabVecDeque<T, KernelSlab>;
+
+/// An atomically counted `T` from the slab's generic sizes.
+#[expect(dead_code, reason = "nothing in the kernel uses it yet")]
+pub type SlabArc<T> = slab::SlabArc<T, KernelSlab>;
+
+/// A counted `T` from the slab's generic sizes.
+#[expect(dead_code, reason = "nothing in the kernel uses it yet")]
+pub type SlabRc<T> = slab::SlabRc<T, KernelSlab>;
 
 /// What the later boot steps need from the memory setup.
 pub struct KernelMemory {
     pub mmap: &'static MemoryMap,
-    pub slab: &'static SlabAllocator<Page, PageMap>,
+    pub slab: &'static SlabAllocator<KernelSlab>,
 }
 
 /// Parses the memory map and starts the buddy, global and slab allocators.

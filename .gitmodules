@@ -1,3 +1,4 @@
 [submodule "crates/macros/typestate-groups"]
 	path = crates/macros/typestate-groups
 	url = https://github.com/sagi21805/typestate-groups.git
+	branch = feat/group-trait-path
