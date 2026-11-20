@@ -66,8 +66,6 @@ define_generics!(
     Generic512 = 512,
     Generic1024 = 1024,
     Generic2048 = 2048,
-    Generic4096 = 4096,
-    Generic8192 = 8192,
 );
 
 define_dma_generics!(
