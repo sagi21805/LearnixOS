@@ -5,6 +5,8 @@ pub mod ready;
 #[expect(dead_code, reason = "the executor hands out slots in plan 06")]
 pub mod slot;
 pub mod task;
+#[expect(dead_code, reason = "the executor polls with it in plan 06")]
+mod waker;
 
 /// The most tasks the executor runs at once.
 pub const MAX_TASKS: usize = 512;
