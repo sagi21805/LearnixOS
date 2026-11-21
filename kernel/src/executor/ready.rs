@@ -1,5 +1,7 @@
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use x86::instructions::interrupts;
+
 use super::{WORDS, slot::Slot};
 
 /// The slots whose tasks wait for a poll, one bit each.
@@ -38,6 +40,22 @@ impl ReadySet {
     /// Whether no slot is ready.
     pub fn is_empty(&self) -> bool {
         self.0.iter().all(|word| word.load(Ordering::Relaxed) == 0)
+    }
+
+    /// Halts until an interrupt arrives, unless a slot is ready.
+    ///
+    /// The check runs with interrupts off, and `sti; hlt` turns them back
+    /// on, so a wake between the check and the `hlt` still wakes the CPU.
+    pub fn wait_for_task(&self) {
+        // SAFETY: both branches below turn interrupts back on.
+        unsafe { interrupts::disable() };
+        if self.is_empty() {
+            // SAFETY: the PIC unmasks only IRQs that have handlers.
+            unsafe { interrupts::enable_and_hlt() };
+        } else {
+            // SAFETY: the executor runs with interrupts on.
+            unsafe { interrupts::enable() };
+        }
     }
 }
 

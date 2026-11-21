@@ -13,6 +13,7 @@ use x86::instructions::cpuid;
 use crate::memory::MMAP;
 
 mod console;
+#[expect(dead_code, reason = "the console task runs on it in plan 07")]
 mod executor;
 mod idt;
 mod memory;
