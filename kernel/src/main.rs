@@ -13,6 +13,7 @@ use x86::instructions::cpuid;
 use crate::memory::MMAP;
 
 mod console;
+mod executor;
 mod idt;
 mod memory;
 mod panic;
