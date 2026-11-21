@@ -1,16 +1,11 @@
 //! Runs the kernel's tasks, each polled only after its waker fires.
 
-use alloc::{boxed::Box, collections::VecDeque};
+use alloc::{alloc::StaticAllocator, boxed::Box, collections::VecDeque};
 use core::{alloc::AllocError, pin::Pin, task::Context};
 
-use common::constants::REGULAR_PAGE_SIZE;
-use slab::SlabBoxNew;
 use thiserror::Error;
 
-use crate::{
-    executor::{free::FreeSlots, ready::READY, slot::Slot, task::Task},
-    memory::SlabBox,
-};
+use crate::executor::{free::FreeSlots, ready::READY, slot::Slot};
 
 mod free;
 pub mod ready;
@@ -29,26 +24,18 @@ const _: () = assert!(
     "every word of a slot bitmap is whole"
 );
 
-/// Each slot's task, `None` while the slot is free.
-type TaskTable = [Option<Pin<SlabBox<Task>>>; MAX_TASKS];
+/// Each slot's task, boxed by `A`, `None` while the slot is free.
+pub type TaskTable<T, A> = [Option<Pin<Box<T, A>>>; MAX_TASKS];
 
-const _: () = assert!(
-    size_of::<TaskTable>() == REGULAR_PAGE_SIZE,
-    "the task table fills one page"
-);
-const _: () = assert!(
-    size_of::<TaskTable>() > slab::LARGEST_GENERIC_SIZE,
-    "the task table comes from buddy, not from a generic size"
-);
-
-/// Runs the kernel's tasks, polling each one only after its waker fires.
+/// Runs tasks of type `T`, each in a box from `A`, polling each one only
+/// after its waker fires.
 ///
 /// Wakers record ready slots in [`READY`]. Each round, the executor moves
 /// them into its run queue and polls them in that order, so the run queue
 /// is the scheduling policy.
-pub struct Executor {
+pub struct Executor<T, A: StaticAllocator> {
     /// Indexed by [`Slot`]. A task keeps its slot until it finishes.
-    tasks: Box<TaskTable>,
+    tasks: Box<TaskTable<T, A>>,
     free: FreeSlots,
     /// The slots this round polls, in the order it polls them.
     run_queue: VecDeque<Slot>,
@@ -58,13 +45,13 @@ pub struct Executor {
 pub enum SpawnError {
     #[error("the executor runs at most {} tasks", MAX_TASKS)]
     Full,
-    #[error("no slab slot is free for the task")]
+    #[error("the allocator has no memory for the task")]
     OutOfMemory(#[from] AllocError),
 }
 
-impl Executor {
-    /// An executor with every slot free. Its table and run queue take one
-    /// page each.
+impl<T: Future<Output = ()>, A: StaticAllocator + Default> Executor<T, A> {
+    /// An executor with every slot free. Its table and its run queue each
+    /// hold [`MAX_TASKS`] entries.
     pub fn new() -> Self {
         Self {
             tasks: Box::new([const { None }; MAX_TASKS]),
@@ -77,8 +64,8 @@ impl Executor {
     ///
     /// It allocates before it takes a slot, so a failed allocation leaves
     /// every slot as it was.
-    pub fn spawn(&mut self, task: Task) -> Result<(), SpawnError> {
-        let task = Box::into_pin(SlabBox::try_new_slab(task)?);
+    pub fn spawn(&mut self, task: T) -> Result<(), SpawnError> {
+        let task = Box::into_pin(Box::try_new_in(task, A::default())?);
         let slot = self.free.take().ok_or(SpawnError::Full)?;
         self.tasks[slot.index()] = Some(task);
         READY.wake(slot);
@@ -115,6 +102,8 @@ impl Executor {
     }
 }
 
-impl Default for Executor {
+impl<T: Future<Output = ()>, A: StaticAllocator + Default> Default
+    for Executor<T, A>
+{
     fn default() -> Self { Self::new() }
 }

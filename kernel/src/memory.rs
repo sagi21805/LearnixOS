@@ -94,6 +94,11 @@ unsafe impl StaticAllocator for KernelAllocator {}
 unsafe impl core::alloc::GlobalAllocator for KernelAllocator {}
 
 /// A box of a `T` from its own slab cache, one pointer wide.
+#[expect(
+    dead_code,
+    reason = "the executor boxes tasks through their allocator, and \
+              nothing else boxes a slab type yet"
+)]
 pub type SlabBox<T> = slab::SlabBox<T, KernelSlab>;
 
 /// Parses the memory map and starts the buddy and slab allocators. The

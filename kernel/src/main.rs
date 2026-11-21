@@ -12,10 +12,7 @@ use vga_display::{SCREEN, Scrollback};
 use x86::instructions::cpuid;
 
 use crate::{
-    executor::{
-        Executor,
-        task::{Task, console_task},
-    },
+    executor::task::{KernelExecutor, Task, console_task},
     memory::MMAP,
 };
 
@@ -72,7 +69,7 @@ pub unsafe extern "C" fn _start() -> ! {
         );
     }
 
-    let mut executor = Executor::new();
+    let mut executor = KernelExecutor::new();
     executor
         .spawn(Task::Console(console_task()))
         .expect("the executor starts empty");

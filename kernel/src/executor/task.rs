@@ -3,9 +3,32 @@ use core::{
     task::{Context, Poll},
 };
 
-use slab::{preallocated::PreAllocated, traits::SlabGeometry};
+use common::constants::REGULAR_PAGE_SIZE;
+use slab::{
+    StaticCacheAllocator, preallocated::PreAllocated, traits::SlabGeometry,
+};
 
-use crate::console;
+use crate::{
+    console,
+    executor::{Executor, TaskTable},
+    memory::KernelSlab,
+};
+
+/// The kernel's executor, which boxes each task in `Task`'s slab cache.
+pub type KernelExecutor = Executor<Task, TaskAllocator>;
+
+/// Boxes a task in `Task`'s slab cache.
+type TaskAllocator = StaticCacheAllocator<Task, KernelSlab>;
+
+const _: () = assert!(
+    size_of::<TaskTable<Task, TaskAllocator>>() == REGULAR_PAGE_SIZE,
+    "the task table fills one page"
+);
+const _: () = assert!(
+    size_of::<TaskTable<Task, TaskAllocator>>()
+        > slab::LARGEST_GENERIC_SIZE,
+    "the task table comes from buddy, not from a generic size"
+);
 
 /// Every task the kernel runs, each in a box from its own slab cache.
 pub enum Task {
