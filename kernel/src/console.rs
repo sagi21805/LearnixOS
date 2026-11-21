@@ -1,18 +1,17 @@
 use alloc::boxed::Box;
 use common::enums::PS2ScanCode;
-use keyboard::{KEYBOARD, KEYBOARD_BUFFER, ps2_keyboard::Keyboard};
+use keyboard::{KEYBOARD, ps2_keyboard::Keyboard};
 use libk::{okprintln, print};
 use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
 use vga_display::SCREEN;
 use x86::instructions::interrupts;
 
-/// Publishes the keyboard and its scan code buffer.
+/// Publishes the keyboard, which owns both ends of its scan code buffer.
 pub fn init_keyboard() {
     let buffer: Box<[u8]> = Box::new([0u8; 4096]);
     let buffer_address = buffer.as_ptr();
-    let keyboard_buffer =
-        KEYBOARD_BUFFER.init(SpscRingBuffer::new(buffer));
-    KEYBOARD.init(SpinMutex::new(Keyboard::new(keyboard_buffer)));
+    let ring = Box::leak(Box::new(SpscRingBuffer::new(buffer)));
+    KEYBOARD.init(SpinMutex::new(Keyboard::new(ring)));
     okprintln!("Initialized Keyboard at {:p}", buffer_address);
 }
 

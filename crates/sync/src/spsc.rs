@@ -3,7 +3,7 @@ extern crate alloc;
 use core::{
     alloc::Allocator,
     ptr::NonNull,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use alloc::boxed::Box;
@@ -14,8 +14,6 @@ pub struct SpscRingBuffer<T: Clone + Copy> {
     capacity: usize,
     head: AtomicUsize,
     tail: AtomicUsize,
-    has_consumer: AtomicBool,
-    has_producer: AtomicBool,
 }
 
 unsafe impl<T: Clone + Copy> Send for SpscRingBuffer<T> {}
@@ -32,53 +30,26 @@ impl<T: Clone + Copy> SpscRingBuffer<T> {
             buffer: Box::leak(buf).into(),
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
-            has_consumer: AtomicBool::new(false),
-            has_producer: AtomicBool::new(false),
         }
     }
 
-    pub fn try_utilize<'a>(
-        &'a self,
-    ) -> Option<(Producer<'a, T>, Consumer<'a, T>)> {
-        if self.has_consumer.swap(true, Ordering::Acquire)
-            && self.has_producer.swap(true, Ordering::Acquire)
-        {
-            return None;
-        }
-        Some((Producer { buf: self }, Consumer { buf: self }))
-    }
-
-    pub fn try_utilize_consumer<'a>(&'a self) -> Option<Consumer<'a, T>> {
-        if self.has_consumer.swap(true, Ordering::Acquire) {
-            return None;
-        }
-        Some(Consumer { buf: self })
-    }
-
-    pub fn try_utilize_producer<'a>(&'a self) -> Option<Producer<'a, T>> {
-        if self.has_producer.swap(true, Ordering::Acquire) {
-            return None;
-        }
-        Some(Producer { buf: self })
-    }
-
-    pub fn deutilize<'a>(
-        &'a self,
-        p: Producer<'a, T>,
-        c: Consumer<'a, T>,
-    ) {
-        self.deutilize_consumer(c);
-        self.deutilize_producer(p);
-    }
-
-    pub fn deutilize_consumer<'a>(&'a self, c: Consumer<'a, T>) {
-        drop(c);
-        self.has_consumer.store(false, Ordering::Release);
-    }
-
-    pub fn deutilize_producer<'a>(&'a self, p: Producer<'a, T>) {
-        drop(p);
-        self.has_producer.store(false, Ordering::Release);
+    /// The producer and consumer of this buffer.
+    ///
+    /// Both halves borrow the buffer, so it can't be split again while
+    /// either is alive.
+    ///
+    /// ```compile_fail,E0499
+    /// use sync::spsc::SpscRingBuffer;
+    ///
+    /// let mut buffer =
+    ///     SpscRingBuffer::new(vec![0u8; 4].into_boxed_slice());
+    /// let (producer, consumer) = buffer.split();
+    /// // Doesn't compile, because the first pair still borrows `buffer`.
+    /// let second = buffer.split();
+    /// drop((producer, consumer));
+    /// ```
+    pub fn split(&mut self) -> (Producer<'_, T>, Consumer<'_, T>) {
+        (Producer { buf: self }, Consumer { buf: self })
     }
 
     /// The slot that position `index` lands on.
@@ -120,12 +91,6 @@ impl<T: Clone + Copy> Producer<'_, T> {
     }
 }
 
-impl<T: Clone + Copy> Drop for Producer<'_, T> {
-    fn drop(&mut self) {
-        self.buf.has_producer.store(false, Ordering::Release);
-    }
-}
-
 /// Reads from the RingBuffer
 pub struct Consumer<'a, T: Clone + Copy> {
     buf: &'a SpscRingBuffer<T>,
@@ -148,11 +113,5 @@ impl<T: Clone + Copy> Consumer<'_, T> {
         // Hands the slot back to the producer's `Acquire` load.
         self.buf.tail.store(tail + 1, Ordering::Release);
         Some(item)
-    }
-}
-
-impl<T: Clone + Copy> Drop for Consumer<'_, T> {
-    fn drop(&mut self) {
-        self.buf.has_consumer.store(false, Ordering::Release);
     }
 }

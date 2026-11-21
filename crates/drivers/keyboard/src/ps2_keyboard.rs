@@ -21,10 +21,9 @@ pub struct Keyboard {
 }
 
 impl Keyboard {
-    pub fn new(spsc: &'static SpscRingBuffer<u8>) -> Self {
-        let Some((producer, consumer)) = spsc.try_utilize() else {
-            todo!();
-        };
+    /// A keyboard that queues its scan codes in `spsc`.
+    pub fn new(spsc: &'static mut SpscRingBuffer<u8>) -> Self {
+        let (producer, consumer) = spsc.split();
         Keyboard {
             producer,
             consumer,
