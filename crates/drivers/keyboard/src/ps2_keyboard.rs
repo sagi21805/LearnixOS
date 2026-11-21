@@ -64,13 +64,13 @@ impl Keyboard {
         }
     }
 
-    pub fn read_raw_scancode(&self) -> Option<PS2ScanCode> {
+    pub fn read_raw_scancode(&mut self) -> Option<PS2ScanCode> {
         self.consumer.pop().map(PS2ScanCode::from)
     }
 
     /// TODO change in the future to just return the
     /// relevant ascii code and not a long str
-    pub fn read_char(&self) -> Result<&'static str, PS2ScanCode> {
+    pub fn read_char(&mut self) -> Result<&'static str, PS2ScanCode> {
         let key = match self.read_raw_scancode() {
             Some(scancode) => scancode,
             None => return Err(PS2ScanCode::None),

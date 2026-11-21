@@ -102,7 +102,7 @@ pub struct Producer<'a, T: Clone + Copy> {
 impl<T: Clone + Copy> Producer<'_, T> {
     /// Pushes an item into the buffer, returning `None` if the buffer is
     /// full.
-    pub fn push(&self, item: T) -> Option<()> {
+    pub fn push(&mut self, item: T) -> Option<()> {
         let head = self.buf.head.load(Ordering::Relaxed);
         // Pairs with the `Release` in `pop`, so the slot was read before
         // it is written again.
@@ -134,7 +134,7 @@ pub struct Consumer<'a, T: Clone + Copy> {
 impl<T: Clone + Copy> Consumer<'_, T> {
     /// Takes the oldest item out of the buffer, returning `None` if the
     /// buffer is empty.
-    pub fn pop(&self) -> Option<T> {
+    pub fn pop(&mut self) -> Option<T> {
         let tail = self.buf.tail.load(Ordering::Relaxed);
         // Pairs with the `Release` in `push`, so the slot's write is
         // visible.
