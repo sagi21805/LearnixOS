@@ -154,21 +154,16 @@ impl<T, R: RelaxStrategy> RwLock<T, R> {
 
 #[rustfmt::skip]
 unsafe impl<T: Sized + Send + Sync, R: RelaxStrategy> Sync for RwLock<T, R> {}
-unsafe impl<T: Sized + Send, R: RelaxStrategy> Send for RwLock<T, R> {}
 
 pub struct RwLockReadGuard<'a, T, R: RelaxStrategy> {
     inner: &'a RwLock<T, R>,
 }
 
-unsafe impl<T: Sized, R: RelaxStrategy> Sync for RwLockReadGuard<'_, T, R> where
-    for<'a> &'a T: Sync
-{
-}
+// No `Send` impl on either guard. The derived one needs
+// `RwLock<T, R>: Sync`, so `T: Send + Sync`.
 
-unsafe impl<T: Sized, R: RelaxStrategy> Send for RwLockReadGuard<'_, T, R> where
-    for<'a> &'a T: Send
-{
-}
+// SAFETY: a shared read guard hands out only `&T`.
+unsafe impl<T: Sync, R: RelaxStrategy> Sync for RwLockReadGuard<'_, T, R> {}
 
 impl<T, R: RelaxStrategy> Deref for RwLockReadGuard<'_, T, R> {
     type Target = T;
@@ -184,13 +179,9 @@ pub struct RwLockWriteGuard<'a, T, R: RelaxStrategy> {
     inner: &'a RwLock<T, R>,
 }
 
-unsafe impl<T: Sized, R: RelaxStrategy> Sync for RwLockWriteGuard<'_, T, R> where
-    for<'a> &'a T: Sync
-{
-}
-
-unsafe impl<T: Sized, R: RelaxStrategy> Send for RwLockWriteGuard<'_, T, R> where
-    for<'a> &'a T: Send
+// SAFETY: a shared write guard hands out only `&T`.
+unsafe impl<T: Sync, R: RelaxStrategy> Sync
+    for RwLockWriteGuard<'_, T, R>
 {
 }
 
