@@ -11,7 +11,8 @@ use alloc::boxed::Box;
 /// Single Producer Single Consumer Ring Buffer
 pub struct SpscRingBuffer<T: Copy> {
     buffer: NonNull<[T]>,
-    capacity: usize,
+    /// The capacity minus one, so `index & mask` picks a slot.
+    mask: usize,
     head: AtomicUsize,
     tail: AtomicUsize,
 }
@@ -25,11 +26,20 @@ unsafe impl<T: Copy + Send> Sync for SpscRingBuffer<T> {}
 impl<T: Copy> SpscRingBuffer<T> {
     /// A ring buffer over `buf`, which it keeps for good, so `A` must
     /// live for good too.
+    ///
+    /// # Panics
+    ///
+    /// When the length of `buf` isn't a power of two.
+    #[track_caller]
     pub fn new<A: Allocator + 'static>(
         buf: Box<[T], A>,
     ) -> SpscRingBuffer<T> {
+        assert!(
+            buf.len().is_power_of_two(),
+            "a ring buffer's capacity is a power of two"
+        );
         SpscRingBuffer {
-            capacity: buf.len(),
+            mask: buf.len() - 1,
             buffer: Box::leak(buf).into(),
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
@@ -57,10 +67,8 @@ impl<T: Copy> SpscRingBuffer<T> {
 
     /// The slot that position `index` lands on.
     fn slot(&self, index: usize) -> *mut T {
-        // SAFETY: `index % capacity` is inside the buffer.
-        unsafe {
-            self.buffer.cast::<T>().as_ptr().add(index % self.capacity)
-        }
+        // SAFETY: `index & mask` is below the buffer's length.
+        unsafe { self.buffer.cast::<T>().as_ptr().add(index & self.mask) }
     }
 }
 
@@ -81,7 +89,7 @@ impl<T: Copy> Producer<'_, T> {
         // Pairs with the `Release` in `pop`, so the slot was read before
         // it is written again.
         let tail = self.buf.tail.load(Ordering::Acquire);
-        if head - tail >= self.buf.capacity {
+        if head.wrapping_sub(tail) > self.buf.mask {
             return None;
         }
 
@@ -89,7 +97,7 @@ impl<T: Copy> Producer<'_, T> {
         // producer.
         unsafe { self.buf.slot(head).write(item) };
         // Publishes the slot to the consumer's `Acquire` load.
-        self.buf.head.store(head + 1, Ordering::Release);
+        self.buf.head.store(head.wrapping_add(1), Ordering::Release);
         Some(())
     }
 }
@@ -114,7 +122,7 @@ impl<T: Copy> Consumer<'_, T> {
         // SAFETY: slots from tail up to head belong to the consumer.
         let item = unsafe { self.buf.slot(tail).read() };
         // Hands the slot back to the producer's `Acquire` load.
-        self.buf.tail.store(tail + 1, Ordering::Release);
+        self.buf.tail.store(tail.wrapping_add(1), Ordering::Release);
         Some(item)
     }
 }
