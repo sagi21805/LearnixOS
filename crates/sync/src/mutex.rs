@@ -52,7 +52,7 @@ impl<T, R: RelaxStrategy> Mutex<T, R> {
         let mut tick: usize = 0;
         while self.locked.swap(true, Ordering::Acquire) {
             tick += 1;
-            Spin::relax(tick);
+            R::relax(tick);
         }
 
         MutexGuard { mutex: self }
