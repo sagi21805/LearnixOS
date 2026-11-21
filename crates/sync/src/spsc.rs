@@ -80,6 +80,14 @@ impl<T: Clone + Copy> SpscRingBuffer<T> {
         drop(p);
         self.has_producer.store(false, Ordering::Release);
     }
+
+    /// The slot that position `index` lands on.
+    fn slot(&self, index: usize) -> *mut T {
+        // SAFETY: `index % capacity` is inside the buffer.
+        unsafe {
+            self.buffer.cast::<T>().as_ptr().add(index % self.capacity)
+        }
+    }
 }
 
 impl<T: Clone + Copy> Drop for SpscRingBuffer<T> {
@@ -102,13 +110,10 @@ impl<T: Clone + Copy> Producer<'_, T> {
             return None;
         }
 
-        let index =
-            self.buf.head.load(Ordering::Relaxed) % self.buf.capacity;
-        unsafe {
-            // Elide mutablity
-            let mut b = self.buf.buffer;
-            b.as_mut()[index] = item;
-        }
+        let head = self.buf.head.load(Ordering::Relaxed);
+        // SAFETY: slots from head up to tail + capacity belong to the
+        // producer.
+        unsafe { self.buf.slot(head).write(item) };
         self.buf.head.fetch_add(1, Ordering::Relaxed);
         Some(())
     }
@@ -134,14 +139,11 @@ impl<T: Clone + Copy> Consumer<'_, T> {
             return None;
         }
 
-        let index =
-            self.buf.tail.load(Ordering::Relaxed) % self.buf.capacity;
-        unsafe {
-            // Elide mutablity
-            let item = self.buf.buffer.as_ref()[index];
-            self.buf.tail.fetch_add(1, Ordering::Relaxed);
-            Some(item)
-        }
+        let tail = self.buf.tail.load(Ordering::Relaxed);
+        // SAFETY: slots from tail up to head belong to the consumer.
+        let item = unsafe { self.buf.slot(tail).read() };
+        self.buf.tail.fetch_add(1, Ordering::Relaxed);
+        Some(item)
     }
 }
 
