@@ -14,6 +14,8 @@ use slab::{SlabAllocator, SlabSystem, static_allocator::GlobalSlab};
 use sync::once::Once;
 use x86::memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended};
 
+use crate::task::{KernelTasks, Task};
+
 pub static MMAP: Once<MemoryMap> = Once::uninit();
 
 #[global_allocator]
@@ -26,7 +28,9 @@ static SLAB_ALLOCATOR: Once<SlabAllocator<KernelSlab>> = Once::uninit();
 
 slab::slab_caches! {
     /// The caches of the kernel's own slab types.
-    pub struct KernelCaches {}
+    pub struct KernelCaches {
+        KernelTasks { task: Task }
+    }
 }
 
 /// The kernel's slab system, for the zero-sized allocator types.
@@ -92,7 +96,8 @@ unsafe impl core::alloc::GlobalAllocator for KernelAllocator {}
 /// A box of a `T` from its own slab cache, one pointer wide.
 #[expect(
     dead_code,
-    reason = "the kernel declares no slab type of its own yet"
+    reason = "the executor boxes tasks through their allocator, and \
+              nothing else boxes a slab type yet"
 )]
 pub type SlabBox<T> = slab::SlabBox<T, KernelSlab>;
 

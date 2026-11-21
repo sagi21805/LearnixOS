@@ -1,17 +1,17 @@
 /// The code in this module is inspired from osdev
 /// 8259_PIC guide.
 use crate::instructions::port::PortExt;
+#[cfg(target_arch = "x86_64")]
+use crate::interrupt_safe_mutex::InterruptSafeMutex;
 use common::enums::{
     CascadedPicInterruptLine, PicCommandCode, PicInterruptLine,
     PicInterruptVectorOffset, PicMode, Port,
 };
-#[cfg(target_arch = "x86_64")]
-use sync::mutex::SpinMutex;
 
 /// The master and slave PICs of this machine.
 #[cfg(target_arch = "x86_64")]
-pub static PIC: SpinMutex<CascadedPIC> =
-    SpinMutex::new(CascadedPIC::default());
+pub static PIC: InterruptSafeMutex<CascadedPIC> =
+    InterruptSafeMutex::new(CascadedPIC::default());
 
 struct ProgrammableInterruptController {
     command: Port,
