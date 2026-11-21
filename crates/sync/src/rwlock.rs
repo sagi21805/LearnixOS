@@ -32,8 +32,7 @@ fn compare_exchange(
 
 impl ReadWriteCounter {
     const WRITER: usize = 1 << 0;
-    const UPGRADABLE: usize = 1 << 1;
-    const READER: usize = 1 << 2;
+    const READER: usize = 1 << 1;
 
     pub const fn new() -> Self {
         Self {
@@ -45,9 +44,8 @@ impl ReadWriteCounter {
     fn add_reader(&self) -> Option<()> {
         self.counter
             .try_update(Ordering::Acquire, Ordering::Relaxed, |v| {
-                // If there is a writer or upgradable locker, cannot add
-                // new readers.
-                if v & (Self::WRITER | Self::UPGRADABLE) != 0 {
+                // No reader may enter while a writer holds the lock.
+                if v & Self::WRITER != 0 {
                     return None;
                 }
                 v.checked_add(Self::READER)
