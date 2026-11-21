@@ -24,30 +24,31 @@ impl ReadWriteCounter {
         }
     }
 
+    /// Enters as a reader, or `None` while a writer holds the lock.
     #[must_use]
     fn add_reader(&self) -> Option<()> {
-        self.counter
-            .try_update(Ordering::Acquire, Ordering::Relaxed, |v| {
-                // No reader may enter while a writer holds the lock.
-                if v & Self::WRITER != 0 {
-                    return None;
-                }
-                v.checked_add(Self::READER)
-            })
-            .ok()
-            .map(|_| ())
+        let previous =
+            self.counter.fetch_add(Self::READER, Ordering::Acquire);
+        if previous & Self::WRITER != 0 {
+            // A writer holds the lock, so take the count back. `Relaxed`,
+            // as this reader never touched the data.
+            self.counter.fetch_sub(Self::READER, Ordering::Relaxed);
+            return None;
+        }
+        Some(())
     }
 
-    #[must_use]
-    fn sub_reader(&self) -> Option<()> {
-        self.counter
-            .try_update(Ordering::Release, Ordering::Relaxed, |v| {
-                v.checked_sub(Self::READER)
-            })
-            .ok()
-            .map(|_| ())
+    /// Leaves as a reader.
+    fn sub_reader(&self) {
+        let previous =
+            self.counter.fetch_sub(Self::READER, Ordering::Release);
+        debug_assert!(
+            previous >= Self::READER,
+            "a reader left that never entered"
+        );
     }
 
+    /// Enters as the writer, or `None` while anyone holds the lock.
     #[must_use]
     fn add_writer(&self) -> Option<()> {
         self.counter
@@ -61,17 +62,17 @@ impl ReadWriteCounter {
             .map(|_| ())
     }
 
-    #[must_use]
-    fn sub_writer(&self) -> Option<()> {
-        self.counter
-            .compare_exchange(
-                Self::WRITER,
-                0,
-                Ordering::Release,
-                Ordering::Relaxed,
-            )
-            .ok()
-            .map(|_| ())
+    /// Leaves as the writer.
+    ///
+    /// This clears only the writer bit, because a reader backing out of
+    /// `add_reader` may have its count in the counter right now.
+    fn sub_writer(&self) {
+        let previous =
+            self.counter.fetch_and(!Self::WRITER, Ordering::Release);
+        debug_assert!(
+            previous & Self::WRITER != 0,
+            "a writer left that never entered"
+        );
     }
 }
 
@@ -155,12 +156,7 @@ impl<T, R: RelaxStrategy> Deref for RwLockReadGuard<'_, T, R> {
 }
 
 impl<T, R: RelaxStrategy> Drop for RwLockReadGuard<'_, T, R> {
-    fn drop(&mut self) {
-        self.inner
-            .lock
-            .sub_reader()
-            .expect("Couldn't remove reader");
-    }
+    fn drop(&mut self) { self.inner.lock.sub_reader(); }
 }
 
 pub struct RwLockWriteGuard<'a, T, R: RelaxStrategy> {
@@ -190,10 +186,5 @@ impl<T, R: RelaxStrategy> DerefMut for RwLockWriteGuard<'_, T, R> {
 }
 
 impl<T, R: RelaxStrategy> Drop for RwLockWriteGuard<'_, T, R> {
-    fn drop(&mut self) {
-        self.inner
-            .lock
-            .sub_writer()
-            .expect("Couldn't remove writer");
-    }
+    fn drop(&mut self) { self.inner.lock.sub_writer(); }
 }
