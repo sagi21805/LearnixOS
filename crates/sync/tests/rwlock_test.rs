@@ -21,7 +21,7 @@ fn test_read_write_aquire() {
 fn write_stale_on_read() {
     let rwlock = SpinRwLock::new(10);
     let _read_guard = rwlock.read();
-    let write_guard = rwlock.try_write(true);
+    let write_guard = rwlock.try_write();
     assert!(write_guard.is_none());
 }
 
@@ -81,11 +81,11 @@ fn writer_waits_for_all_readers() {
         .collect();
 
     barrier.wait();
-    assert!(rwlock.try_write(true).is_none());
+    assert!(rwlock.try_write().is_none());
 
     for r in readers {
         r.join().unwrap();
     }
 
-    assert!(rwlock.try_write(true).is_some());
+    assert!(rwlock.try_write().is_some());
 }

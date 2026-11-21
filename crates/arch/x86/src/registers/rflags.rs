@@ -16,7 +16,7 @@ pub struct Rflags {
     zero: B1,
     sign: B1,
     tap: B1,
-    interrupt: B1,
+    pub(crate) interrupt: B1,
     direction: B1,
     overflow: B1,
     #[flag(flag_type = ProtectionLevel)]
