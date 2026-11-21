@@ -14,22 +14,6 @@ struct ReadWriteCounter {
     counter: AtomicUsize,
 }
 
-#[inline(always)]
-fn compare_exchange(
-    atomic: &AtomicUsize,
-    current: usize,
-    new: usize,
-    success: Ordering,
-    failure: Ordering,
-    strong: bool,
-) -> Result<usize, usize> {
-    if strong {
-        atomic.compare_exchange(current, new, success, failure)
-    } else {
-        atomic.compare_exchange_weak(current, new, success, failure)
-    }
-}
-
 impl ReadWriteCounter {
     const WRITER: usize = 1 << 0;
     const READER: usize = 1 << 1;
@@ -65,31 +49,29 @@ impl ReadWriteCounter {
     }
 
     #[must_use]
-    fn add_writer(&self, strong: bool) -> Option<()> {
-        compare_exchange(
-            &self.counter,
-            0,
-            Self::WRITER,
-            Ordering::Acquire,
-            Ordering::Relaxed,
-            strong,
-        )
-        .ok()
-        .map(|_| ())
+    fn add_writer(&self) -> Option<()> {
+        self.counter
+            .compare_exchange(
+                0,
+                Self::WRITER,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            )
+            .ok()
+            .map(|_| ())
     }
 
     #[must_use]
-    fn sub_writer(&self, strong: bool) -> Option<()> {
-        compare_exchange(
-            &self.counter,
-            Self::WRITER,
-            0,
-            Ordering::Release,
-            Ordering::Relaxed,
-            strong,
-        )
-        .ok()
-        .map(|_| ())
+    fn sub_writer(&self) -> Option<()> {
+        self.counter
+            .compare_exchange(
+                Self::WRITER,
+                0,
+                Ordering::Release,
+                Ordering::Relaxed,
+            )
+            .ok()
+            .map(|_| ())
     }
 }
 
@@ -129,12 +111,9 @@ impl<T, R: RelaxStrategy> RwLock<T, R> {
     }
 
     /// Try to acquire a write lock without blocking.
-    pub fn try_write(
-        &self,
-        strong: bool,
-    ) -> Option<RwLockWriteGuard<'_, T, R>> {
+    pub fn try_write(&self) -> Option<RwLockWriteGuard<'_, T, R>> {
         self.lock
-            .add_writer(strong)
+            .add_writer()
             .map(|_| RwLockWriteGuard { inner: self })
     }
 
@@ -142,7 +121,7 @@ impl<T, R: RelaxStrategy> RwLock<T, R> {
     pub fn write(&self) -> RwLockWriteGuard<'_, T, R> {
         let mut tick = 0;
         loop {
-            match self.try_write(false) {
+            match self.try_write() {
                 Some(guard) => return guard,
                 None => R::relax(tick),
             }
@@ -214,7 +193,7 @@ impl<T, R: RelaxStrategy> Drop for RwLockWriteGuard<'_, T, R> {
     fn drop(&mut self) {
         self.inner
             .lock
-            .sub_writer(true)
+            .sub_writer()
             .expect("Couldn't remove writer");
     }
 }
