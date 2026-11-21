@@ -25,7 +25,7 @@ unsafe impl<T: Copy + Send> Sync for SpscRingBuffer<T> {}
 
 impl<T: Copy> SpscRingBuffer<T> {
     /// A ring buffer over `buf`, which it keeps for good, so `A` must
-    /// live for good too.
+    /// live for good too. Dropping the ring buffer leaks `buf`.
     ///
     /// # Panics
     ///
@@ -70,10 +70,6 @@ impl<T: Copy> SpscRingBuffer<T> {
         // SAFETY: `index & mask` is below the buffer's length.
         unsafe { self.buffer.cast::<T>().as_ptr().add(index & self.mask) }
     }
-}
-
-impl<T: Copy> Drop for SpscRingBuffer<T> {
-    fn drop(&mut self) { todo!() }
 }
 
 /// Writes into the RingBuffer
