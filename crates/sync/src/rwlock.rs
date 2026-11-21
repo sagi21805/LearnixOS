@@ -62,6 +62,16 @@ impl ReadWriteCounter {
             .map(|_| ())
     }
 
+    /// Whether a writer holds the lock. `Relaxed`, as it is only a hint
+    /// for waiting.
+    fn has_writer(&self) -> bool {
+        self.counter.load(Ordering::Relaxed) & Self::WRITER != 0
+    }
+
+    /// Whether nobody holds the lock. `Relaxed`, as it is only a hint for
+    /// waiting.
+    fn is_free(&self) -> bool { self.counter.load(Ordering::Relaxed) == 0 }
+
     /// Leaves as the writer.
     ///
     /// This clears only the writer bit, because a reader backing out of
@@ -99,15 +109,20 @@ impl<T, R: RelaxStrategy> RwLock<T, R> {
     }
 
     /// Acquire a read lock, spinning until it is available.
+    ///
+    /// While a writer holds the lock it waits on a plain load, and only
+    /// tries again once the writer looks gone.
+    #[track_caller]
     pub fn read(&self) -> RwLockReadGuard<'_, T, R> {
         let mut tick = 0;
         loop {
-            core::hint::spin_loop();
-            match self.try_read() {
-                Some(guard) => return guard,
-                None => R::relax(tick),
+            if let Some(guard) = self.try_read() {
+                return guard;
             }
-            tick += 1;
+            while self.lock.has_writer() {
+                tick += 1;
+                R::relax(tick);
+            }
         }
     }
 
@@ -119,14 +134,20 @@ impl<T, R: RelaxStrategy> RwLock<T, R> {
     }
 
     /// Acquire a write lock, spinning until it is available.
+    ///
+    /// While anyone holds the lock it waits on a plain load, and only
+    /// tries again once the lock looks free.
+    #[track_caller]
     pub fn write(&self) -> RwLockWriteGuard<'_, T, R> {
         let mut tick = 0;
         loop {
-            match self.try_write() {
-                Some(guard) => return guard,
-                None => R::relax(tick),
+            if let Some(guard) = self.try_write() {
+                return guard;
             }
-            tick += 1;
+            while !self.lock.is_free() {
+                tick += 1;
+                R::relax(tick);
+            }
         }
     }
 }
