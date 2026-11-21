@@ -43,19 +43,24 @@ impl<T, R: RelaxStrategy> Mutex<T, R> {
         }
     }
 
+    /// Takes the lock, spinning until it is free.
+    ///
+    /// While the lock is held it waits on a plain load, which shares the
+    /// cache line with other waiters, and only swaps once the lock looks
+    /// free.
     #[track_caller]
     pub fn lock(&self) -> MutexGuard<'_, T, R> {
-        // While the lock is `true`, a swap to `true` returns the previous
-        // value which is `true` which keeps the mutex locked.
-        // Only when unlocking, the swap would return `false` which would
-        // stop the loop
-        let mut tick: usize = 0;
-        while self.locked.swap(true, Ordering::Acquire) {
-            tick += 1;
-            R::relax(tick);
+        let mut tick = 0;
+        loop {
+            if let Some(guard) = self.try_lock() {
+                return guard;
+            }
+            // `Relaxed`, as this is only a hint. `try_lock` synchronizes.
+            while self.locked.load(Ordering::Relaxed) {
+                tick += 1;
+                R::relax(tick);
+            }
         }
-
-        MutexGuard { mutex: self }
     }
 
     pub fn try_lock(&self) -> Option<MutexGuard<'_, T, R>> {
