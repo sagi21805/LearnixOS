@@ -2,16 +2,16 @@ use alloc::boxed::Box;
 use common::enums::PS2ScanCode;
 use keyboard::{KEYBOARD, ps2_keyboard::Keyboard};
 use libk::{okprintln, print};
-use sync::{mutex::SpinMutex, spsc::SpscRingBuffer};
+use sync::spsc::SpscRingBuffer;
 use vga_display::SCREEN;
-use x86::instructions::interrupts;
+use x86::interrupt_safe_mutex::InterruptSafeMutex;
 
 /// Publishes the keyboard, which owns both ends of its scan code buffer.
 pub fn init_keyboard() {
     let buffer: Box<[u8]> = Box::new([0u8; 4096]);
     let buffer_address = buffer.as_ptr();
     let ring = Box::leak(Box::new(SpscRingBuffer::new(buffer)));
-    KEYBOARD.init(SpinMutex::new(Keyboard::new(ring)));
+    KEYBOARD.init(InterruptSafeMutex::new(Keyboard::new(ring)));
     okprintln!("Initialized Keyboard at {:p}", buffer_address);
 }
 
@@ -39,10 +39,5 @@ pub fn run() -> ! {
 
 /// The next typed text, or the key that produced none.
 fn read_input() -> Result<&'static str, PS2ScanCode> {
-    // SAFETY: the keyboard handler takes the same lock, so it must not run
-    // while this function holds it.
-    unsafe { interrupts::disable() };
-    let input = KEYBOARD.lock().read_char();
-    unsafe { interrupts::enable() };
-    input
+    KEYBOARD.lock().read_char()
 }
