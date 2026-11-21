@@ -103,18 +103,19 @@ impl<T: Clone + Copy> Producer<'_, T> {
     /// Pushes an item into the buffer, returning `None` if the buffer is
     /// full.
     pub fn push(&self, item: T) -> Option<()> {
-        if self.buf.head.load(Ordering::Relaxed)
-            - self.buf.tail.load(Ordering::Relaxed)
-            >= self.buf.capacity
-        {
+        let head = self.buf.head.load(Ordering::Relaxed);
+        // Pairs with the `Release` in `pop`, so the slot was read before
+        // it is written again.
+        let tail = self.buf.tail.load(Ordering::Acquire);
+        if head - tail >= self.buf.capacity {
             return None;
         }
 
-        let head = self.buf.head.load(Ordering::Relaxed);
         // SAFETY: slots from head up to tail + capacity belong to the
         // producer.
         unsafe { self.buf.slot(head).write(item) };
-        self.buf.head.fetch_add(1, Ordering::Relaxed);
+        // Publishes the slot to the consumer's `Acquire` load.
+        self.buf.head.store(head + 1, Ordering::Release);
         Some(())
     }
 }
@@ -131,18 +132,21 @@ pub struct Consumer<'a, T: Clone + Copy> {
 }
 
 impl<T: Clone + Copy> Consumer<'_, T> {
+    /// Takes the oldest item out of the buffer, returning `None` if the
+    /// buffer is empty.
     pub fn pop(&self) -> Option<T> {
-        if self.buf.head.load(Ordering::Relaxed)
-            - self.buf.tail.load(Ordering::Relaxed)
-            == 0
-        {
+        let tail = self.buf.tail.load(Ordering::Relaxed);
+        // Pairs with the `Release` in `push`, so the slot's write is
+        // visible.
+        let head = self.buf.head.load(Ordering::Acquire);
+        if head == tail {
             return None;
         }
 
-        let tail = self.buf.tail.load(Ordering::Relaxed);
         // SAFETY: slots from tail up to head belong to the consumer.
         let item = unsafe { self.buf.slot(tail).read() };
-        self.buf.tail.fetch_add(1, Ordering::Relaxed);
+        // Hands the slot back to the producer's `Acquire` load.
+        self.buf.tail.store(tail + 1, Ordering::Release);
         Some(item)
     }
 }
