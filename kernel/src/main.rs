@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(abi_x86_interrupt)]
 #![feature(allocator_ext)]
+#![feature(type_alias_impl_trait)]
 extern crate alloc;
 
 use alloc::boxed::Box;
@@ -10,10 +11,15 @@ use libk::{okprintln, println};
 use vga_display::{SCREEN, Scrollback};
 use x86::instructions::cpuid;
 
-use crate::memory::MMAP;
+use crate::{
+    executor::{
+        Executor,
+        task::{Task, console_task},
+    },
+    memory::MMAP,
+};
 
 mod console;
-#[expect(dead_code, reason = "the console task runs on it in plan 07")]
 mod executor;
 mod idt;
 mod memory;
@@ -66,7 +72,11 @@ pub unsafe extern "C" fn _start() -> ! {
         );
     }
 
-    console::run()
+    let mut executor = Executor::new();
+    executor
+        .spawn(Task::Console(console_task()))
+        .expect("the executor starts empty");
+    executor.run()
 }
 
 // The AHCI bring-up experiment, which ran after the hardware report and
