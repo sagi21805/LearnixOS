@@ -14,7 +14,7 @@ use slab::{SlabAllocator, SlabSystem, static_allocator::GlobalSlab};
 use sync::once::Once;
 use x86::memory_map::{MemoryMap, MemoryRegion, MemoryRegionExtended};
 
-use crate::executor::task::{KernelTasks, Task};
+use crate::task::{KernelTasks, Task};
 
 pub static MMAP: Once<MemoryMap> = Once::uninit();
 

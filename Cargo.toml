@@ -14,6 +14,7 @@ members = [
     "crates/memory/slab",
     "crates/memory/page",
     "crates/sync",
+    "crates/executor",
     "crates/libk",
     "kernel",
     # "snippets",
@@ -42,6 +43,7 @@ buddy = { path = "crates/memory/buddy" }
 slab = { path = "crates/memory/slab" }
 page = { path = "crates/memory/page" }
 keyboard = { path = "crates/drivers/keyboard" }
+executor = { path = "crates/executor" }
 vga_display = { path = "crates/drivers/vga-display" }
 # ahci = { path = "crates/drivers/ahci" }
 pci = { path = "crates/drivers/pci" }

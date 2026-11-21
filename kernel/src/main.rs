@@ -12,15 +12,15 @@ use vga_display::{SCREEN, Scrollback};
 use x86::instructions::cpuid;
 
 use crate::{
-    executor::task::{KernelExecutor, Task, console_task},
     memory::MMAP,
+    task::{KernelExecutor, Task, console_task},
 };
 
 mod console;
-mod executor;
 mod idt;
 mod memory;
 mod panic;
+mod task;
 mod timer;
 
 /// The kernel's entry point.

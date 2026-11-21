@@ -2,7 +2,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use x86::instructions::interrupts;
 
-use super::{WORDS, slot::Slot};
+use crate::{WORDS, slot::Slot};
 
 /// The slots whose tasks wait for a poll, one bit each.
 pub static READY: ReadySet = ReadySet::new();

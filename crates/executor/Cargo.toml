@@ -1,0 +1,11 @@
+[package]
+name = "executor"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+x86.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

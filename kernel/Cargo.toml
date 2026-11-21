@@ -17,7 +17,7 @@ sync.workspace = true
 page.workspace = true
 slab.workspace = true
 typestate-groups.workspace = true
-thiserror.workspace = true
+executor.workspace = true
 
 [lints]
 workspace = true

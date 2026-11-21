@@ -1,4 +1,4 @@
-use super::MAX_TASKS;
+use crate::MAX_TASKS;
 
 /// A task's index in the executor's task table, which its wakers carry.
 #[derive(Clone, Copy)]

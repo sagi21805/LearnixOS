@@ -1,4 +1,4 @@
-use super::{WORDS, slot::Slot};
+use crate::{WORDS, slot::Slot};
 
 /// The free slots of the task table, one bit each, set while free.
 pub struct FreeSlots([u64; WORDS]);

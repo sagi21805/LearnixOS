@@ -3,7 +3,7 @@ use core::{
     task::{RawWaker, RawWakerVTable, Waker},
 };
 
-use super::{ready::READY, slot::Slot};
+use crate::{ready::READY, slot::Slot};
 
 impl Slot {
     /// A waker that marks this slot ready. It owns nothing, so cloning

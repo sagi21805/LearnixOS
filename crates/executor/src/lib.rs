@@ -1,23 +1,32 @@
-//! Runs the kernel's tasks, each polled only after its waker fires.
+//! Runs tasks, each polled only after its waker fires.
+//!
+//! A waker is its task's slot index, and waking it sets the slot's bit
+//! with one `lock or`, so interrupt handlers can wake tasks. The program
+//! that uses the executor defines the task type and the allocator that
+//! boxes its tasks.
+
+#![no_std]
+#![feature(allocator_ext)]
+
+extern crate alloc;
 
 use alloc::{alloc::StaticAllocator, boxed::Box, collections::VecDeque};
 use core::{alloc::AllocError, pin::Pin, task::Context};
 
 use thiserror::Error;
 
-use crate::executor::{free::FreeSlots, ready::READY, slot::Slot};
+use crate::{free::FreeSlots, ready::READY, slot::Slot};
 
 mod free;
-pub mod ready;
-pub mod slot;
-pub mod task;
+mod ready;
+mod slot;
 mod waker;
 
 /// The most tasks the executor runs at once.
 pub const MAX_TASKS: usize = 512;
 
 /// How many `u64` words a bitmap of every slot takes.
-pub const WORDS: usize = MAX_TASKS / u64::BITS as usize;
+const WORDS: usize = MAX_TASKS / u64::BITS as usize;
 
 const _: () = assert!(
     MAX_TASKS.is_multiple_of(u64::BITS as usize),
@@ -30,9 +39,18 @@ pub type TaskTable<T, A> = [Option<Pin<Box<T, A>>>; MAX_TASKS];
 /// Runs tasks of type `T`, each in a box from `A`, polling each one only
 /// after its waker fires.
 ///
-/// Wakers record ready slots in [`READY`]. Each round, the executor moves
+/// Wakers record ready slots in `READY`. Each round, the executor moves
 /// them into its run queue and polls them in that order, so the run queue
 /// is the scheduling policy.
+///
+/// ```ignore
+/// pub type KernelExecutor =
+///     Executor<Task, StaticCacheAllocator<Task, KernelSlab>>;
+///
+/// let mut executor = KernelExecutor::new();
+/// executor.spawn(Task::Console(console_task()))?;
+/// executor.run()
+/// ```
 pub struct Executor<T, A: StaticAllocator> {
     /// Indexed by [`Slot`]. A task keeps its slot until it finishes.
     tasks: Box<TaskTable<T, A>>,
@@ -75,7 +93,7 @@ impl<T: Future<Output = ()>, A: StaticAllocator + Default> Executor<T, A> {
     /// Polls ready tasks forever, halting while none is ready.
     ///
     /// The run queue is refilled only once it is empty, and one
-    /// [`take`](ready::ReadySet::take) yields a slot at most once, so it
+    /// `READY.take()` yields a slot at most once, so it
     /// never holds more than [`MAX_TASKS`] slots and never reallocates.
     pub fn run(&mut self) -> ! {
         loop {

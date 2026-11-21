@@ -8,11 +8,9 @@ use slab::{
     StaticCacheAllocator, preallocated::PreAllocated, traits::SlabGeometry,
 };
 
-use crate::{
-    console,
-    executor::{Executor, TaskTable},
-    memory::KernelSlab,
-};
+use executor::{Executor, TaskTable};
+
+use crate::{console, memory::KernelSlab};
 
 /// The kernel's executor, which boxes each task in `Task`'s slab cache.
 pub type KernelExecutor = Executor<Task, TaskAllocator>;
