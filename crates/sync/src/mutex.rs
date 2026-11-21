@@ -96,14 +96,10 @@ pub struct MutexGuard<'a, T, R: RelaxStrategy> {
     mutex: &'a Mutex<T, R>,
 }
 
-unsafe impl<T: Sized, R: RelaxStrategy> Sync for MutexGuard<'_, T, R> where
-    for<'a> &'a T: Sync
-{
-}
-unsafe impl<T: Sized, R: RelaxStrategy> Send for MutexGuard<'_, T, R> where
-    for<'a> &'a T: Send
-{
-}
+// No `Send` impl. The derived one needs `Mutex<T, R>: Sync`, so `T: Send`.
+
+// SAFETY: a shared guard hands out only `&T`.
+unsafe impl<T: Sync, R: RelaxStrategy> Sync for MutexGuard<'_, T, R> {}
 
 impl<T, R: RelaxStrategy> Deref for MutexGuard<'_, T, R> {
     type Target = T;
