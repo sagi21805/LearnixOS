@@ -27,35 +27,24 @@ impl<T, R: RelaxStrategy> Mutex<T, R> {
         }
     }
 
-    /// A mutex that starts locked, with no guard to release it.
+    /// Takes the lock, spinning until it is free.
     ///
-    /// # Safety
-    ///
-    /// The caller must reach the data only through [`Self::leak`] until it
-    /// calls [`Self::force_unlock`], because [`Self::lock`] spins until
-    /// then.
-    // TODO: Make safe with compile time state of locked.
-    pub const unsafe fn new_locked(data: T) -> Self {
-        Self {
-            strategy: PhantomData,
-            locked: AtomicBool::new(true),
-            data: UnsafeCell::new(data),
-        }
-    }
-
+    /// While the lock is held it waits on a plain load, which shares the
+    /// cache line with other waiters, and only swaps once the lock looks
+    /// free.
     #[track_caller]
     pub fn lock(&self) -> MutexGuard<'_, T, R> {
-        // While the lock is `true`, a swap to `true` returns the previous
-        // value which is `true` which keeps the mutex locked.
-        // Only when unlocking, the swap would return `false` which would
-        // stop the loop
-        let mut tick: usize = 0;
-        while self.locked.swap(true, Ordering::Acquire) {
-            tick += 1;
-            Spin::relax(tick);
+        let mut tick = 0;
+        loop {
+            if let Some(guard) = self.try_lock() {
+                return guard;
+            }
+            // `Relaxed`, as this is only a hint. `try_lock` synchronizes.
+            while self.locked.load(Ordering::Relaxed) {
+                tick += 1;
+                R::relax(tick);
+            }
         }
-
-        MutexGuard { mutex: self }
     }
 
     pub fn try_lock(&self) -> Option<MutexGuard<'_, T, R>> {
@@ -65,28 +54,12 @@ impl<T, R: RelaxStrategy> Mutex<T, R> {
         Some(MutexGuard { mutex: self })
     }
 
-    /// The data behind this mutex, without taking the lock.
-    ///
-    /// # Safety
-    ///
-    /// The caller must be the only user of the data for as long as the
-    /// returned reference lives.
-    // TODO: Make safe with so can only be called when in locked state.
-    #[expect(
-        clippy::mut_from_ref,
-        reason = "the data sits in an `UnsafeCell`, and the caller \
-                  proves that nothing else reaches it"
-    )]
-    pub const unsafe fn leak(&self) -> &mut T {
-        unsafe { &mut *self.data.get() }
-    }
-
     /// Releases the lock, whether or not a guard holds it.
     ///
     /// # Safety
     ///
-    /// Any guard or [`Self::leak`] reference that is still alive must not
-    /// use the data again, because the next locker assumes it is alone.
+    /// A guard that is still alive must not use the data again, because
+    /// the next locker assumes it is alone.
     pub unsafe fn force_unlock(&self) {
         self.locked.store(false, Ordering::Release);
     }
@@ -96,14 +69,10 @@ pub struct MutexGuard<'a, T, R: RelaxStrategy> {
     mutex: &'a Mutex<T, R>,
 }
 
-unsafe impl<T: Sized, R: RelaxStrategy> Sync for MutexGuard<'_, T, R> where
-    for<'a> &'a T: Sync
-{
-}
-unsafe impl<T: Sized, R: RelaxStrategy> Send for MutexGuard<'_, T, R> where
-    for<'a> &'a T: Send
-{
-}
+// No `Send` impl. The derived one needs `Mutex<T, R>: Sync`, so `T: Send`.
+
+// SAFETY: a shared guard hands out only `&T`.
+unsafe impl<T: Sync, R: RelaxStrategy> Sync for MutexGuard<'_, T, R> {}
 
 impl<T, R: RelaxStrategy> Deref for MutexGuard<'_, T, R> {
     type Target = T;

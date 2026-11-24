@@ -21,10 +21,9 @@ pub struct Keyboard {
 }
 
 impl Keyboard {
-    pub fn new(spsc: &'static SpscRingBuffer<u8>) -> Self {
-        let Some((producer, consumer)) = spsc.try_utilize() else {
-            todo!();
-        };
+    /// A keyboard that queues its scan codes in `spsc`.
+    pub fn new(spsc: &'static mut SpscRingBuffer<u8>) -> Self {
+        let (producer, consumer) = spsc.split();
         Keyboard {
             producer,
             consumer,
@@ -64,13 +63,13 @@ impl Keyboard {
         }
     }
 
-    pub fn read_raw_scancode(&self) -> Option<PS2ScanCode> {
+    pub fn read_raw_scancode(&mut self) -> Option<PS2ScanCode> {
         self.consumer.pop().map(PS2ScanCode::from)
     }
 
     /// TODO change in the future to just return the
     /// relevant ascii code and not a long str
-    pub fn read_char(&self) -> Result<&'static str, PS2ScanCode> {
+    pub fn read_char(&mut self) -> Result<&'static str, PS2ScanCode> {
         let key = match self.read_raw_scancode() {
             Some(scancode) => scancode,
             None => return Err(PS2ScanCode::None),

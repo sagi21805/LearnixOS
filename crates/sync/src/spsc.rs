@@ -3,150 +3,122 @@ extern crate alloc;
 use core::{
     alloc::Allocator,
     ptr::NonNull,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use alloc::boxed::Box;
 
 /// Single Producer Single Consumer Ring Buffer
-pub struct SpscRingBuffer<T: Clone + Copy> {
+pub struct SpscRingBuffer<T: Copy> {
     buffer: NonNull<[T]>,
-    capacity: usize,
+    /// The capacity minus one, so `index & mask` picks a slot.
+    mask: usize,
     head: AtomicUsize,
     tail: AtomicUsize,
-    has_consumer: AtomicBool,
-    has_producer: AtomicBool,
 }
 
-unsafe impl<T: Clone + Copy> Send for SpscRingBuffer<T> {}
-unsafe impl<T: Clone + Copy> Sync for SpscRingBuffer<T> {}
+// SAFETY: the buffer owns its slots, and `T: Send` lets them move.
+unsafe impl<T: Copy + Send> Send for SpscRingBuffer<T> {}
+// SAFETY: each item moves from the producer's thread to the consumer's,
+// and only one thread touches a slot at a time.
+unsafe impl<T: Copy + Send> Sync for SpscRingBuffer<T> {}
 
-impl<T: Clone + Copy> SpscRingBuffer<T> {
+impl<T: Copy> SpscRingBuffer<T> {
     /// A ring buffer over `buf`, which it keeps for good, so `A` must
-    /// live for good too.
+    /// live for good too. Dropping the ring buffer leaks `buf`.
+    ///
+    /// # Panics
+    ///
+    /// When the length of `buf` isn't a power of two.
+    #[track_caller]
     pub fn new<A: Allocator + 'static>(
         buf: Box<[T], A>,
     ) -> SpscRingBuffer<T> {
+        assert!(
+            buf.len().is_power_of_two(),
+            "a ring buffer's capacity is a power of two"
+        );
         SpscRingBuffer {
-            capacity: buf.len(),
+            mask: buf.len() - 1,
             buffer: Box::leak(buf).into(),
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
-            has_consumer: AtomicBool::new(false),
-            has_producer: AtomicBool::new(false),
         }
     }
 
-    pub fn try_utilize<'a>(
-        &'a self,
-    ) -> Option<(Producer<'a, T>, Consumer<'a, T>)> {
-        if self.has_consumer.swap(true, Ordering::Acquire)
-            && self.has_producer.swap(true, Ordering::Acquire)
-        {
-            return None;
-        }
-        Some((Producer { buf: self }, Consumer { buf: self }))
+    /// The producer and consumer of this buffer.
+    ///
+    /// Both halves borrow the buffer, so it can't be split again while
+    /// either is alive.
+    ///
+    /// ```compile_fail,E0499
+    /// use sync::spsc::SpscRingBuffer;
+    ///
+    /// let mut buffer =
+    ///     SpscRingBuffer::new(vec![0u8; 4].into_boxed_slice());
+    /// let (producer, consumer) = buffer.split();
+    /// // Doesn't compile, because the first pair still borrows `buffer`.
+    /// let second = buffer.split();
+    /// drop((producer, consumer));
+    /// ```
+    pub fn split(&mut self) -> (Producer<'_, T>, Consumer<'_, T>) {
+        (Producer { buf: self }, Consumer { buf: self })
     }
 
-    pub fn try_utilize_consumer<'a>(&'a self) -> Option<Consumer<'a, T>> {
-        if self.has_consumer.swap(true, Ordering::Acquire) {
-            return None;
-        }
-        Some(Consumer { buf: self })
+    /// The slot that position `index` lands on.
+    fn slot(&self, index: usize) -> *mut T {
+        // SAFETY: `index & mask` is below the buffer's length.
+        unsafe { self.buffer.cast::<T>().as_ptr().add(index & self.mask) }
     }
-
-    pub fn try_utilize_producer<'a>(&'a self) -> Option<Producer<'a, T>> {
-        if self.has_producer.swap(true, Ordering::Acquire) {
-            return None;
-        }
-        Some(Producer { buf: self })
-    }
-
-    pub fn deutilize<'a>(
-        &'a self,
-        p: Producer<'a, T>,
-        c: Consumer<'a, T>,
-    ) {
-        self.deutilize_consumer(c);
-        self.deutilize_producer(p);
-    }
-
-    pub fn deutilize_consumer<'a>(&'a self, c: Consumer<'a, T>) {
-        drop(c);
-        self.has_consumer.store(false, Ordering::Release);
-    }
-
-    pub fn deutilize_producer<'a>(&'a self, p: Producer<'a, T>) {
-        drop(p);
-        self.has_producer.store(false, Ordering::Release);
-    }
-}
-
-impl<T: Clone + Copy> Drop for SpscRingBuffer<T> {
-    fn drop(&mut self) { todo!() }
 }
 
 /// Writes into the RingBuffer
-pub struct Producer<'a, T: Clone + Copy> {
+pub struct Producer<'a, T: Copy> {
     buf: &'a SpscRingBuffer<T>,
 }
 
-impl<T: Clone + Copy> Producer<'_, T> {
+impl<T: Copy> Producer<'_, T> {
     /// Pushes an item into the buffer, returning `None` if the buffer is
     /// full.
-    pub fn push(&self, item: T) -> Option<()> {
-        if self.buf.head.load(Ordering::Relaxed)
-            - self.buf.tail.load(Ordering::Relaxed)
-            >= self.buf.capacity
-        {
+    pub fn push(&mut self, item: T) -> Option<()> {
+        let head = self.buf.head.load(Ordering::Relaxed);
+        // Pairs with the `Release` in `pop`, so the slot was read before
+        // it is written again.
+        let tail = self.buf.tail.load(Ordering::Acquire);
+        if head.wrapping_sub(tail) > self.buf.mask {
             return None;
         }
 
-        let index =
-            self.buf.head.load(Ordering::Relaxed) % self.buf.capacity;
-        unsafe {
-            // Elide mutablity
-            let mut b = self.buf.buffer;
-            b.as_mut()[index] = item;
-        }
-        self.buf.head.fetch_add(1, Ordering::Relaxed);
+        // SAFETY: slots from head up to tail + capacity belong to the
+        // producer.
+        unsafe { self.buf.slot(head).write(item) };
+        // Publishes the slot to the consumer's `Acquire` load.
+        self.buf.head.store(head.wrapping_add(1), Ordering::Release);
         Some(())
     }
 }
 
-impl<T: Clone + Copy> Drop for Producer<'_, T> {
-    fn drop(&mut self) {
-        self.buf.has_producer.store(false, Ordering::Release);
-    }
-}
-
 /// Reads from the RingBuffer
-pub struct Consumer<'a, T: Clone + Copy> {
+pub struct Consumer<'a, T: Copy> {
     buf: &'a SpscRingBuffer<T>,
 }
 
-impl<T: Clone + Copy> Consumer<'_, T> {
-    pub fn pop(&self) -> Option<T> {
-        if self.buf.head.load(Ordering::Relaxed)
-            - self.buf.tail.load(Ordering::Relaxed)
-            == 0
-        {
+impl<T: Copy> Consumer<'_, T> {
+    /// Takes the oldest item out of the buffer, returning `None` if the
+    /// buffer is empty.
+    pub fn pop(&mut self) -> Option<T> {
+        let tail = self.buf.tail.load(Ordering::Relaxed);
+        // Pairs with the `Release` in `push`, so the slot's write is
+        // visible.
+        let head = self.buf.head.load(Ordering::Acquire);
+        if head == tail {
             return None;
         }
 
-        let index =
-            self.buf.tail.load(Ordering::Relaxed) % self.buf.capacity;
-        unsafe {
-            // Elide mutablity
-            let item = self.buf.buffer.as_ref()[index];
-            self.buf.tail.fetch_add(1, Ordering::Relaxed);
-            Some(item)
-        }
-    }
-}
-
-impl<T: Clone + Copy> Drop for Consumer<'_, T> {
-    fn drop(&mut self) {
-        self.buf.has_consumer.store(false, Ordering::Release);
+        // SAFETY: slots from tail up to head belong to the consumer.
+        let item = unsafe { self.buf.slot(tail).read() };
+        // Hands the slot back to the producer's `Acquire` load.
+        self.buf.tail.store(tail.wrapping_add(1), Ordering::Release);
+        Some(item)
     }
 }
