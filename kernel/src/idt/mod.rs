@@ -50,8 +50,9 @@ pub unsafe fn init() {
 impl InterruptDescriptorTable {
     /// Registers the handlers of the hardware interrupts in use.
     fn set_irq_handlers(&mut self) {
-        self.timer.set_handler(timer_handler, GateType::Trap);
-        self.keyboard.set_handler(keyboard_handler, GateType::Trap);
+        self.timer.set_handler(timer_handler, GateType::Interrupt);
+        self.keyboard
+            .set_handler(keyboard_handler, GateType::Interrupt);
         // self.ahci.set_handler(ahci_interrupt, GateType::Trap);
     }
 }

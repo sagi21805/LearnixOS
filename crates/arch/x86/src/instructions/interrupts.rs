@@ -31,6 +31,19 @@ pub unsafe fn disable() {
 #[inline(always)]
 pub unsafe fn hlt() { unsafe { asm!("hlt", options(nostack, nomem)) }; }
 
+/// Enables interrupts and halts, with no instruction between, so an
+/// interrupt that is already pending wakes the `hlt`.
+///
+/// # Safety
+///
+/// Every interrupt that can arrive must have a handler.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[inline(always)]
+pub unsafe fn enable_and_hlt() {
+    // Without `nomem`, as handlers change memory while the CPU halts.
+    unsafe { asm!("sti", "hlt", options(nostack, preserves_flags)) };
+}
+
 /// Keeps interrupts off on this CPU until it drops, then turns them back
 /// on if they were on before.
 ///

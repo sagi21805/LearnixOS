@@ -7,7 +7,8 @@ use core::{
 };
 
 use alloc::{
-    boxed::Box, collections::VecDeque, rc::Rc, sync::Arc, vec::Vec,
+    alloc::StaticAllocator, boxed::Box, collections::VecDeque, rc::Rc,
+    sync::Arc, vec::Vec,
 };
 use extend::ext;
 
@@ -60,6 +61,13 @@ unsafe impl<T: CachedIn<G::Caches>, G: GlobalSlab> Allocator
         // SAFETY: the caller's contract carries over to the cache.
         unsafe { G::slab().cache::<T>().deallocate(ptr, layout) }
     }
+}
+
+// SAFETY: the handle owns nothing and reaches a `&'static` allocator, so
+// only `deallocate` invalidates a block.
+unsafe impl<T: CachedIn<G::Caches>, G: GlobalSlab> StaticAllocator
+    for StaticCacheAllocator<T, G>
+{
 }
 
 /// A box of a `T` from its own slab cache in the slab of `G`, one pointer

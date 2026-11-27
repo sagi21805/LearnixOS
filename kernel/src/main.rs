@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(abi_x86_interrupt)]
 #![feature(allocator_ext)]
+#![feature(type_alias_impl_trait)]
 extern crate alloc;
 
 use alloc::boxed::Box;
@@ -10,12 +11,16 @@ use libk::{okprintln, println};
 use vga_display::{SCREEN, Scrollback};
 use x86::instructions::cpuid;
 
-use crate::memory::MMAP;
+use crate::{
+    memory::MMAP,
+    task::{KernelExecutor, Task, console_task},
+};
 
 mod console;
 mod idt;
 mod memory;
 mod panic;
+mod task;
 mod timer;
 
 /// The kernel's entry point.
@@ -64,7 +69,11 @@ pub unsafe extern "C" fn _start() -> ! {
         );
     }
 
-    console::run()
+    let mut executor = KernelExecutor::new();
+    executor
+        .spawn(Task::Console(console_task()))
+        .expect("the executor starts empty");
+    executor.run()
 }
 
 // The AHCI bring-up experiment, which ran after the hardware report and
